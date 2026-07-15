@@ -8,10 +8,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 const isProductionBuild = process.env.NODE_ENV === "production";
+// Amplify Hosting Compute (WEB_COMPUTE) expects a normal Next.js `.next` build
+// with required-server-files.json. Static `output: "export"` only for non-Amplify
+// production builds (e.g. Hostinger). Amplify sets AWS_APP_ID during CI.
+const isAmplifyBuild = Boolean(process.env.AWS_APP_ID);
+const useStaticExport = isProductionBuild && !isAmplifyBuild;
 
 const nextConfig: NextConfig = {
-  // Static export only for `next build` — not during `next dev` (avoids webpack/rewrite conflicts).
-  ...(isProductionBuild ? { output: "export" as const } : {}),
+  ...(useStaticExport ? { output: "export" as const } : {}),
   trailingSlash: true,
   images: { unoptimized: true },
   outputFileTracingRoot: path.join(__dirname, ".."),
@@ -21,6 +25,9 @@ const nextConfig: NextConfig = {
     optimizePackageImports: [],
   },
   async rewrites() {
+    // Static export ignores rewrites; Amplify SSR and local `next dev` can use them.
+    if (useStaticExport) return [];
+
     const isDev = process.env.NODE_ENV !== "production";
     // In dev, always proxy /api to the local Nest/Express API (port 3001).
     const proxyApi = isDev || !process.env.NEXT_PUBLIC_API_URL;

@@ -6,13 +6,15 @@ frontend:
         - npm ci --cache .npm --prefer-offline
     build:
       commands:
+        # Amplify sets AWS_APP_ID → next.config skips output:export and emits .next
         - npm run build
   artifacts:
-    # next.config.ts uses output: "export" → static files land in out/
-    baseDirectory: out
+    # Amplify app platform is WEB_COMPUTE (Next.js SSR). Use .next, not out/.
+    baseDirectory: .next
     files:
       - "**/*"
   cache:
     paths:
       - .npm/**/*
       - node_modules/**/*
+      - .next/cache/**/*
