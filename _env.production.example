@@ -1,4 +1,5 @@
-# Baked into `npm run build`. Also set web/public/runtime-config.js on the server
-# so you can change the API URL without rebuilding (recommended for static export).
+# Baked into `npm run build` as NEXT_PUBLIC_API_URL.
+# Copy to `_env.production` (local) and/or set in Amplify Environment variables.
+# Do not hardcode the API URL in public/runtime-config.js unless you need a post-deploy override.
 
-NEXT_PUBLIC_API_URL=https://your-api-domain.example.com
+NEXT_PUBLIC_API_URL=http://54.242.154.3:3001

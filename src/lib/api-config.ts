@@ -6,8 +6,8 @@
  *   - Ignores runtime-config.js and production env vars
  *
  * Production (static deploy):
- *   1. window.__FORKUP__.apiUrl from /runtime-config.js (edit on server, no rebuild)
- *   2. NEXT_PUBLIC_API_URL baked in at build time
+ *   1. NEXT_PUBLIC_API_URL baked in at build time (Amplify / .env.production)
+ *   2. Optional window.__FORKUP__.apiUrl from /runtime-config.js (post-deploy override)
  */
 declare global {
   interface Window {
@@ -40,6 +40,9 @@ export function getApiBaseUrl(): string {
     return "";
   }
 
+  const built = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (built) return normalizeBaseUrl(built);
+
   if (typeof window !== "undefined") {
     const runtime = window.__FORKUP__?.apiUrl?.trim();
     if (runtime) return normalizeBaseUrl(runtime);
@@ -48,9 +51,6 @@ export function getApiBaseUrl(): string {
     const mapped = PRODUCTION_API_BY_HOST[host];
     if (mapped) return normalizeBaseUrl(mapped);
   }
-
-  const built = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (built) return normalizeBaseUrl(built);
 
   return "";
 }
