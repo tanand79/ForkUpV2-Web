@@ -1,4 +1,8 @@
 # Used by `npm run build` via scripts/ensure-production-env.mjs → .env.production
 # Also set the same key in Amplify → Environment variables so cloud builds pick it up.
+#
+# HTTPS API via DuckDNS domain (forkup.duckdns.org → EC2 54.242.154.3, TLS by
+# nginx + Let's Encrypt). Because this is https, the Amplify HTTPS page can call
+# it directly — no Amplify rewrites needed.
 
-NEXT_PUBLIC_API_URL=http://54.242.154.3:3001
+NEXT_PUBLIC_API_URL=https://forkup.duckdns.org

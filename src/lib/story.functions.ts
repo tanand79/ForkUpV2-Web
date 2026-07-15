@@ -1,7 +1,8 @@
-const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "";
+import { getApiBaseUrl } from "@/lib/api-config";
 
 export async function improveStory(data: { story: string }): Promise<{ improved: string }> {
-  const res = await fetch(`${apiBase}/api/improve-story`, {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/api/improve-story`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -18,4 +19,3 @@ export async function improveStory(data: { story: string }): Promise<{ improved:
 
   return { improved: body.improved };
 }
-

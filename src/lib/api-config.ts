@@ -5,9 +5,12 @@
  *   - Uses relative /api paths → Next.js rewrites proxy to http://localhost:3001
  *   - Ignores runtime-config.js and production env vars
  *
- * Production (static deploy):
+ * Production (static deploy on Amplify HTTPS):
  *   1. NEXT_PUBLIC_API_URL baked in at build time (Amplify / .env.production)
  *   2. Optional window.__FORKUP__.apiUrl from /runtime-config.js (post-deploy override)
+ *   3. If the page is HTTPS and the API URL is HTTP, falls back to same-origin
+ *      `/api` to avoid mixed content — Amplify must reverse-proxy those paths
+ *      to EC2 (see amplify-rewrites.json).
  */
 declare global {
   interface Window {
@@ -43,6 +46,22 @@ export function isLocalBrowser(): boolean {
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
 }
 
+/**
+ * Browsers block HTTPS pages calling HTTP APIs (mixed content).
+ * When that would happen, use same-origin `/api` and let Amplify
+ * reverse-proxy to the EC2 HTTP backend (see amplify-rewrites.json).
+ */
+function avoidMixedContent(base: string): string {
+  if (
+    typeof window !== "undefined" &&
+    window.location.protocol === "https:" &&
+    base.startsWith("http:")
+  ) {
+    return "";
+  }
+  return base;
+}
+
 export function getApiBaseUrl(): string {
   // Local dev always uses same-origin /api proxy — never call production.
   if (isLocalBrowser()) {
@@ -53,16 +72,16 @@ export function getApiBaseUrl(): string {
   // (e.g. Amplify built with local .env instead of EC2).
   const built = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (built && !isLoopbackApiUrl(built)) {
-    return normalizeBaseUrl(built);
+    return avoidMixedContent(normalizeBaseUrl(built));
   }
 
   if (typeof window !== "undefined") {
     const runtime = window.__FORKUP__?.apiUrl?.trim();
-    if (runtime) return normalizeBaseUrl(runtime);
+    if (runtime) return avoidMixedContent(normalizeBaseUrl(runtime));
 
     const host = window.location.hostname;
     const mapped = PRODUCTION_API_BY_HOST[host];
-    if (mapped) return normalizeBaseUrl(mapped);
+    if (mapped) return avoidMixedContent(normalizeBaseUrl(mapped));
   }
 
   return "";
