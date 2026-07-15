@@ -21,6 +21,15 @@ function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
+function isLoopbackApiUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 /** Fallback when runtime-config.js or build env were not set on a known production host. */
 const PRODUCTION_API_BY_HOST: Record<string, string> = {
   "powderblue-alligator-791855.hostingersite.com":
@@ -40,8 +49,12 @@ export function getApiBaseUrl(): string {
     return "";
   }
 
+  // Prefer build-time env, but ignore a mis-baked loopback URL on a remote host
+  // (e.g. Amplify built with local .env instead of EC2).
   const built = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (built) return normalizeBaseUrl(built);
+  if (built && !isLoopbackApiUrl(built)) {
+    return normalizeBaseUrl(built);
+  }
 
   if (typeof window !== "undefined") {
     const runtime = window.__FORKUP__?.apiUrl?.trim();
