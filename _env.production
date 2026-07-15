@@ -1,2 +1,0 @@
-# Production API URL (also editable in public/runtime-config.js after deploy)
-NEXT_PUBLIC_API_URL=https://lightslategrey-alligator-326327.hostingersite.com
