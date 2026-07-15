@@ -351,7 +351,7 @@ export function NonprofitDashboard() {
 
     for (const inv of pendingInvites.slice(0, 2)) {
       items.push({
-        id: `pending-invite-${inv.id}`,
+        id: `pending-invite-${inv.token}`,
         icon: Store,
         campaign: inv.campaignName,
         label: `${inv.businessName} invited you to ${inv.methodName}`,
