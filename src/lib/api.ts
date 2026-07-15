@@ -1,0 +1,839 @@
+import type { CreateCampaignPayload, CreateCampaignResult } from "@/lib/builder-submit";
+import type { CampaignDetail, CampaignListItem } from "@/lib/campaign-types";
+import { authHeaders } from "@/lib/auth-storage";
+import { getApiBaseUrl } from "@/lib/api-config";
+
+/** API paths must not end with `/` — Next `trailingSlash` can add one and break Express routes. */
+function normalizeApiPath(path: string): string {
+  const q = path.indexOf("?");
+  const pathname = q === -1 ? path : path.slice(0, q);
+  const search = q === -1 ? "" : path.slice(q);
+  const normalized = pathname.replace(/\/+$/, "") || "/";
+  return `${normalized}${search}`;
+}
+
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const baseUrl = getApiBaseUrl();
+  const url = normalizeApiPath(`${baseUrl}${path}`);
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      ...authHeaders(),
+      ...(init?.headers ?? {}),
+    },
+  });
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const message = typeof body.error === "string" ? body.error : `API error: ${res.status}`;
+    throw new Error(message);
+  }
+  if (!contentType.includes("application/json")) {
+    const hint = baseUrl
+      ? "The API URL may be wrong or the server returned an error page."
+      : "Set NEXT_PUBLIC_API_URL at build time or apiUrl in public/runtime-config.js on the server.";
+    throw new Error(`API returned HTML instead of JSON. ${hint}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export function fetchCampaigns(status?: string) {
+  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+  return fetchJson<CampaignListItem[]>(`/api/campaigns${q}`);
+}
+
+export function fetchCampaign(slug: string) {
+  return fetchJson<CampaignDetail>(`/api/campaigns/${slug}`);
+}
+
+export function submitParticipation(
+  slug: string,
+  body: {
+    firstName: string;
+    email: string;
+    partySize: number;
+    isFirstVisit: boolean;
+    businessId: number;
+    locationId: number;
+    methodId: number;
+  },
+) {
+  return fetchJson<{
+    success: boolean;
+    participationPath: string;
+    reservationUrl: string | null;
+    businessName: string;
+    locationName: string;
+    supportersGoing: number;
+    expectedGuests: number;
+  }>(`/api/campaigns/${slug}/participate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export interface ApiBusinessLocation {
+  id: number;
+  locationName: string;
+  city: string;
+  state: string;
+}
+
+export interface ApiBusiness {
+  id: number;
+  businessName: string;
+  businessType: string;
+  defaultGivebackPercentage: number;
+  capabilities: string[];
+  locations: ApiBusinessLocation[];
+}
+
+export function fetchBuilderBusinesses(query?: string) {
+  const q = query?.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
+  return fetchJson<ApiBusiness[]>(`/api/builder/businesses${q}`);
+}
+
+export function createCampaign(payload: CreateCampaignPayload) {
+  return fetchJson<CreateCampaignResult>("/api/builder/campaigns", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface BuilderCampaignPartner {
+  businessId: number;
+  locationId: number;
+  businessName: string;
+  businessEmail: string | null;
+  locationName: string;
+  city: string;
+  state: string;
+  methodType: string;
+  givebackPercentage: number;
+  acceptanceStatus: string;
+}
+
+export interface BuilderCampaignState {
+  slug: string;
+  campaignName: string;
+  campaignStory: string;
+  campaignGoal: number;
+  startDate: string | null;
+  endDate: string | null;
+  coverImageUrl: string | null;
+  status: string;
+  origin: "business_invite" | "nonprofit";
+  methods: string[];
+  partners: BuilderCampaignPartner[];
+}
+
+export function fetchBuilderCampaign(slug: string) {
+  return fetchJson<BuilderCampaignState>(`/api/builder/campaigns/${encodeURIComponent(slug)}`);
+}
+
+export function updateCampaign(slug: string, payload: CreateCampaignPayload) {
+  return fetchJson<CreateCampaignResult>(
+    `/api/builder/campaigns/${encodeURIComponent(slug)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export interface NonprofitProfile {
+  id: number;
+  organizationName: string;
+  slug: string;
+  mission: string | null;
+  website: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  causeCategory: string | null;
+  verificationStatus: string;
+  claimStatus: string;
+  profileStatus: string;
+  verified: boolean;
+}
+
+export type ReadinessState = "complete" | "needs_review" | "preloaded_unclaimed" | "not_found";
+
+export interface OrganizationReadiness {
+  state: ReadinessState;
+  message: string;
+  nonprofit: NonprofitProfile | null;
+  canSkipToCampaignBuilder: boolean;
+  missingFields: string[];
+}
+
+export function checkNonprofitReadiness(email?: string, slug?: string) {
+  const params = new URLSearchParams();
+  if (email) params.set("email", email);
+  if (slug) params.set("slug", slug);
+  return fetchJson<OrganizationReadiness>(`/api/profiles/nonprofits/readiness?${params}`);
+}
+
+export function searchNonprofits(query: string) {
+  return fetchJson<NonprofitProfile[]>(
+    `/api/profiles/nonprofits?q=${encodeURIComponent(query.trim())}`,
+  );
+}
+
+export interface OrganizationLookupCandidate extends NonprofitProfile {
+  dataSource: "forkup_database" | string;
+  location: string | null;
+  logoUrl: string | null;
+}
+
+export interface OrganizationLookupResult {
+  query: string;
+  normalizedDomain: string;
+  matchCount: number;
+  candidates: OrganizationLookupCandidate[];
+  requiresConfirmation: boolean;
+}
+
+export function lookupOrganizationByWebsite(website: string) {
+  return fetchJson<OrganizationLookupResult>(
+    `/api/profiles/nonprofits/lookup?website=${encodeURIComponent(website.trim())}`,
+  );
+}
+
+export function claimNonprofitProfile(body: {
+  organizationName: string;
+  contactName: string;
+  contactEmail: string;
+  mission?: string;
+  causeCategory?: string;
+  website?: string;
+  existingSlug?: string;
+}) {
+  return fetchJson<{ action: string; nonprofit: NonprofitProfile }>("/api/profiles/nonprofits/claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// ─── Business profiles ───────────────────────────────────────────────────────
+
+export interface BusinessProfile {
+  id: number;
+  businessName: string;
+  slug: string;
+  businessType: string | null;
+  website: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  businessStatus: string;
+  claimStatus: string;
+  profileStatus: string;
+  defaultGivebackPercentage: number;
+  capabilities: {
+    dineAndDonate: boolean;
+    shopAndDonate: boolean;
+    serviceGiveback: boolean;
+    guestBartending: boolean;
+  };
+  locations: {
+    id: number;
+    locationName: string;
+    city: string;
+    state: string;
+    address: string | null;
+  }[];
+}
+
+export type BusinessReadinessState =
+  | "complete"
+  | "needs_review"
+  | "preloaded_unclaimed"
+  | "not_found";
+
+export interface BusinessReadiness {
+  state: BusinessReadinessState;
+  message: string;
+  business: BusinessProfile | null;
+  canProceed: boolean;
+  missingFields: string[];
+}
+
+export function searchBusinesses(query: string) {
+  return fetchJson<BusinessProfile[]>(
+    `/api/profiles/businesses?q=${encodeURIComponent(query.trim())}`,
+  );
+}
+
+export function checkBusinessReadiness(email?: string, slug?: string) {
+  const params = new URLSearchParams();
+  if (email) params.set("email", email);
+  if (slug) params.set("slug", slug);
+  return fetchJson<BusinessReadiness>(`/api/profiles/businesses/readiness?${params}`);
+}
+
+export function claimBusinessProfile(body: {
+  businessName: string;
+  contactName?: string;
+  contactEmail: string;
+  businessType?: string;
+  website?: string;
+  existingSlug?: string;
+  locationName?: string;
+  city?: string;
+  state?: string;
+  supportsDineAndDonate?: boolean;
+  supportsShopAndDonate?: boolean;
+  supportsServiceGiveback?: boolean;
+  supportsGuestBartending?: boolean;
+}) {
+  return fetchJson<{ action: string; business: BusinessProfile }>("/api/profiles/businesses/claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// ─── Business → nonprofit campaign invites ───────────────────────────────────
+
+export interface NonprofitCampaignInvite {
+  token: string;
+  invitationStatus: string;
+  givebackPercentage: number;
+  message: string | null;
+  method: { type: string; name: string };
+  business: { id: number; name: string; email: string | null };
+  location: { id: number; name: string; city: string; state: string };
+  nonprofit: { id: number; name: string; email: string | null };
+  campaign: {
+    slug: string;
+    name: string;
+    story: string;
+    startDate: string | null;
+    endDate: string | null;
+    status: string;
+  };
+}
+
+export function sendNonprofitCampaignInvite(body: {
+  businessId: number;
+  locationId: number;
+  nonprofitId: number;
+  methodType: string;
+  givebackPercentage?: number;
+  message?: string;
+  campaignName?: string;
+}) {
+  return fetchJson<{
+    token: string;
+    acceptPath: string;
+    campaignSlug: string;
+    campaignName: string;
+  }>("/api/business/nonprofit-invites", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchNonprofitCampaignInvite(token: string) {
+  return fetchJson<NonprofitCampaignInvite>(`/api/business/nonprofit-invites/${token}`);
+}
+
+export function acceptNonprofitCampaignInvite(token: string) {
+  return fetchJson<{ success: boolean; campaignSlug: string }>(
+    `/api/business/nonprofit-invites/${token}/accept`,
+    { method: "POST" },
+  );
+}
+
+export function declineNonprofitCampaignInvite(token: string, reason?: string) {
+  return fetchJson<{ success: boolean }>(`/api/business/nonprofit-invites/${token}/decline`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+// ─── Business invitations ────────────────────────────────────────────────────
+
+export interface BusinessInvitationDetail {
+  id: number;
+  token: string;
+  acceptanceStatus: string;
+  givebackPercentage: number;
+  participationHours: string | null;
+  eligibleSalesRules: string | null;
+  canRespond: boolean;
+  campaign: {
+    slug: string;
+    name: string;
+    story: string;
+    startDate: string | null;
+    endDate: string | null;
+    status: string;
+    invitationDeadline: string | null;
+    nonprofit: string;
+  };
+  business: { id: number; name: string; email: string | null; emailHint: string | null };
+  location: { name: string; city: string; state: string };
+  method: { type: string; name: string };
+}
+
+export function fetchBusinessInvitation(token: string) {
+  return fetchJson<BusinessInvitationDetail>(`/api/business/invitations/${token}`);
+}
+
+export interface BusinessCollaboration {
+  id: number;
+  token: string | null;
+  acceptanceStatus: string;
+  givebackPercentage: number;
+  participationHours: string | null;
+  eligibleSalesRules: string | null;
+  reviewPath: string | null;
+  direction: "incoming" | "outgoing";
+  nonprofitInviteStatus: string | null;
+  campaign: {
+    slug: string;
+    name: string;
+    story: string;
+    startDate: string | null;
+    endDate: string | null;
+    status: string;
+    invitationDeadline: string | null;
+    nonprofit: string;
+  };
+  business: { id: number; name: string; email: string | null };
+  location: { name: string; city: string; state: string };
+  method: { type: string; name: string };
+}
+
+export function fetchBusinessCollaborations(businessId: number) {
+  return fetchJson<BusinessCollaboration[]>(
+    `/api/business/collaborations?businessId=${businessId}`,
+  );
+}
+
+export function acceptBusinessInvitation(
+  token: string,
+  body: {
+    authorizedRepresentative: string;
+    eligibleSalesRules?: string;
+    participationHours?: string;
+    billingContactName?: string;
+    billingContactEmail?: string;
+    settlementContactName?: string;
+    settlementContactEmail?: string;
+    forkupFeeAcknowledged: boolean;
+    net7Acknowledged: boolean;
+    achAuthorized: boolean;
+  },
+) {
+  return fetchJson<{ success: boolean }>(`/api/business/invitations/${token}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function declineBusinessInvitation(token: string, reason?: string) {
+  return fetchJson<{ success: boolean }>(`/api/business/invitations/${token}/decline`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function requestBusinessInvitationChanges(token: string, message: string) {
+  return fetchJson<{ success: boolean }>(`/api/business/invitations/${token}/request-changes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+}
+
+// ─── Campaign dashboard (manage) ─────────────────────────────────────────────
+
+export interface CampaignDashboardData {
+  slug: string;
+  name: string;
+  nonprofit: string;
+  status: string;
+  goal: number;
+  raised: number;
+  supportersGoing: number;
+  expectedGuests: number;
+  verifiedVisits: number;
+  startDate: string | null;
+  endDate: string | null;
+  invitationDeadline: string | null;
+  methods: { id: number; methodType: string; methodName: string; methodStatus: string }[];
+  invitations: {
+    id: number;
+    businessName: string;
+    businessEmail: string | null;
+    locationName: string;
+    methodType: string;
+    methodName: string;
+    acceptanceStatus: string;
+    givebackPercentage: number;
+    invitedAt?: string | null;
+    changeRequestMessage?: string | null;
+    reviewPath?: string | null;
+    token: string | null;
+    acceptPath: string | null;
+  }[];
+  virtualDonations: { count: number; total: number };
+}
+
+export function fetchCampaignDashboard(slug: string) {
+  return fetchJson<CampaignDashboardData>(`/api/manage/campaigns/${slug}`);
+}
+
+export type PartnerInvitationDetail = CampaignDashboardData["invitations"][number];
+
+export function fetchPartnerInvitationDetail(slug: string, invitationId: string | number) {
+  return fetchJson<PartnerInvitationDetail>(
+    `/api/manage/campaigns/${encodeURIComponent(slug)}/invitations/${encodeURIComponent(String(invitationId))}`,
+  );
+}
+
+export function acceptPartnerInvitationChanges(slug: string, invitationId: string | number) {
+  return fetchJson<{ success: boolean; acceptanceStatus: string }>(
+    `/api/manage/campaigns/${encodeURIComponent(slug)}/invitations/${encodeURIComponent(String(invitationId))}/accept-changes`,
+    { method: "POST" },
+  );
+}
+
+export interface ManageCampaignSummary {
+  slug: string;
+  name: string;
+  nonprofit: string;
+  status: string;
+  goal: number;
+  raised: number;
+  supportersGoing: number;
+  verifiedVisits: number;
+  startDate: string | null;
+  endDate: string | null;
+  partnersInvited?: number;
+  partnersPending?: number;
+  partnersChangesRequested?: number;
+}
+
+export function fetchManageCampaigns(nonprofitId?: number) {
+  const q = nonprofitId ? `?nonprofitId=${nonprofitId}` : "";
+  return fetchJson<ManageCampaignSummary[]>(`/api/manage/campaigns${q}`);
+}
+
+export function publishCampaignNow(slug: string) {
+  return fetchJson<{ success: boolean; status: string; slug: string }>(
+    `/api/manage/campaigns/${encodeURIComponent(slug)}/go-live`,
+    { method: "POST" },
+  );
+}
+
+export function deleteManageCampaign(slug: string) {
+  return fetchJson<{ success: boolean; slug: string }>(
+    `/api/manage/campaigns/${encodeURIComponent(slug)}`,
+    { method: "DELETE" },
+  );
+}
+
+export interface NonprofitPendingInvite {
+  token: string;
+  businessName: string;
+  locationName: string;
+  campaignName: string;
+  campaignSlug: string;
+  methodName: string;
+  givebackPercentage: number;
+  sentAt: string;
+  acceptPath: string;
+}
+
+export function fetchNonprofitPendingInvites(nonprofitId: number) {
+  return fetchJson<NonprofitPendingInvite[]>(
+    `/api/manage/nonprofits/${nonprofitId}/pending-invites`,
+  );
+}
+
+export interface NonprofitPartnerUpdate {
+  id: number;
+  acceptanceStatus: string;
+  businessName: string;
+  businessEmail: string | null;
+  locationName: string;
+  campaignName: string;
+  campaignSlug: string;
+  methodName: string;
+  givebackPercentage: number;
+  changeRequestMessage: string | null;
+  updatedAt: string;
+  reviewPath: string;
+}
+
+export function fetchNonprofitPartnerUpdates(nonprofitId: number) {
+  return fetchJson<NonprofitPartnerUpdate[]>(
+    `/api/manage/nonprofits/${nonprofitId}/partner-updates`,
+  );
+}
+
+export function fetchSuccessEngineActions(slug: string) {
+  return fetchJson<SuccessEngineAction[]>(`/api/manage/campaigns/${slug}/success-engine`);
+}
+
+export interface SuccessEngineAction {
+  id: number;
+  actionType: string;
+  channel: string;
+  scheduledDate: string | null;
+  title: string;
+  content: string;
+  status: string;
+  completedAt?: string | null;
+}
+
+export function updateSuccessEngineAction(
+  id: number,
+  body: { content?: string; status?: "scheduled" | "ready" | "completed" },
+) {
+  return fetchJson<{ success: boolean }>(`/api/manage/success-engine/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// ─── Virtual donations ───────────────────────────────────────────────────────
+
+export function submitVirtualDonation(
+  slug: string,
+  body: {
+    amount: number;
+    donorName?: string;
+    email: string;
+    anonymous?: boolean;
+    attributionCode?: string;
+  },
+) {
+  return fetchJson<{ success: boolean; amount: number; raised: number }>(
+    `/api/campaigns/${slug}/donations`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  fullName: string | null;
+  organizations: {
+    organizationType: "nonprofit" | "business";
+    organizationId: number;
+    role: string;
+  }[];
+}
+
+export interface AuthContextResponse {
+  user: AuthUser;
+  nonprofitProfiles: NonprofitProfile[];
+  businessProfiles: BusinessProfile[];
+  /** Primary nonprofit — first membership */
+  nonprofitProfile: NonprofitProfile | null;
+  /** Primary business — first membership */
+  businessProfile: BusinessProfile | null;
+}
+
+export function checkEmailAvailable(email: string) {
+  return fetchJson<{ valid: boolean; available: boolean; message: string }>(
+    `/api/auth/check-email?email=${encodeURIComponent(email.trim())}`,
+  );
+}
+
+export function fetchAuthContext() {
+  return fetchJson<AuthContextResponse>("/api/auth/context");
+}
+
+export function loginUser(email: string, password: string) {
+  return fetchJson<{ token: string; user: AuthUser }>("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function registerUser(body: {
+  email: string;
+  password: string;
+  fullName?: string;
+  organizationType?: "nonprofit" | "business";
+  organizationId?: number;
+  role?: string;
+}) {
+  return fetchJson<{ token: string; user: AuthUser }>("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchCurrentUser() {
+  return fetchJson<AuthUser>("/api/auth/me");
+}
+
+export function logoutUser() {
+  return fetchJson<{ success: boolean }>("/api/auth/logout", { method: "POST" });
+}
+
+export function linkUserOrganization(body: {
+  organizationType: "nonprofit" | "business";
+  organizationId: number;
+  role?: string;
+}) {
+  return fetchJson<AuthUser>("/api/auth/link-organization", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// ─── Participants ────────────────────────────────────────────────────────────
+
+export interface CampaignParticipant {
+  id: number;
+  participantType: "ambassador" | "guest_bartender";
+  name: string;
+  email: string | null;
+  roleLabel: string | null;
+  status: string;
+  personalShareLink: string | null;
+  trackingCode: string | null;
+  shareUrl: string | null;
+  leaderboardEnabled: boolean;
+  businessId: number | null;
+  locationId: number | null;
+  eventDate: string | null;
+  eventStartTime: string | null;
+  eventEndTime: string | null;
+  attributedDonationTotal: number;
+}
+
+export function fetchCampaignParticipants(slug: string) {
+  return fetchJson<CampaignParticipant[]>(`/api/manage/campaigns/${slug}/participants`);
+}
+
+export function addCampaignParticipant(
+  slug: string,
+  body: {
+    participantType: "ambassador" | "guest_bartender";
+    name: string;
+    email?: string;
+    roleLabel?: string;
+    businessId?: number;
+    locationId?: number;
+    eventDate?: string;
+    eventStartTime?: string;
+    eventEndTime?: string;
+  },
+) {
+  return fetchJson<CampaignParticipant>(`/api/manage/campaigns/${slug}/participants`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function removeCampaignParticipant(slug: string, participantId: number) {
+  return fetchJson<{ success: boolean }>(
+    `/api/manage/campaigns/${slug}/participants/${participantId}`,
+    { method: "DELETE" },
+  );
+}
+
+// ─── Receipts ────────────────────────────────────────────────────────────────
+
+export interface ReceiptRecord {
+  id: number;
+  imageUrl: string;
+  ocrStatus: string;
+  reviewStatus: string;
+  subtotal: number | null;
+  eligibleSubtotal: number | null;
+  donationPercentage: number | null;
+  calculatedDonation: number | null;
+  uploadedAt: string;
+  businessName: string | null;
+  locationName: string | null;
+  supporterEmail: string | null;
+  supporterName: string | null;
+}
+
+export function fetchCampaignReceipts(slug: string, status?: string) {
+  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+  return fetchJson<ReceiptRecord[]>(`/api/campaigns/${slug}/receipts${q}`);
+}
+
+export function reviewReceipt(id: number, action: "approve" | "reject", eligibleSubtotal?: number) {
+  return fetchJson<{ success: boolean }>(`/api/receipts/${id}/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, eligibleSubtotal }),
+  });
+}
+
+// ─── Settlement ──────────────────────────────────────────────────────────────
+
+export interface SettlementReport {
+  campaign: {
+    name: string;
+    status: string;
+    startDate: string | null;
+    endDate: string | null;
+    isLocked: boolean;
+  };
+  receiptStats: { total: number; approved: number; pending: number };
+  businessReports: {
+    id: number;
+    businessName: string;
+    locationName: string;
+    eligibleSales: number;
+    donationPercentage: number;
+    donationPool: number;
+    forkupFee: number;
+    netNonprofitAmount: number;
+    paymentStatus: string;
+    lockedAt: string | null;
+  }[];
+  nonprofitReport: {
+    eligibleSales: number;
+    donationPool: number;
+    forkupFee: number;
+    netNonprofitAmount: number;
+  };
+  /** Online donations — separate from business giveback settlement. */
+  onlineDonations?: {
+    count: number;
+    total: number;
+  };
+}
+
+export function fetchSettlementReport(slug: string) {
+  return fetchJson<SettlementReport>(`/api/manage/campaigns/${slug}/settlement`);
+}
+
+export function lockCampaignSettlement(slug: string) {
+  return fetchJson<{ success: boolean; status: string }>(`/api/manage/campaigns/${slug}/lock`, {
+    method: "POST",
+  });
+}

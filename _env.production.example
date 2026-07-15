@@ -1,0 +1,4 @@
+# Baked into `npm run build`. Also set web/public/runtime-config.js on the server
+# so you can change the API URL without rebuilding (recommended for static export).
+
+NEXT_PUBLIC_API_URL=https://your-api-domain.example.com

@@ -1,0 +1,50 @@
+# Hostinger Apache — static Next.js export (upload contents of web/out/ to public_html)
+
+Options -MultiViews
+RewriteEngine On
+RewriteBase /
+
+# Campaign pages: one pre-built shell; client reads slug from the URL bar
+RewriteRule ^campaign/[^/]+/?$ /campaign/_/index.html [L]
+
+# Pretty screen URLs (same as next.config rewrites in dev)
+RewriteRule ^start/?$ /index.html?step=start [L,QSA]
+RewriteRule ^campaign-directory/?$ /index.html?step=campaign-directory [L,QSA]
+RewriteRule ^choose-account-type/?$ /index.html?step=choose-account-type [L,QSA]
+RewriteRule ^nonprofit-claim/?$ /index.html?step=nonprofit-claim [L,QSA]
+RewriteRule ^business-claim/?$ /index.html?step=business-claim [L,QSA]
+RewriteRule ^business-invites-nonprofit/?$ /index.html?step=business-invites-nonprofit [L,QSA]
+RewriteRule ^nonprofit-accepts-invite/?$ /index.html?step=nonprofit-accepts-invite [L,QSA]
+RewriteRule ^nonprofit-dashboard/?$ /index.html?step=nonprofit-dashboard [L,QSA]
+RewriteRule ^methods/?$ /index.html?step=methods [L,QSA]
+RewriteRule ^businesses/?$ /index.html?step=businesses [L,QSA]
+RewriteRule ^invite/?$ /index.html?step=invite [L,QSA]
+RewriteRule ^edit-invite/?$ /index.html?step=edit-invite [L,QSA]
+RewriteRule ^business-invite-flow/?$ /index.html?step=business-invite-flow [L,QSA]
+RewriteRule ^details/?$ /index.html?step=details [L,QSA]
+RewriteRule ^media/?$ /index.html?step=media [L,QSA]
+RewriteRule ^review/?$ /index.html?step=review [L,QSA]
+RewriteRule ^created/?$ /index.html?step=created [L,QSA]
+RewriteRule ^dashboard/?$ /index.html?step=dashboard [L,QSA]
+RewriteRule ^receipt-ocr/?$ /index.html?step=receipt-ocr [L,QSA]
+RewriteRule ^business-profile/?$ /index.html?step=business-profile [L,QSA]
+RewriteRule ^campaign-page/?$ /index.html?step=campaign-page [L,QSA]
+RewriteRule ^business-acceptance/?$ /index.html?step=business-acceptance [L,QSA]
+RewriteRule ^reporting/?$ /index.html?step=reporting [L,QSA]
+RewriteRule ^nonprofit-profile/?$ /index.html?step=nonprofit-profile [L,QSA]
+RewriteRule ^success-engine/?$ /index.html?step=success-engine [L,QSA]
+RewriteRule ^architecture-map/?$ /index.html?step=architecture-map [L,QSA]
+RewriteRule ^admin-preload/?$ /index.html?step=admin-preload [L,QSA]
+RewriteRule ^guest-bartending/?$ /index.html?step=guestBartending [L,QSA]
+RewriteRule ^ambassador/?$ /index.html?step=ambassador [L,QSA]
+RewriteRule ^success-virtual/?$ /index.html?step=success-virtual [L,QSA]
+RewriteRule ^success-ambassador/?$ /index.html?step=success-ambassador [L,QSA]
+RewriteRule ^success-bartending/?$ /index.html?step=success-bartending [L,QSA]
+RewriteRule ^success-giveback-live/?$ /index.html?step=success-giveback-live [L,QSA]
+RewriteRule ^success-mixed/?$ /index.html?step=success-mixed [L,QSA]
+
+# SPA fallback (never swallow /campaign/* — handled above)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} !^/campaign/
+RewriteRule . /index.html [L]
