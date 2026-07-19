@@ -49,6 +49,7 @@ const SECTIONS: Section[] = [
     steps: [
       { id: "nonprofit-profile", label: "Nonprofit Profile" },
       { id: "business-profile", label: "Business Profile" },
+      { id: "organization-library", label: "Organization Library" },
     ],
   },
   {
@@ -70,7 +71,10 @@ const SECTIONS: Section[] = [
       { id: "dashboard", label: "Campaign Dashboard" },
       { id: "success-engine", label: "Success Engine" },
       { id: "receipt-ocr", label: "Receipt Upload / OCR Tracking" },
+      { id: "receipt-upload", label: "Supporter Receipt Upload" },
+      { id: "supporter-receipts", label: "Supporter Receipt History" },
       { id: "reporting", label: "Reporting & Settlement" },
+      { id: "analytics", label: "Analytics & Insights" },
     ],
   },
   {
@@ -96,7 +100,11 @@ const SECTIONS: Section[] = [
   {
     // ⚠️ Admin Only — Hidden From Public Users. Internal preload workflow.
     title: "Admin / Data Setup",
-    steps: [{ id: "admin-preload", label: "Preload Nonprofits & Businesses" }],
+    steps: [
+      { id: "admin-preload", label: "Preload Nonprofits & Businesses" },
+      { id: "admin-email-log", label: "Email Log" },
+      { id: "admin-access-requests", label: "Trust & Verification Queue" },
+    ],
   },
   {
     // Master architecture review map — bottom of Design Mode.

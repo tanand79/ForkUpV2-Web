@@ -100,11 +100,11 @@ export function WizardHeader() {
     </HeaderPillButton>
   );
 
-  if (step === "website-landing") {
+  if (step === "website-landing" || step === "past-campaigns" || step === "success-stories") {
     return null;
   }
 
-  if (step === "start" || step === "choose-organizer-mode") {
+  if (step === "start" || step === "choose-organizer-mode" || step === "quick-start") {
     return (
       <SiteHeader
         sticky={false}

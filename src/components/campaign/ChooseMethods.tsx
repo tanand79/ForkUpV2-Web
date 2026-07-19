@@ -147,13 +147,20 @@ export function ChooseMethods() {
         </div>
 
         <div className="mt-auto flex justify-center pt-2">
-          <img
-            src={assetSrc(forkupLogo)}
-            alt="ForkUp"
-            width={96}
-            height={100}
-            className="h-16 w-auto object-contain opacity-80"
-          />
+          <button
+            type="button"
+            onClick={() => goTo("website-landing")}
+            className="rounded-lg opacity-80 transition-opacity hover:opacity-100"
+            aria-label="ForkUp home"
+          >
+            <img
+              src={assetSrc(forkupLogo)}
+              alt="ForkUp"
+              width={96}
+              height={100}
+              className="h-16 w-auto object-contain"
+            />
+          </button>
         </div>
       </main>
 

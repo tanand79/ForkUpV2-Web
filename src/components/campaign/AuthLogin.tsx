@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 
-import { HeartHandshake, Loader2, LogIn, Store, UserPlus, Users } from "lucide-react";
+import { Eye, EyeOff, HeartHandshake, Loader2, LogIn, Store, UserPlus, Users } from "lucide-react";
 
 import { loginUser, registerUser, checkEmailAvailable } from "@/lib/api";
 
@@ -55,6 +55,8 @@ export function AuthLogin({
   const [email, setEmail] = useState("");
 
   const [password, setPassword] = useState("");
+
+  const [showPassword, setShowPassword] = useState(false);
 
   const [fullName, setFullName] = useState("");
 
@@ -347,18 +349,29 @@ export function AuthLogin({
 
         <label className="block space-y-1.5">
           <span className="text-sm font-semibold">Password</span>
-          <input
-            type="password"
-            name="password"
-            id="forkup-auth-password"
-            required
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="At least 8 characters"
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-            className="h-12 w-full rounded-xl border border-border px-4 text-sm"
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              name="password"
+              id="forkup-auth-password"
+              required
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              className="h-12 w-full rounded-xl border border-border px-4 pr-12 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-pressed={showPassword}
+              className="absolute inset-y-0 right-0 flex items-center justify-center px-3 text-muted-foreground hover:text-foreground"
+            >
+              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+          </div>
         </label>
 
         {error && (

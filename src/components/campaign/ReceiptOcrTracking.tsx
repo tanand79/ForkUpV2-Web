@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Loader2, Receipt, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2, Receipt, XCircle } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import {
   fetchCampaignReceipts,
@@ -16,6 +16,7 @@ export function ReceiptOcrTracking() {
   const [loading, setLoading] = useState(!!slug);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [eligibleInputs, setEligibleInputs] = useState<Record<number, string>>({});
 
   const load = useCallback(async () => {
     if (!slug) return;
@@ -36,8 +37,15 @@ export function ReceiptOcrTracking() {
 
   const handleReview = async (id: number, action: "approve" | "reject") => {
     setBusyId(id);
+    setError(null);
     try {
-      await reviewReceipt(id, action);
+      let eligible: number | undefined;
+      if (action === "approve") {
+        const raw = eligibleInputs[id];
+        const parsed = raw != null && raw.trim() !== "" ? Number(raw) : NaN;
+        eligible = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+      }
+      await reviewReceipt(id, action, eligible);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Review failed");
@@ -61,6 +69,13 @@ export function ReceiptOcrTracking() {
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-10 sm:px-6">
+      <button
+        onClick={() => goTo("dashboard")}
+        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" />
+        Back to campaign dashboard
+      </button>
       <h1 className="text-2xl font-extrabold tracking-tight">Receipt &amp; OCR Review</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Approve or reject supporter receipts. Approved receipts update campaign totals and settlement.
@@ -108,7 +123,29 @@ export function ReceiptOcrTracking() {
                 )}
               </div>
               {r.reviewStatus === "pending" && (
-                <div className="flex shrink-0 gap-2">
+                <div className="flex shrink-0 flex-col items-stretch gap-2 sm:w-44">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Eligible amount
+                    <div className="relative mt-1">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                        $
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder={
+                          r.eligibleSubtotal != null ? r.eligibleSubtotal.toFixed(2) : "0.00"
+                        }
+                        value={eligibleInputs[r.id] ?? ""}
+                        onChange={(e) =>
+                          setEligibleInputs((prev) => ({ ...prev, [r.id]: e.target.value }))
+                        }
+                        className="w-full rounded-lg border border-border bg-background py-1.5 pl-6 pr-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                      />
+                    </div>
+                  </label>
+                  <div className="flex gap-2">
                   <button
                     type="button"
                     disabled={busyId === r.id}
@@ -131,6 +168,7 @@ export function ReceiptOcrTracking() {
                     <XCircle className="size-3.5" />
                     Reject
                   </button>
+                  </div>
                 </div>
               )}
             </div>

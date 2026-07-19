@@ -295,6 +295,12 @@ export function CampaignMedia() {
                 <div className="space-y-2">
                   <div className="relative aspect-[21/9] overflow-hidden rounded-xl bg-secondary ring-1 ring-border">
                     <img src={state.cover.url} alt="Campaign cover" className="size-full object-cover" />
+                    {state.cover.id?.startsWith("library-") && (
+                      <span className="absolute left-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-full bg-background/90 px-3 py-1 text-xs font-semibold text-primary shadow-sm backdrop-blur">
+                        <Sparkles className="size-3.5" />
+                        Suggested from your library
+                      </span>
+                    )}
                     <button
                       onClick={() => coverRef.current?.click()}
                       className="absolute bottom-2.5 right-2.5 inline-flex items-center gap-2 rounded-full bg-background/90 px-3.5 py-1.5 text-sm font-semibold shadow-sm backdrop-blur transition-colors hover:bg-background"
@@ -303,7 +309,11 @@ export function CampaignMedia() {
                       Replace
                     </button>
                   </div>
-                  <span className="truncate text-xs text-muted-foreground">{state.cover.name}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {state.cover.id?.startsWith("library-")
+                      ? "Auto-filled from an approved library image — replace it anytime."
+                      : state.cover.name}
+                  </span>
                 </div>
               ) : (
                 <button

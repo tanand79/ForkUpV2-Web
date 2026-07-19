@@ -162,6 +162,7 @@ function loadDraft(): CampaignDraft | null {
         video: savedState.video ?? null,
         promotion: { ...initialState.promotion, ...savedState.promotion },
         storyAccepted: !!savedState.storyAccepted,
+        aiDrafted: !!savedState.aiDrafted,
         organizerMode: savedState.organizerMode ?? null,
         accountIntent: savedState.accountIntent ?? null,
         nonprofitMemberships: Array.isArray(savedState.nonprofitMemberships)
@@ -197,6 +198,8 @@ export type StepId =
   // ⚠️ DESIGN MODE placeholders — pre-campaign entry / claim lifecycle.
   | "website-landing"
   | "campaign-directory"
+  | "past-campaigns"
+  | "success-stories"
   | "choose-account-type"
   | "nonprofit-claim"
   | "business-claim"
@@ -208,6 +211,8 @@ export type StepId =
   | "auth-login"
   | "account-hub"
   | "choose-organizer-mode"
+  // Simplified GoFundMe-style entry — asks a few questions, AI prepares a draft.
+  | "quick-start"
   | "methods"
   | "businesses"
   | "invite"
@@ -221,18 +226,29 @@ export type StepId =
   | "dashboard"
   // ⚠️ DESIGN MODE reference — existing MVP receipt capture / OCR flow.
   | "receipt-ocr"
+  // Supporter-facing receipt upload (submits to the OCR/review pipeline).
+  | "receipt-upload"
+  // Supporter-facing receipt history (auth-scoped).
+  | "supporter-receipts"
   // ⚠️ DESIGN MODE placeholders — public campaign page & financial reporting.
   | "business-profile"
   | "campaign-page"
   // ⚠️ DESIGN MODE ONLY — business-facing invitation accept/decline flow.
   | "business-acceptance"
   | "reporting"
+  // Nonprofit-facing campaign analytics & insights dashboard.
+  | "analytics"
   // ⚠️ DESIGN MODE reference — reusable profile asset + management modules + map.
   | "nonprofit-profile"
   | "success-engine"
   | "architecture-map"
   // ⚠️ DESIGN MODE reference — admin-only profile preload workflow (hidden from public).
   | "admin-preload"
+  // Admin-only — read-only email delivery log (hidden from public).
+  | "admin-email-log"
+  | "admin-access-requests"
+  // Reusable content + assets for the active organization.
+  | "organization-library"
   | "guestBartending"
   | "ambassador"
   // ⚠️ DESIGN MODE ONLY — independent success-state previews.
@@ -392,6 +408,8 @@ export interface NonprofitProfileState {
   contactEmail: string;
   mission?: string;
   causeCategory?: string;
+  verificationStatus?: string;
+  claimStatus?: string;
 }
 
 export interface BusinessProfileState {
@@ -407,6 +425,8 @@ export interface BusinessProfileState {
     serviceGiveback: boolean;
     guestBartending: boolean;
   };
+  claimStatus?: string;
+  businessStatus?: string;
 }
 
 export type OrganizerMode = "guided" | "advanced";
@@ -485,6 +505,9 @@ export interface CampaignState {
   promotion: PromotionChannels;
   // True once the organizer has improved/approved their campaign story.
   storyAccepted: boolean;
+  // True when the title/story were pre-filled from the AI/library quick-start
+  // draft and haven't been reviewed yet. Purely informational.
+  aiDrafted?: boolean;
   // True once the organizer has reviewed and accepted launch terms.
   termsAccepted: boolean;
 }
@@ -548,6 +571,7 @@ const initialState: CampaignState = {
   video: null,
   promotion: { facebookUrl: "", instagramHandle: "", websiteUrl: "", newsletter: "" },
   storyAccepted: false,
+  aiDrafted: false,
   termsAccepted: false,
 };
 

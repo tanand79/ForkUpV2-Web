@@ -4,6 +4,7 @@ export type BusinessClaimDraft = {
   businessName: string;
   contactName: string;
   contactEmail: string;
+  website: string;
   locationName: string;
   city: string;
   stateCode: string;
@@ -17,6 +18,7 @@ export const defaultBusinessClaimDraft = (): BusinessClaimDraft => ({
   businessName: "",
   contactName: "",
   contactEmail: "",
+  website: "",
   locationName: "Main Location",
   city: "",
   stateCode: "",

@@ -13,6 +13,8 @@ import {
   Loader2,
   Settings2,
   Trash2,
+  ShieldCheck,
+  Clock,
   type LucideIcon,
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
@@ -565,6 +567,17 @@ export function NonprofitDashboard() {
           <h1 className="font-display mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">
             Welcome back, {greetingName}
           </h1>
+          {state.nonprofitProfile?.verificationStatus === "verified" ? (
+            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              <ShieldCheck className="size-3.5" />
+              Verified organization
+            </span>
+          ) : state.nonprofitProfile?.verificationStatus === "needs_review" ? (
+            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              <Clock className="size-3.5" />
+              Verification pending
+            </span>
+          ) : null}
           {accountName && orgName && orgName !== greetingName && (
             <p className="mt-1 text-base font-medium text-foreground/80">{orgName}</p>
           )}

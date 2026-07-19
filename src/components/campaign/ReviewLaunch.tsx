@@ -9,7 +9,7 @@ import {
   Heart,
   ImageIcon,
   Sparkles,
-  
+  Clock,
   CheckCircle2,
   Circle,
   ArrowRight,
@@ -61,6 +61,9 @@ export function ReviewLaunch() {
     invitedBusinesses.length > 0 || (state.lockedBusinessPartners?.length ?? 0) > 0;
 
   const canLaunch = requiredRemaining === 0 && termsAccepted;
+  // Informational only — never gates launch.
+  const verificationPending =
+    state.nonprofitProfile?.verificationStatus === "needs_review";
 
   // ── Launch preparation animation ──────────────────────────────────────────
   const [launching, setLaunching] = useState(false);
@@ -419,6 +422,24 @@ export function ReviewLaunch() {
                     : state.methods.guestBartending
                       ? "After launch, your Campaign Success Dashboard will help you add guest bartenders and send them their links and QR codes."
                       : "After launch, your Campaign Success Dashboard will help you add ambassadors and send them their personal share links."}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {verificationPending && (
+          <div className="animate-rise mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/40 [animation-delay:140ms]">
+            <div className="flex items-start gap-2.5">
+              <Clock className="mt-0.5 size-5 shrink-0 text-amber-600" />
+              <div>
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  Your organization&rsquo;s verification is pending.
+                </p>
+                <p className="mt-1 text-sm text-amber-800 dark:text-amber-300/90">
+                  You can launch now — a ForkUp team member is reviewing your
+                  organization. Verification may be required before settlement and
+                  payouts can be finalized.
                 </p>
               </div>
             </div>

@@ -1,10 +1,10 @@
-import { MapPin, Utensils, Heart } from "lucide-react";
+import { MapPin, Utensils, Heart, Receipt, ArrowRight } from "lucide-react";
 import { ScrollReveal } from "@/components/ScrollReveal";
 import { useCampaign } from "@/lib/campaign-context";
 import { getNonprofitName } from "@/lib/campaign-display";
 
 export const HowItWorks = () => {
-  const { state } = useCampaign();
+  const { state, goTo } = useCampaign();
   const nonprofitName = getNonprofitName(state);
 
   const steps = [
@@ -47,6 +47,26 @@ export const HowItWorks = () => {
             </ScrollReveal>
           ))}
         </div>
+
+        <ScrollReveal delay={300}>
+          <div className="mt-14 flex flex-col items-center gap-3 rounded-2xl border border-border bg-card p-6 text-center">
+            <p className="flex items-center gap-2 font-semibold text-foreground">
+              <Receipt className="size-5 text-primary" />
+              Already visited?
+            </p>
+            <p className="max-w-md text-sm text-muted-foreground text-pretty">
+              Upload your receipt and we&rsquo;ll turn your visit into a donation for {nonprofitName}.
+            </p>
+            <button
+              type="button"
+              onClick={() => goTo("receipt-upload")}
+              className="btn-primary inline-flex items-center gap-2"
+            >
+              Upload your receipt
+              <ArrowRight className="size-4" />
+            </button>
+          </div>
+        </ScrollReveal>
       </div>
     </section>
   );

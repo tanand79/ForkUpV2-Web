@@ -25,7 +25,8 @@ const COMPLETED_LABEL: Partial<Record<StepId, string>> = {
 type ChipState = "complete" | "next" | "remaining" | "locked";
 
 export function LaunchChecklist() {
-  const { checklist, step, goTo, reviewUnlocked, flow, activeProgressIndex } = useCampaign();
+  const { checklist, step, goTo, reviewUnlocked, flow, activeProgressIndex, requiredRemaining } =
+    useCampaign();
 
   // The "invite" sub-step belongs to the Invite Business Partners stage.
   const activeId = step === "invite" ? "businesses" : step;
@@ -83,6 +84,20 @@ export function LaunchChecklist() {
             {" · "}
             <span className="font-semibold text-primary">Next step: {nextLabel}</span>
           </>
+        )}
+      </p>
+
+      {/* Readiness line — tells the organizer exactly what's left before launch. */}
+      <p className="mt-1 text-xs font-semibold">
+        {requiredRemaining === 0 ? (
+          <span className="text-[oklch(0.45_0.1_150)]">
+            All required steps done — you&rsquo;re ready to review &amp; launch.
+          </span>
+        ) : (
+          <span className="text-muted-foreground">
+            {requiredRemaining} required{" "}
+            {requiredRemaining === 1 ? "step" : "steps"} left before you can launch.
+          </span>
         )}
       </p>
 

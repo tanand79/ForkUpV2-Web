@@ -154,6 +154,10 @@ export interface NonprofitProfile {
   contactEmail: string | null;
   contactPhone: string | null;
   causeCategory: string | null;
+  ein: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
   verificationStatus: string;
   claimStatus: string;
   profileStatus: string;
@@ -213,6 +217,121 @@ export function claimNonprofitProfile(body: {
   existingSlug?: string;
 }) {
   return fetchJson<{ action: string; nonprofit: NonprofitProfile }>("/api/profiles/nonprofits/claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export type OrganizationMatchStrength = "strong" | "partial" | "weak";
+
+export interface OrganizationSearchCandidate extends NonprofitProfile {
+  matchStrength: OrganizationMatchStrength;
+}
+
+export interface OrganizationBusinessWarning {
+  id: number;
+  businessName: string;
+  slug: string;
+}
+
+export interface OrganizationSearchResult {
+  query: string;
+  website: string;
+  ein: string;
+  location: string;
+  normalizedDomain: string | null;
+  matchCount: number;
+  candidates: OrganizationSearchCandidate[];
+  businessWarning: OrganizationBusinessWarning | null;
+  requiresConfirmation: boolean;
+}
+
+/** Unified "Find your organization" search by name, website, EIN, and/or location. */
+export function searchOrganizations(params: {
+  q?: string;
+  website?: string;
+  ein?: string;
+  location?: string;
+}) {
+  const search = new URLSearchParams();
+  if (params.q?.trim()) search.set("q", params.q.trim());
+  if (params.website?.trim()) search.set("website", params.website.trim());
+  if (params.ein?.trim()) search.set("ein", params.ein.trim());
+  if (params.location?.trim()) search.set("location", params.location.trim());
+  return fetchJson<OrganizationSearchResult>(
+    `/api/profiles/nonprofits/search?${search.toString()}`,
+  );
+}
+
+export type NonprofitClaimAction =
+  | "claimed"
+  | "created"
+  | "claimed_pending_verification"
+  | "created_pending_verification"
+  | "access_requested";
+
+export interface NonprofitClaimRequestResult {
+  action: NonprofitClaimAction;
+  riskLevel: "low" | "medium" | "high";
+  nonprofit: NonprofitProfile;
+  businessWarning: OrganizationBusinessWarning | null;
+  message?: string;
+}
+
+/**
+ * Trust-gated claim / request-access. Separate from claimNonprofitProfile:
+ * returns a risk level and may report a pending-verification or access-request
+ * outcome instead of an immediate claim.
+ */
+export function submitNonprofitClaimRequest(body: {
+  organizationName: string;
+  contactName?: string;
+  contactEmail: string;
+  mission?: string;
+  causeCategory?: string;
+  website?: string;
+  existingSlug?: string;
+  relationship?: string;
+  ein?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+}) {
+  return fetchJson<NonprofitClaimRequestResult>("/api/profiles/nonprofits/claim-request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// ─── Quick-start campaign draft (AI) ─────────────────────────────────────────
+
+export interface CampaignDraftResult {
+  title: string;
+  story: string;
+  purpose: string;
+  suggestedImageUrl?: string | null;
+}
+
+/**
+ * GoFundMe-style quick-start: send the organizer's short answers and receive an
+ * AI-prepared title / story / purpose to review and edit. Text only — no image
+ * generation. Mirrors the improve-story gateway route on the backend.
+ */
+export function generateCampaignDraft(body: {
+  purpose: string;
+  organizationName?: string;
+  mission?: string;
+  causeCategory?: string;
+  goal?: string | number;
+  startDate?: string;
+  endDate?: string;
+  methods?: string[];
+  organizationType?: "nonprofit" | "business";
+  organizationId?: number;
+}) {
+  return fetchJson<CampaignDraftResult>("/api/generate-campaign-draft", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -292,6 +411,48 @@ export function claimBusinessProfile(body: {
   supportsGuestBartending?: boolean;
 }) {
   return fetchJson<{ action: string; business: BusinessProfile }>("/api/profiles/businesses/claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export type BusinessClaimAction =
+  | "claimed"
+  | "created"
+  | "claimed_pending_verification"
+  | "created_pending_verification"
+  | "access_requested";
+
+export interface BusinessClaimRequestResult {
+  action: BusinessClaimAction;
+  riskLevel: "low" | "medium" | "high";
+  business: BusinessProfile;
+  message?: string;
+}
+
+/**
+ * Trust-gated claim / request-access for businesses. Separate from
+ * claimBusinessProfile: returns a risk level and may report a
+ * pending-verification or access-request outcome instead of an immediate claim.
+ */
+export function submitBusinessClaimRequest(body: {
+  businessName: string;
+  contactName?: string;
+  contactEmail: string;
+  businessType?: string;
+  website?: string;
+  existingSlug?: string;
+  relationship?: string;
+  locationName?: string;
+  city?: string;
+  state?: string;
+  supportsDineAndDonate?: boolean;
+  supportsShopAndDonate?: boolean;
+  supportsServiceGiveback?: boolean;
+  supportsGuestBartending?: boolean;
+}) {
+  return fetchJson<BusinessClaimRequestResult>("/api/profiles/businesses/claim-request", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -597,16 +758,257 @@ export interface SuccessEngineAction {
   content: string;
   status: string;
   completedAt?: string | null;
+  autoSend?: boolean;
+  sentAt?: string | null;
+  lastError?: string | null;
 }
 
 export function updateSuccessEngineAction(
   id: number,
-  body: { content?: string; status?: "scheduled" | "ready" | "completed" },
+  body: { content?: string; status?: "scheduled" | "ready" | "completed"; autoSend?: boolean },
 ) {
   return fetchJson<{ success: boolean }>(`/api/manage/success-engine/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+}
+
+export interface SendSuccessEngineActionResult {
+  success: boolean;
+  sent: number;
+  audience: string;
+  message?: string;
+}
+
+export function sendSuccessEngineAction(id: number) {
+  return fetchJson<SendSuccessEngineActionResult>(`/api/manage/success-engine/${id}/send`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+export interface RunDueSuccessEngineResult {
+  success: boolean;
+  processed: number;
+  totalSent: number;
+  results: {
+    actionId: number;
+    campaignId: number;
+    actionType: string;
+    audience: string;
+    recipientCount: number;
+    sent: number;
+  }[];
+}
+
+export function runDueSuccessEngineActions() {
+  return fetchJson<RunDueSuccessEngineResult>(`/api/manage/success-engine/run-due`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+export interface CampaignAutomation {
+  automatedActions: {
+    id: number;
+    actionType: string;
+    title: string;
+    scheduledDate: string | null;
+    status: string;
+    autoSend: boolean;
+    sentAt: string | null;
+    lastError: string | null;
+    isDue: boolean;
+  }[];
+  lastRun: {
+    id: number;
+    triggerSource: string;
+    actionsProcessed: number;
+    emailsSent: number;
+    ranAt: string;
+  } | null;
+}
+
+export function fetchCampaignAutomation(slug: string) {
+  return fetchJson<CampaignAutomation>(`/api/manage/campaigns/${slug}/automation`);
+}
+
+// ─── Email log (admin) ───────────────────────────────────────────────────────
+
+export interface EmailLogEntry {
+  id: number;
+  campaignId: number | null;
+  campaignSlug: string | null;
+  campaignName: string | null;
+  recipientEmail: string;
+  recipientName: string | null;
+  stakeholderRole: string | null;
+  emailType: string;
+  subject: string;
+  provider: string;
+  providerMessageId: string | null;
+  status: string;
+  errorMessage: string | null;
+  relatedToken: string | null;
+  createdAt: string;
+}
+
+export function fetchEmailLog(params?: {
+  campaign?: string;
+  status?: string;
+  type?: string;
+  role?: string;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params?.campaign) search.set("campaign", params.campaign);
+  if (params?.status) search.set("status", params.status);
+  if (params?.type) search.set("type", params.type);
+  if (params?.role) search.set("role", params.role);
+  if (params?.limit) search.set("limit", String(params.limit));
+  const qs = search.toString();
+  return fetchJson<EmailLogEntry[]>(`/api/manage/email-log${qs ? `?${qs}` : ""}`);
+}
+
+// ─── Trust validation: access-request review queue ───────────────────────────
+
+export interface AccessRequest {
+  id: number;
+  organizationType: "nonprofit" | "business";
+  organizationId: number | null;
+  organizationName: string | null;
+  organizationSlug: string | null;
+  requestType: "claim" | "access";
+  riskLevel: "low" | "medium" | "high";
+  status: "pending" | "approved" | "denied";
+  requestedByUserId: number | null;
+  requesterName: string | null;
+  requesterEmail: string | null;
+  relationship: string | null;
+  riskReason: string | null;
+  reviewedByUserId: number | null;
+  reviewedAt: string | null;
+  reviewNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function fetchAccessRequests(params?: {
+  status?: string;
+  riskLevel?: string;
+  organizationType?: string;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params?.status) search.set("status", params.status);
+  if (params?.riskLevel) search.set("riskLevel", params.riskLevel);
+  if (params?.organizationType) search.set("organizationType", params.organizationType);
+  if (params?.limit) search.set("limit", String(params.limit));
+  const qs = search.toString();
+  return fetchJson<AccessRequest[]>(`/api/manage/access-requests${qs ? `?${qs}` : ""}`);
+}
+
+export function approveAccessRequest(
+  id: number,
+  body?: { reviewedByUserId?: number; notes?: string },
+) {
+  return fetchJson<{ success: boolean; id: number; status: string }>(
+    `/api/manage/access-requests/${id}/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    },
+  );
+}
+
+export function denyAccessRequest(
+  id: number,
+  body?: { reviewedByUserId?: number; notes?: string },
+) {
+  return fetchJson<{ success: boolean; id: number; status: string }>(
+    `/api/manage/access-requests/${id}/deny`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    },
+  );
+}
+
+// ─── Organization Library ────────────────────────────────────────────────────
+
+export type LibraryOrgType = "nonprofit" | "business";
+
+export interface OrganizationLibraryItem {
+  id: number;
+  organizationType: LibraryOrgType;
+  organizationId: number;
+  category: string;
+  title: string | null;
+  description: string | null;
+  content: string | null;
+  assetUrl: string | null;
+  source: string;
+  sourceUrl: string | null;
+  reviewStatus: "pending" | "approved" | "rejected" | "ignored";
+  metadata: unknown;
+  createdByUserId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LibraryItemInput {
+  category: string;
+  title?: string;
+  description?: string;
+  content?: string;
+  assetUrl?: string;
+  source?: string;
+  sourceUrl?: string;
+  reviewStatus?: "pending" | "approved" | "rejected" | "ignored";
+  metadata?: unknown;
+}
+
+export function fetchLibraryItems(
+  orgType: LibraryOrgType,
+  orgId: number,
+  params?: { category?: string; status?: string; source?: string },
+) {
+  const search = new URLSearchParams();
+  if (params?.category) search.set("category", params.category);
+  if (params?.status) search.set("status", params.status);
+  if (params?.source) search.set("source", params.source);
+  const qs = search.toString();
+  return fetchJson<OrganizationLibraryItem[]>(
+    `/api/library/${orgType}/${orgId}${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export function createLibraryItem(
+  orgType: LibraryOrgType,
+  orgId: number,
+  body: LibraryItemInput,
+) {
+  return fetchJson<OrganizationLibraryItem>(`/api/library/${orgType}/${orgId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateLibraryItem(id: number, body: Partial<LibraryItemInput>) {
+  return fetchJson<OrganizationLibraryItem>(`/api/library/items/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteLibraryItem(id: number) {
+  return fetchJson<{ success: boolean; id: number }>(`/api/library/items/${id}`, {
+    method: "DELETE",
   });
 }
 
@@ -784,11 +1186,64 @@ export function fetchCampaignReceipts(slug: string, status?: string) {
   return fetchJson<ReceiptRecord[]>(`/api/campaigns/${slug}/receipts${q}`);
 }
 
+/** A single receipt in the signed-in supporter's history (across campaigns). */
+export interface MyReceipt {
+  id: number;
+  ocrStatus: string;
+  reviewStatus: string;
+  eligibleSubtotal: number | null;
+  donationPercentage: number | null;
+  calculatedDonation: number | null;
+  uploadedAt: string;
+  campaignName: string | null;
+  campaignSlug: string | null;
+  businessName: string | null;
+  locationName: string | null;
+}
+
+/** Receipt history for the signed-in supporter (auth-scoped by email). */
+export function fetchMyReceipts() {
+  return fetchJson<MyReceipt[]>(`/api/receipts/mine`);
+}
+
 export function reviewReceipt(id: number, action: "approve" | "reject", eligibleSubtotal?: number) {
   return fetchJson<{ success: boolean }>(`/api/receipts/${id}/review`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, eligibleSubtotal }),
+  });
+}
+
+/** Result of a supporter uploading a receipt for review. */
+export interface ReceiptUploadResult {
+  id: number;
+  ocrStatus: string;
+  reviewStatus: string;
+  eligibleSubtotal: number | null;
+  calculatedDonation: number | null;
+  donationPercentage: number | null;
+  imageUrl: string;
+  message?: string;
+}
+
+/** Supporter-facing receipt upload. Mirrors `submitParticipation` in shape. */
+export function uploadReceipt(
+  slug: string,
+  body: {
+    firstName: string;
+    email: string;
+    businessId: number;
+    locationId: number;
+    methodId: number;
+    imageBase64: string;
+    imageMimeType?: string;
+    claimedSubtotal?: number;
+  },
+) {
+  return fetchJson<ReceiptUploadResult>(`/api/campaigns/${slug}/receipts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 
@@ -836,4 +1291,112 @@ export function lockCampaignSettlement(slug: string) {
   return fetchJson<{ success: boolean; status: string }>(`/api/manage/campaigns/${slug}/lock`, {
     method: "POST",
   });
+}
+
+// ─── Payouts / Disbursements ─────────────────────────────────────────────────
+
+export type PayoutType = "business_to_forkup" | "forkup_to_nonprofit" | "adjustment";
+export type PayoutStatus = "pending" | "processing" | "paid" | "failed" | "cancelled";
+export type PayoutMethod = "ach" | "check" | "manual" | "other";
+
+export interface Payout {
+  id: number;
+  payoutType: PayoutType;
+  amount: number;
+  status: PayoutStatus;
+  method: PayoutMethod | null;
+  reference: string | null;
+  notes: string | null;
+  settlementId: number | null;
+  businessId: number | null;
+  locationId: number | null;
+  businessName: string | null;
+  locationName: string | null;
+  initiatedAt: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayoutsResponse {
+  payouts: Payout[];
+  summary: { totalPaid: number; totalPending: number; count: number };
+}
+
+export function fetchCampaignPayouts(slug: string) {
+  return fetchJson<PayoutsResponse>(`/api/manage/campaigns/${slug}/payouts`);
+}
+
+export function recordPayout(
+  slug: string,
+  body: {
+    payoutType: PayoutType;
+    amount: number;
+    status?: PayoutStatus;
+    method?: PayoutMethod;
+    reference?: string;
+    notes?: string;
+    settlementId?: number;
+    businessId?: number;
+    locationId?: number;
+  },
+) {
+  return fetchJson<Payout>(`/api/manage/campaigns/${slug}/payouts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function updatePayout(
+  slug: string,
+  id: number,
+  body: { status: PayoutStatus; method?: PayoutMethod; reference?: string; notes?: string },
+) {
+  return fetchJson<Payout>(`/api/manage/campaigns/${slug}/payouts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// ─── Analytics & Insights ────────────────────────────────────────────────────
+
+export interface CampaignAnalytics {
+  campaign: {
+    name: string;
+    status: string;
+    goal: number;
+    raised: number;
+  };
+  totals: {
+    receiptsUploaded: number;
+    receiptsApproved: number;
+    receiptsPending: number;
+    receiptsRejected: number;
+    eligibleSales: number;
+    donationPool: number;
+    averageContribution: number;
+    supporters: number;
+    onlineDonationCount: number;
+    onlineDonationTotal: number;
+  };
+  businessLeaderboard: {
+    businessId: number | null;
+    locationId: number | null;
+    businessName: string;
+    locationName: string;
+    approvedReceipts: number;
+    eligibleSales: number;
+    donationPool: number;
+  }[];
+  timeline: {
+    date: string;
+    receipts: number;
+    donationPool: number;
+  }[];
+}
+
+export function fetchCampaignAnalytics(slug: string) {
+  return fetchJson<CampaignAnalytics>(`/api/manage/campaigns/${slug}/analytics`);
 }

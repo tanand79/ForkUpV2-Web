@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight, Compass, Heart, Loader2 } from "lucide-react";
+import { ArrowRight, Compass, History, Loader2, Receipt } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchCampaigns, fetchCurrentUser } from "@/lib/api";
 import { CampaignDirectoryCard } from "@/components/campaign/CampaignDirectoryCard";
@@ -36,7 +36,7 @@ export function SupporterDashboard() {
         </p>
       </div>
 
-      <section className="mt-10 grid gap-4 sm:grid-cols-2">
+      <section className="mt-10 grid gap-4 sm:grid-cols-3">
         <button
           type="button"
           onClick={() => goTo("campaign-directory")}
@@ -51,13 +51,34 @@ export function SupporterDashboard() {
             Explore <ArrowRight className="size-4" />
           </span>
         </button>
-        <div className="rounded-2xl border border-border bg-primary/5 p-6">
-          <Heart className="size-6 text-primary" />
-          <p className="mt-3 font-semibold">Your impact</p>
+        <button
+          type="button"
+          onClick={() => goTo("receipt-upload")}
+          className="rounded-2xl border border-border bg-primary/5 p-6 text-left transition-colors hover:border-primary/40"
+        >
+          <Receipt className="size-6 text-primary" />
+          <p className="mt-3 font-semibold">Upload a receipt</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Receipt uploads and participation history will appear here in a future release.
+            Visited a participating business? Turn your receipt into a donation.
           </p>
-        </div>
+          <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-primary">
+            Upload <ArrowRight className="size-4" />
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => goTo("supporter-receipts")}
+          className="rounded-2xl border border-border bg-card p-6 text-left transition-colors hover:border-primary/40"
+        >
+          <History className="size-6 text-primary" />
+          <p className="mt-3 font-semibold">My receipts</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Track the receipts you&rsquo;ve uploaded and their review status.
+          </p>
+          <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-primary">
+            View <ArrowRight className="size-4" />
+          </span>
+        </button>
       </section>
 
       <section className="mt-10">

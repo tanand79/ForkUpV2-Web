@@ -10,6 +10,8 @@ import {
   Send,
   Settings2,
   Store,
+  ShieldCheck,
+  Clock,
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { campaignPublicPath } from "@/lib/campaign-paths";
@@ -172,6 +174,17 @@ export function BusinessDashboard() {
             Welcome back{accountName ? `, ${accountName}` : ""}
           </h1>
           <p className="mt-1 text-base font-medium">{biz.businessName}</p>
+          {biz.claimStatus === "verified" ? (
+            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              <ShieldCheck className="size-3.5" />
+              Verified business
+            </span>
+          ) : biz.claimStatus === "needs_review" ? (
+            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              <Clock className="size-3.5" />
+              Verification pending
+            </span>
+          ) : null}
           <p className="mt-2 max-w-xl text-muted-foreground">
             Manage your business profile, respond to campaign invitations, and invite nonprofits to
             partner with you.

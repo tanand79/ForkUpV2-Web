@@ -50,6 +50,8 @@ function mapNonprofitToState(np: NonprofitProfile): NonprofitProfileState {
     contactEmail: np.contactEmail ?? "",
     mission: np.mission ?? undefined,
     causeCategory: np.causeCategory ?? undefined,
+    verificationStatus: np.verificationStatus,
+    claimStatus: np.claimStatus,
   };
 }
 
@@ -64,6 +66,8 @@ function mapBusinessToState(biz: BusinessProfile): BusinessProfileState | null {
     locationId: loc.id,
     locationName: loc.locationName,
     capabilities: biz.capabilities,
+    claimStatus: biz.claimStatus,
+    businessStatus: biz.businessStatus,
   };
 }
 

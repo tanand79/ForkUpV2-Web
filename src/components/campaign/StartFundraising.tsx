@@ -51,13 +51,20 @@ export function StartFundraising() {
       <div className="pointer-events-none fixed -bottom-24 -right-24 size-96 rounded-full bg-accent/40 blur-3xl" />
 
       <div className="animate-rise flex flex-col items-center text-center">
-        <img
-          src={assetSrc(forkupLogo)}
-          alt="ForkUp"
-          width={96}
-          height={100}
-          className="mb-3 h-14 w-auto object-contain"
-        />
+        <button
+          type="button"
+          onClick={() => goTo("website-landing")}
+          className="mb-3 rounded-lg transition-opacity hover:opacity-80"
+          aria-label="ForkUp home"
+        >
+          <img
+            src={assetSrc(forkupLogo)}
+            alt="ForkUp"
+            width={96}
+            height={100}
+            className="h-14 w-auto object-contain"
+          />
+        </button>
         <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">
           Campaign setup
         </p>

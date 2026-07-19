@@ -18,15 +18,21 @@ import {
 
   Loader2,
 
+  Send,
+
   type LucideIcon,
 
 } from "lucide-react";
+
+import { toast } from "sonner";
 
 import {
 
   fetchSuccessEngineActions,
 
   updateSuccessEngineAction,
+
+  sendSuccessEngineAction,
 
   type SuccessEngineAction,
 
@@ -194,6 +200,10 @@ export function SuccessEngineActionList({
 
   const [busyId, setBusyId] = useState<number | null>(null);
 
+  const [sendingId, setSendingId] = useState<number | null>(null);
+
+  const [autoBusyId, setAutoBusyId] = useState<number | null>(null);
+
 
 
   const excludeKey = useMemo(() => excludeTypes.join("\0"), [excludeTypes]);
@@ -292,6 +302,78 @@ export function SuccessEngineActionList({
 
 
 
+  const toggleAutoSend = async (id: number, next: boolean) => {
+
+    setAutoBusyId(id);
+
+    try {
+
+      await updateSuccessEngineAction(id, { autoSend: next });
+
+      const rows = await withTimeout(fetchSuccessEngineActions(slug), FETCH_TIMEOUT_MS);
+
+      const excluded = new Set(excludeTypes);
+
+      setActions(rows.filter((a) => !excluded.has(a.actionType)));
+
+      setError(null);
+
+      toast.success(next ? "Automated sending enabled." : "Automated sending disabled.");
+
+    } catch (err) {
+
+      toast.error(err instanceof Error ? err.message : "Failed to update automation");
+
+    } finally {
+
+      setAutoBusyId(null);
+
+    }
+
+  };
+
+
+
+  const sendNow = async (id: number) => {
+
+    setSendingId(id);
+
+    try {
+
+      const result = await withTimeout(sendSuccessEngineAction(id), FETCH_TIMEOUT_MS);
+
+      if (result.sent > 0) {
+
+        toast.success(`Sent to ${result.sent} ${result.audience} recipient${result.sent === 1 ? "" : "s"}.`);
+
+      } else {
+
+        toast.info(result.message ?? "No recipients found — nothing was sent.");
+
+      }
+
+      const rows = await withTimeout(fetchSuccessEngineActions(slug), FETCH_TIMEOUT_MS);
+
+      const excluded = new Set(excludeTypes);
+
+      setActions(rows.filter((a) => !excluded.has(a.actionType)));
+
+      setError(null);
+
+    } catch (err) {
+
+      toast.error(err instanceof Error ? err.message : "Failed to send");
+
+    } finally {
+
+      setSendingId(null);
+
+    }
+
+  };
+
+
+
   if (loading) {
 
     return (
@@ -350,6 +432,16 @@ export function SuccessEngineActionList({
 
         const busy = busyId === action.id;
 
+        const sending = sendingId === action.id;
+
+        const canSend = action.channel === "email" && action.status !== "completed";
+
+        const autoBusy = autoBusyId === action.id;
+
+        const autoOn = !!action.autoSend;
+
+        const canAutomate = action.channel === "email";
+
 
 
         return (
@@ -393,6 +485,40 @@ export function SuccessEngineActionList({
             </div>
 
             <p className="mt-2 text-sm text-muted-foreground">{purposeLabel(action.actionType)}</p>
+
+            {(autoOn || action.sentAt || action.lastError) && (
+
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-medium">
+
+                {autoOn && (
+
+                  <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-primary">
+
+                    Auto-send on
+
+                  </span>
+
+                )}
+
+                {action.sentAt && (
+
+                  <span className="text-muted-foreground">
+
+                    Sent {formatActionDate(action.sentAt)}
+
+                  </span>
+
+                )}
+
+                {action.lastError && (
+
+                  <span className="text-destructive">Last error: {action.lastError}</span>
+
+                )}
+
+              </div>
+
+            )}
 
             {isPreview && (
 
@@ -442,6 +568,28 @@ export function SuccessEngineActionList({
 
               </button>
 
+              {canSend && (
+
+                <button
+
+                  type="button"
+
+                  disabled={sending}
+
+                  onClick={() => void sendNow(action.id)}
+
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-primary bg-primary px-4 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+
+                >
+
+                  {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+
+                  {sending ? "Sending…" : "Send now"}
+
+                </button>
+
+              )}
+
               {action.status !== "completed" && (
 
                 <button
@@ -459,6 +607,38 @@ export function SuccessEngineActionList({
                   {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
 
                   Mark complete
+
+                </button>
+
+              )}
+
+              {canAutomate && (
+
+                <button
+
+                  type="button"
+
+                  disabled={autoBusy}
+
+                  onClick={() => void toggleAutoSend(action.id, !autoOn)}
+
+                  title="When on, an external scheduler can automatically send this action once it's ready and due."
+
+                  className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-full border px-4 text-xs font-semibold transition-colors disabled:opacity-60 ${
+
+                    autoOn
+
+                      ? "border-primary bg-primary/10 text-primary hover:bg-primary/20"
+
+                      : "border-border bg-card hover:bg-secondary"
+
+                  }`}
+
+                >
+
+                  {autoBusy ? <Loader2 className="size-3.5 animate-spin" /> : null}
+
+                  {autoOn ? "Automated" : "Automate"}
 
                 </button>
 

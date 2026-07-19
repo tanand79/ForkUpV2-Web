@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Calendar, Users } from "lucide-react";
 import { assetSrc } from "@/lib/utils";
 import heroImg from "@/assets/hero-campaign.jpg";
@@ -46,7 +47,9 @@ export const HeroSection = ({
         className="absolute top-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 opacity-0 animate-fade-in"
         style={{ animationDelay: "50ms", animationFillMode: "forwards" }}
       >
-        <img src={assetSrc(forkupLogo)} alt="ForkUp" className="h-[60px] w-auto drop-shadow-lg" />
+        <Link href="/" aria-label="ForkUp home" className="rounded-lg transition-opacity hover:opacity-80">
+          <img src={assetSrc(forkupLogo)} alt="ForkUp" className="h-[60px] w-auto drop-shadow-lg" />
+        </Link>
         <span className="text-[12px] tracking-[0.25em] uppercase font-medium" style={{ color: "hsl(30 20% 85%)" }}>
           Do Good Through Everyday Spending
         </span>

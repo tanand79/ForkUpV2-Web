@@ -19,9 +19,9 @@ export function SiteHeaderLogo({
     <img
       src={assetSrc(forkupLogo)}
       alt="ForkUp"
-      width={96}
+      width={232}
       height={100}
-      className="h-8 w-auto object-contain"
+      className="h-12 w-auto object-contain"
     />
   );
 

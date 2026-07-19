@@ -1,9 +1,76 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Banknote, Loader2, Lock } from "lucide-react";
+import { ArrowLeft, Banknote, Download, Loader2, Lock } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchSettlementReport, lockCampaignSettlement, type SettlementReport } from "@/lib/api";
+import { PayoutsPanel } from "@/components/campaign/PayoutsPanel";
+
+/** Wrap a value as a CSV field, escaping quotes and commas per RFC 4180. */
+function csvField(value: string | number | null | undefined): string {
+  const str = value == null ? "" : String(value);
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+function csvRow(cells: (string | number | null | undefined)[]): string {
+  return cells.map(csvField).join(",");
+}
+
+/** Build a settlement CSV (summary + per-business breakdown) from loaded report data. */
+function buildSettlementCsv(report: SettlementReport): string {
+  const rows: string[] = [];
+  rows.push(csvRow(["Campaign", report.campaign.name]));
+  rows.push(csvRow(["Status", report.campaign.status]));
+  rows.push(csvRow(["Start date", report.campaign.startDate ?? ""]));
+  rows.push(csvRow(["End date", report.campaign.endDate ?? ""]));
+  rows.push(csvRow(["Locked", report.campaign.isLocked ? "Yes" : "No"]));
+  rows.push("");
+
+  rows.push(csvRow(["Summary", "Amount"]));
+  rows.push(csvRow(["Receipts (total)", report.receiptStats.total]));
+  rows.push(csvRow(["Receipts (approved)", report.receiptStats.approved]));
+  rows.push(csvRow(["Receipts (pending)", report.receiptStats.pending]));
+  rows.push(csvRow(["Eligible sales", report.nonprofitReport.eligibleSales.toFixed(2)]));
+  rows.push(csvRow(["Donation pool", report.nonprofitReport.donationPool.toFixed(2)]));
+  rows.push(csvRow(["ForkUp fee", report.nonprofitReport.forkupFee.toFixed(2)]));
+  rows.push(csvRow(["Net to nonprofit", report.nonprofitReport.netNonprofitAmount.toFixed(2)]));
+  if (report.onlineDonations) {
+    rows.push(csvRow(["Online donations (count)", report.onlineDonations.count]));
+    rows.push(csvRow(["Online donations (total)", report.onlineDonations.total.toFixed(2)]));
+  }
+  rows.push("");
+
+  rows.push(
+    csvRow([
+      "Business",
+      "Location",
+      "Eligible sales",
+      "Donation %",
+      "Donation pool",
+      "ForkUp fee",
+      "Net to nonprofit",
+      "Payment status",
+      "Locked at",
+    ]),
+  );
+  for (const b of report.businessReports) {
+    rows.push(
+      csvRow([
+        b.businessName,
+        b.locationName,
+        b.eligibleSales.toFixed(2),
+        b.donationPercentage,
+        b.donationPool.toFixed(2),
+        b.forkupFee.toFixed(2),
+        b.netNonprofitAmount.toFixed(2),
+        b.paymentStatus,
+        b.lockedAt ?? "",
+      ]),
+    );
+  }
+
+  return rows.join("\r\n");
+}
 
 export function ReportingSettlement() {
   const { state, goTo } = useCampaign();
@@ -29,6 +96,20 @@ export function ReportingSettlement() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const handleDownloadCsv = () => {
+    if (!report) return;
+    const csv = buildSettlementCsv(report);
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `settlement-${slug ?? "campaign"}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const handleLock = async () => {
     if (!slug || !confirm("Lock this campaign for final settlement? This cannot be undone.")) return;
@@ -56,6 +137,13 @@ export function ReportingSettlement() {
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-10 sm:px-6">
+      <button
+        onClick={() => goTo("dashboard")}
+        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" />
+        Back to campaign dashboard
+      </button>
       <h1 className="text-2xl font-extrabold tracking-tight">Reporting &amp; Settlement</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Business giveback settlement from approved receipts. Online donations are tracked separately
@@ -72,6 +160,17 @@ export function ReportingSettlement() {
 
       {report && !loading && (
         <div className="mt-8 space-y-6">
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleDownloadCsv}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-4 py-2 text-xs font-semibold transition-colors hover:bg-secondary"
+            >
+              <Download className="size-3.5" />
+              Download CSV
+            </button>
+          </div>
+
           <section className="rounded-2xl border border-border bg-card p-6">
             <h2 className="font-bold">{report.campaign.name}</h2>
             <p className="mt-1 text-sm capitalize text-muted-foreground">Status: {report.campaign.status}</p>
@@ -161,6 +260,8 @@ export function ReportingSettlement() {
               </ul>
             </section>
           )}
+
+          <PayoutsPanel slug={slug} businessReports={report.businessReports} />
 
           {!report.campaign.isLocked && (
             <button

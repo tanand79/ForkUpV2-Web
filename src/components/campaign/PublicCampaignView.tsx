@@ -9,6 +9,7 @@ import {
   Heart,
   Loader2,
   MapPin,
+  Receipt,
   Share2,
   Store,
   Users,
@@ -136,6 +137,13 @@ function ParticipateModal({
                 Done — I&apos;ll book later
               </button>
             )}
+            <a
+              href={`/?step=receipt-upload&campaign=${encodeURIComponent(campaignSlug)}`}
+              className="mt-4 inline-flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-primary hover:underline"
+            >
+              <Receipt className="size-4" />
+              Already have your receipt? Upload it
+            </a>
           </div>
         ) : (
           <>

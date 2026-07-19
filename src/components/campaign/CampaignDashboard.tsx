@@ -14,6 +14,8 @@ import {
   Users,
   CalendarClock,
   Sparkles,
+  BarChart3,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { useCampaign, CAMPAIGN_STAGE_META, type CampaignStage } from "@/lib/campaign-context";
@@ -251,7 +253,28 @@ export function CampaignDashboard() {
   }, [state.campaignSlug, state.startDate, state.endDate, update]);
 
   // ---- Stage-driven section visibility (the Command Center adapts) ----
-  const stage = campaignStage;
+  // The client-derived stage can lag behind on a reopened campaign (it needs
+  // termsAccepted + dates in memory). Prefer the real server status when we
+  // have it; a Design Mode override still wins over everything.
+  const serverStage: CampaignStage | null = (() => {
+    switch (apiDashboard?.status) {
+      case "draft":
+        return "draft";
+      case "invitation_phase":
+        return "invitation";
+      case "ready_to_launch":
+        return "ready";
+      case "live":
+        return "live";
+      case "closed":
+        return "closed";
+      case "settlement":
+        return "settlement";
+      default:
+        return null;
+    }
+  })();
+  const stage = stageOverride ?? serverStage ?? campaignStage;
   const stageMeta = CAMPAIGN_STAGE_META[stage];
   // Pre-launch invitation tracking is the focus during draft/invitation/ready.
   const showInvitationTracking = stage === "draft" || stage === "invitation" || stage === "ready";
@@ -379,6 +402,33 @@ export function CampaignDashboard() {
           <p className="mt-1 text-sm text-muted-foreground">{stageMeta.description}</p>
         </div>
       </div>
+
+      {/* Quick links to live-data screens — driven by the real server status so
+          they appear even when the client-derived stage lags behind. */}
+      {(apiDashboard?.status === "live" ||
+        apiDashboard?.status === "closed" ||
+        apiDashboard?.status === "settlement") && (
+        <div className="animate-rise mb-8 flex flex-wrap gap-3">
+          <button
+            onClick={() => goTo("analytics")}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-border bg-card px-5 text-sm font-semibold transition-colors hover:bg-secondary"
+          >
+            <BarChart3 className="size-4" /> View Analytics
+          </button>
+          <button
+            onClick={() => goTo("receipt-ocr")}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-border bg-card px-5 text-sm font-semibold transition-colors hover:bg-secondary"
+          >
+            <ClipboardCheck className="size-4" /> Review Receipts
+          </button>
+          <button
+            onClick={() => goTo("reporting")}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-border bg-card px-5 text-sm font-semibold transition-colors hover:bg-secondary"
+          >
+            View Settlement Report <ArrowRight className="size-4" />
+          </button>
+        </div>
+      )}
 
       {/* ⚠️ Design Mode — preview each lifecycle stage without time travel. */}
       {designMode && (
@@ -856,12 +906,20 @@ export function CampaignDashboard() {
             </div>
           ))}
         </div>
-        <button
-          onClick={() => goTo("reporting")}
-          className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-full border border-border bg-card px-5 text-sm font-semibold transition-colors hover:bg-secondary"
-        >
-          View Settlement Report <ArrowRight className="size-4" />
-        </button>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            onClick={() => goTo("reporting")}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-border bg-card px-5 text-sm font-semibold transition-colors hover:bg-secondary"
+          >
+            View Settlement Report <ArrowRight className="size-4" />
+          </button>
+          <button
+            onClick={() => goTo("analytics")}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-border bg-card px-5 text-sm font-semibold transition-colors hover:bg-secondary"
+          >
+            <BarChart3 className="size-4" /> View Analytics
+          </button>
+        </div>
       </section>
       )}
     </main>

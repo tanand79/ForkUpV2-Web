@@ -159,6 +159,16 @@ export function CampaignDetails() {
 
 
         <div className="animate-rise space-y-7 rounded-3xl border border-border bg-card p-6 sm:p-8 [animation-delay:60ms]">
+          {state.aiDrafted && !state.storyAccepted && (
+            <div className="flex items-start gap-2.5 rounded-2xl border border-primary/25 bg-primary/5 p-4">
+              <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+              <p className="text-sm text-muted-foreground">
+                <span className="font-semibold text-foreground">Drafted with AI from your answers.</span>{" "}
+                Review the title and story below and edit anything before you continue — these are a
+                starting point, not final.
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <label className={label}>Campaign Title <span className="text-primary">*</span></label>
             <input

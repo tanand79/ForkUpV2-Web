@@ -9,6 +9,10 @@ export function ChooseOrganizerMode() {
   const selectMode = (mode: "guided" | "advanced") => {
     update({ organizerMode: mode });
     if (hasDraft) resumeDraft();
+    // Guided organizers get the simplified quick-start (a few questions + an
+    // AI-prepared draft they review/edit). Advanced organizers go straight to
+    // the full step-by-step builder.
+    else if (mode === "guided") goTo("quick-start");
     else goTo("methods");
   };
 

@@ -35,6 +35,7 @@ export const CAMPAIGN_AUTH_STEPS: StepId[] = [
   "business-claim",
   "business-invites-nonprofit",
   "choose-organizer-mode",
+  "quick-start",
   "methods",
   "details",
   "businesses",
@@ -68,6 +69,7 @@ export function roleHintFromStep(step: StepId): UserRole | null {
     step === "nonprofit-claim" ||
     step === "start" ||
     step === "choose-organizer-mode" ||
+    step === "quick-start" ||
     step === "methods"
   ) {
     return "nonprofit";

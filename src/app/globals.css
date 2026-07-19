@@ -168,6 +168,21 @@
   .font-display {
     font-family: var(--font-display);
   }
+
+  /* Interactive controls show the hand cursor app-wide (Tailwind v4 no longer
+     sets this by default). Disabled controls show the not-allowed cursor. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  label[for],
+  summary,
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
 }
 
 @keyframes fu-rise {

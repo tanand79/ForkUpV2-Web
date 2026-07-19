@@ -10,6 +10,8 @@ import {
   XCircle,
   MapPin,
   Percent,
+  Clock,
+  ShieldAlert,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -20,16 +22,18 @@ import { stashAuthReturnStep, stashRoleHint } from "@/lib/campaign-auth";
 import { getAuthToken } from "@/lib/auth-storage";
 import {
   acceptNonprofitCampaignInvite,
-  claimBusinessProfile,
-  claimNonprofitProfile,
+  submitBusinessClaimRequest,
+  submitNonprofitClaimRequest,
   declineNonprofitCampaignInvite,
   fetchNonprofitCampaignInvite,
   linkUserOrganization,
   searchNonprofits,
   sendNonprofitCampaignInvite,
   type NonprofitCampaignInvite,
+  type NonprofitClaimRequestResult,
   type NonprofitProfile,
-  type OrganizationLookupCandidate,
+  type BusinessClaimRequestResult,
+  type OrganizationSearchCandidate,
 } from "@/lib/api";
 import { OrganizationLookupConfirm } from "@/components/campaign/OrganizationLookupConfirm";
 import { loadUserSession } from "@/lib/auth-session";
@@ -108,17 +112,44 @@ export function NonprofitClaim() {
   const [contactEmail, setContactEmail] = useState(existing?.contactEmail ?? "");
   const [mission, setMission] = useState(existing?.mission ?? "");
   const [website, setWebsite] = useState("");
+  const [ein, setEin] = useState("");
+  const [city, setCity] = useState("");
+  const [stateVal, setStateVal] = useState("");
+  const [zip, setZip] = useState("");
+  const [relationship, setRelationship] = useState("");
   const [existingSlug, setExistingSlug] = useState<string | undefined>();
+  const [alreadyClaimed, setAlreadyClaimed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<NonprofitClaimRequestResult | null>(null);
 
-  const applyCandidate = (candidate: OrganizationLookupCandidate) => {
+  const applyCandidate = (candidate: OrganizationSearchCandidate) => {
     setOrganizationName(candidate.organizationName);
     setContactEmail(candidate.contactEmail ?? contactEmail);
     setMission(candidate.mission ?? mission);
     setWebsite(candidate.website ?? website);
+    setEin(candidate.ein ?? "");
+    setCity(candidate.city ?? "");
+    setStateVal(candidate.state ?? "");
+    setZip(candidate.zip ?? "");
     setExistingSlug(candidate.slug);
+    setAlreadyClaimed(candidate.claimStatus === "claimed");
     setPhase("form");
+  };
+
+  const applyActiveProfile = (nonprofit: NonprofitProfile) => {
+    setNonprofitProfile({
+      id: nonprofit.id,
+      organizationName: nonprofit.organizationName,
+      contactName: nonprofit.contactName ?? nonprofit.organizationName,
+      contactEmail: nonprofit.contactEmail ?? contactEmail.trim(),
+      mission: nonprofit.mission ?? undefined,
+      causeCategory: nonprofit.causeCategory ?? undefined,
+      verificationStatus: nonprofit.verificationStatus,
+      claimStatus: nonprofit.claimStatus,
+    });
+    update({ accountIntent: "nonprofit" });
+    switchActiveRole("nonprofit", nonprofit.id);
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -126,29 +157,32 @@ export function NonprofitClaim() {
     setError(null);
     setLoading(true);
     try {
-      const { nonprofit } = await claimNonprofitProfile({
+      const result = await submitNonprofitClaimRequest({
         organizationName: organizationName.trim(),
         contactName: contactName.trim() || organizationName.trim(),
         contactEmail: contactEmail.trim(),
         mission: mission.trim() || undefined,
         website: website.trim() || undefined,
+        ein: ein.trim() || undefined,
+        city: city.trim() || undefined,
+        state: stateVal.trim() || undefined,
+        zip: zip.trim() || undefined,
+        relationship: relationship.trim() || undefined,
         existingSlug,
       });
-      setNonprofitProfile({
-        id: nonprofit.id,
-        organizationName: nonprofit.organizationName,
-        contactName: nonprofit.contactName ?? nonprofit.organizationName,
-        contactEmail: nonprofit.contactEmail ?? contactEmail.trim(),
-        mission: nonprofit.mission ?? undefined,
-        causeCategory: nonprofit.causeCategory ?? undefined,
-      });
-      update({ accountIntent: "nonprofit" });
-      switchActiveRole("nonprofit", nonprofit.id);
+
+      // High-risk: organization already claimed by another user. Do NOT adopt it.
+      if (result.action === "access_requested") {
+        setOutcome(result);
+        return;
+      }
+
+      applyActiveProfile(result.nonprofit);
       if (getAuthToken()) {
         try {
           await linkUserOrganization({
             organizationType: "nonprofit",
-            organizationId: nonprofit.id,
+            organizationId: result.nonprofit.id,
             role: "admin",
           });
           await syncAuthSession("nonprofit");
@@ -156,6 +190,16 @@ export function NonprofitClaim() {
           /* org link optional */
         }
       }
+
+      // Medium-risk: profile saved but pending ForkUp verification.
+      if (
+        result.action === "claimed_pending_verification" ||
+        result.action === "created_pending_verification"
+      ) {
+        setOutcome(result);
+        return;
+      }
+
       goTo("nonprofit-dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save profile");
@@ -182,7 +226,51 @@ export function NonprofitClaim() {
         </div>
       </div>
 
-      {phase === "lookup" && !isEditing ? (
+      {outcome ? (
+        <div className="mt-6">
+          {outcome.action === "access_requested" ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center">
+              <ShieldAlert className="mx-auto size-10 text-amber-600" />
+              <p className="mt-4 text-lg font-bold">Access request submitted</p>
+              <p className="mt-2 text-sm text-amber-800">
+                {outcome.message ??
+                  "This organization is already claimed. Your request has been sent to ForkUp for review."}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setOutcome(null);
+                  setExistingSlug(undefined);
+                  setAlreadyClaimed(false);
+                  setPhase("lookup");
+                }}
+                className="mt-6 w-full rounded-full border border-border px-6 py-3 text-sm font-semibold hover:bg-secondary/60"
+              >
+                Search for a different organization
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-border bg-card p-6 text-center">
+              <Clock className="mx-auto size-10 text-primary" />
+              <p className="mt-4 text-lg font-bold">Profile saved — verification pending</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Thanks! We&apos;ve saved{" "}
+                <span className="font-medium">{outcome.nonprofit.organizationName}</span>. A ForkUp
+                team member will verify your organization. You can keep setting things up now —
+                launching a campaign may require verification to finish.
+              </p>
+              <button
+                type="button"
+                onClick={() => goTo("nonprofit-dashboard")}
+                className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground"
+              >
+                Continue to dashboard
+                <ArrowRight className="size-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      ) : phase === "lookup" && !isEditing ? (
         <div className="mt-6">
           <OrganizationLookupConfirm
             onConfirm={applyCandidate}
@@ -207,6 +295,24 @@ export function NonprofitClaim() {
               <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://..." className={field} />
             </label>
             <label className="block space-y-1.5">
+              <span className="text-sm font-semibold">EIN / tax ID (optional)</span>
+              <input value={ein} onChange={(e) => setEin(e.target.value)} placeholder="12-3456789" className={field} />
+            </label>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <label className="block space-y-1.5 sm:col-span-1">
+                <span className="text-sm font-semibold">City (optional)</span>
+                <input value={city} onChange={(e) => setCity(e.target.value)} className={field} />
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-sm font-semibold">State</span>
+                <input value={stateVal} onChange={(e) => setStateVal(e.target.value)} placeholder="PA" className={field} />
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-sm font-semibold">ZIP</span>
+                <input value={zip} onChange={(e) => setZip(e.target.value)} className={field} />
+              </label>
+            </div>
+            <label className="block space-y-1.5">
               <span className="text-sm font-semibold">Contact name</span>
               <input value={contactName} onChange={(e) => setContactName(e.target.value)} className={field} />
             </label>
@@ -218,9 +324,32 @@ export function NonprofitClaim() {
               <span className="text-sm font-semibold">Mission (optional)</span>
               <textarea value={mission} onChange={(e) => setMission(e.target.value)} rows={3} className={field} />
             </label>
+            {!isEditing && (
+              <label className="block space-y-1.5">
+                <span className="text-sm font-semibold">Your role at this organization (optional)</span>
+                <input
+                  value={relationship}
+                  onChange={(e) => setRelationship(e.target.value)}
+                  placeholder="e.g. Executive Director, Board Member"
+                  className={field}
+                />
+              </label>
+            )}
+            {!isEditing && alreadyClaimed && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                This organization is already claimed. Submitting will send an access request to
+                ForkUp for review rather than claiming it directly.
+              </p>
+            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <button type="submit" disabled={loading} className="w-full rounded-full bg-primary px-6 py-3.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-              {loading ? "Saving…" : isEditing ? "Save changes" : "Save profile & continue"}
+              {loading
+                ? "Saving…"
+                : isEditing
+                  ? "Save changes"
+                  : alreadyClaimed
+                    ? "Request access"
+                    : "Save profile & continue"}
             </button>
             {!isEditing && (
               <button
@@ -258,6 +387,7 @@ export function BusinessClaim() {
         businessName: existing.businessName,
         contactName: existing.contactName ?? "",
         contactEmail: existing.contactEmail ?? loadUserSession()?.email ?? "",
+        website: "",
         locationName: existing.locationName ?? "Main Location",
         city: "",
         stateCode: "",
@@ -279,6 +409,7 @@ export function BusinessClaim() {
   const [form, setForm] = useState<BusinessClaimDraft>(initialDraft);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<BusinessClaimRequestResult | null>(null);
 
   const patchForm = (patch: Partial<BusinessClaimDraft>) => {
     setForm((prev) => {
@@ -292,6 +423,7 @@ export function BusinessClaim() {
     businessName,
     contactName,
     contactEmail,
+    website,
     locationName,
     city,
     stateCode,
@@ -306,10 +438,11 @@ export function BusinessClaim() {
     setError(null);
     setLoading(true);
     try {
-      const { business } = await claimBusinessProfile({
+      const result = await submitBusinessClaimRequest({
         businessName: businessName.trim(),
         contactName: contactName.trim() || businessName.trim(),
         contactEmail: contactEmail.trim(),
+        website: website.trim() || undefined,
         locationName: locationName.trim(),
         city: city.trim() || undefined,
         state: stateCode.trim() || undefined,
@@ -318,6 +451,14 @@ export function BusinessClaim() {
         supportsServiceGiveback: supportsService,
         supportsGuestBartending: supportsBartending,
       });
+
+      // High-risk: business already claimed by another user. Do NOT adopt it.
+      if (result.action === "access_requested") {
+        setOutcome(result);
+        return;
+      }
+
+      const business = result.business;
       const loc = business.locations[0];
       if (!loc) throw new Error("No location on business profile");
       setBusinessProfile({
@@ -328,6 +469,8 @@ export function BusinessClaim() {
         locationId: loc.id,
         locationName: loc.locationName,
         capabilities: business.capabilities,
+        claimStatus: business.claimStatus,
+        businessStatus: business.businessStatus,
       });
       update({ accountIntent: "business" });
       switchActiveRole("business", business.id);
@@ -344,6 +487,16 @@ export function BusinessClaim() {
           /* optional */
         }
       }
+
+      // Medium-risk: profile saved but pending ForkUp verification.
+      if (
+        result.action === "claimed_pending_verification" ||
+        result.action === "created_pending_verification"
+      ) {
+        setOutcome(result);
+        return;
+      }
+
       goTo("business-dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save business profile");
@@ -371,6 +524,45 @@ export function BusinessClaim() {
           : "Confirm your business and the fundraising methods you can support. Your entries are saved as you type."}
       </p>
 
+      {outcome ? (
+        <div className="mt-6">
+          {outcome.action === "access_requested" ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center">
+              <ShieldAlert className="mx-auto size-10 text-amber-600" />
+              <p className="mt-4 text-lg font-bold">Access request submitted</p>
+              <p className="mt-2 text-sm text-amber-800">
+                {outcome.message ??
+                  "This business is already claimed. Your request has been sent to ForkUp for review."}
+              </p>
+              <button
+                type="button"
+                onClick={() => setOutcome(null)}
+                className="mt-6 w-full rounded-full border border-border px-6 py-3 text-sm font-semibold hover:bg-secondary/60"
+              >
+                Edit business details
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-border bg-card p-6 text-center">
+              <Clock className="mx-auto size-10 text-primary" />
+              <p className="mt-4 text-lg font-bold">Profile saved — verification pending</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Thanks! We&apos;ve saved{" "}
+                <span className="font-medium">{outcome.business.businessName}</span>. A ForkUp team
+                member will verify your business. You can keep setting things up now.
+              </p>
+              <button
+                type="button"
+                onClick={() => goTo("business-dashboard")}
+                className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground"
+              >
+                Continue to dashboard
+                <ArrowRight className="size-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
       <form onSubmit={submit} className="mt-8 space-y-4">
         <label className="block space-y-1.5">
           <span className="text-sm font-semibold">Business name</span>
@@ -399,6 +591,21 @@ export function BusinessClaim() {
             onChange={(e) => patchForm({ contactEmail: e.target.value })}
             className={field}
           />
+        </label>
+        <label className="block space-y-1.5">
+          <span className="text-sm font-semibold">
+            Website <span className="font-normal text-muted-foreground">(optional)</span>
+          </span>
+          <input
+            type="url"
+            value={website}
+            onChange={(e) => patchForm({ website: e.target.value })}
+            placeholder="https://yourbusiness.com"
+            className={field}
+          />
+          <span className="text-xs text-muted-foreground">
+            A contact email that matches your website domain speeds up verification.
+          </span>
         </label>
         <label className="block space-y-1.5">
           <span className="text-sm font-semibold">Primary location</span>
@@ -448,6 +655,7 @@ export function BusinessClaim() {
           {loading ? "Saving…" : "Save & invite a nonprofit"}
         </button>
       </form>
+      )}
     </main>
   );
 }

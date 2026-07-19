@@ -30,11 +30,17 @@ import { BusinessProfile } from "@/components/campaign/BusinessProfile";
 import { CampaignPage } from "@/components/campaign/CampaignPage";
 import { BusinessAcceptance } from "@/components/campaign/BusinessAcceptance";
 import { ReportingSettlement } from "@/components/campaign/ReportingSettlement";
+import { CampaignAnalytics } from "@/components/campaign/CampaignAnalytics";
 import { ReceiptOcrTracking } from "@/components/campaign/ReceiptOcrTracking";
+import { ReceiptUpload } from "@/components/campaign/ReceiptUpload";
+import { SupporterReceipts } from "@/components/campaign/SupporterReceipts";
 import { NonprofitProfile } from "@/components/campaign/NonprofitProfile";
 import { SuccessEngine } from "@/components/campaign/SuccessEngine";
 import { ArchitectureMap } from "@/components/campaign/ArchitectureMap";
 import { AdminPreload } from "@/components/campaign/AdminPreload";
+import { AdminEmailLog } from "@/components/campaign/AdminEmailLog";
+import { AdminAccessRequests } from "@/components/campaign/AdminAccessRequests";
+import { OrganizationLibrary } from "@/components/campaign/OrganizationLibrary";
 import {
   ChooseAccountType,
   NonprofitClaim,
@@ -44,6 +50,8 @@ import {
 } from "@/components/campaign/EntryFlows";
 import { PublicLandingPage } from "@/components/campaign/PublicLandingPage";
 import { CampaignDirectory } from "@/components/campaign/CampaignDirectory";
+import { PastCampaigns } from "@/components/campaign/PastCampaigns";
+import { SuccessStories } from "@/components/campaign/SuccessStories";
 import { NonprofitDashboard } from "@/components/campaign/NonprofitDashboard";
 import { BusinessDashboard } from "@/components/campaign/BusinessDashboard";
 import { SupporterDashboard } from "@/components/campaign/SupporterDashboard";
@@ -51,6 +59,7 @@ import { AccountHub } from "@/components/campaign/AccountHub";
 import { SuccessState } from "@/components/campaign/SuccessStates";
 import { AuthLogin, AccountIntentPicker } from "@/components/campaign/AuthLogin";
 import { ChooseOrganizerMode } from "@/components/campaign/ChooseOrganizerMode";
+import { QuickStart } from "@/components/campaign/QuickStart";
 import { GuidedBuilderShell } from "@/components/campaign/GuidedBuilderShell";
 
 function AuthLoginScreen() {
@@ -128,6 +137,10 @@ function WizardBody() {
       return <PublicLandingPage />;
     case "campaign-directory":
       return <CampaignDirectory />;
+    case "past-campaigns":
+      return <PastCampaigns />;
+    case "success-stories":
+      return <SuccessStories />;
     case "choose-account-type":
       return <ChooseAccountType />;
     case "account-hub":
@@ -160,6 +173,8 @@ function WizardBody() {
       return <AuthLoginScreen />;
     case "choose-organizer-mode":
       return <ChooseOrganizerMode />;
+    case "quick-start":
+      return <QuickStart />;
     case "methods":
       return (
         <GuidedBuilderShell step="methods">
@@ -218,6 +233,10 @@ function WizardBody() {
       return <CampaignDashboard />;
     case "receipt-ocr":
       return <ReceiptOcrTracking />;
+    case "receipt-upload":
+      return <ReceiptUpload />;
+    case "supporter-receipts":
+      return <SupporterReceipts />;
     case "business-profile":
       return <BusinessProfile />;
     case "campaign-page":
@@ -236,6 +255,8 @@ function WizardBody() {
       );
     case "reporting":
       return <ReportingSettlement />;
+    case "analytics":
+      return <CampaignAnalytics />;
     case "nonprofit-profile":
       return <NonprofitProfile />;
     case "success-engine":
@@ -244,6 +265,12 @@ function WizardBody() {
       return <ArchitectureMap />;
     case "admin-preload":
       return <AdminPreload />;
+    case "admin-email-log":
+      return <AdminEmailLog />;
+    case "admin-access-requests":
+      return <AdminAccessRequests />;
+    case "organization-library":
+      return <OrganizationLibrary />;
     case "success-virtual":
     case "success-ambassador":
     case "success-bartending":
