@@ -279,6 +279,12 @@ export interface CampaignImage {
   id: string;
   url: string;
   name: string;
+  /**
+   * Persistent storage reference (e.g. an `s3://...` key) returned by the API
+   * after upload. `url` stays a local blob URL for instant preview; `storedUrl`
+   * is what gets persisted on the campaign.
+   */
+  storedUrl?: string;
 }
 
 export interface CampaignVideo {

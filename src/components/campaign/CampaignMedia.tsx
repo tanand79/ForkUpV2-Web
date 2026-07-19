@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { ImagePlus, X, Sparkles, Building2, Image as ImageIcon, Video, Replace, AlertCircle, Megaphone } from "lucide-react";
 import { useCampaign, type CampaignImage, type CampaignVideo } from "@/lib/campaign-context";
+import { uploadImage } from "@/lib/api";
 import { ActionBar } from "./ChooseBusinesses";
 
 const LOGO_MIN = 500;
@@ -27,6 +28,15 @@ function readImage(file: File): Promise<{ width: number; height: number; url: st
       reject(new Error("Could not read image"));
     };
     img.src = url;
+  });
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Could not read the selected image"));
+    reader.readAsDataURL(file);
   });
 }
 
@@ -155,15 +165,36 @@ export function CampaignMedia() {
     if (!file) return;
     if (!IMAGE_TYPES.includes(file.type)) return setCoverError("Cover image must be a JPG, PNG, or WEBP file.");
     if (file.size > IMAGE_MAX_BYTES) return setCoverError("Cover image must be 10MB or smaller.");
+
+    let coverId: string;
+    let previewUrl: string;
     try {
       const { width, url } = await readImage(file);
       if (width < COVER_MIN_WIDTH)
         return setCoverError(
           "This image is too small for campaign and social media use. Please upload an image at least 1200px wide.",
         );
-      update({ cover: { id: makeId(file.name), url, name: file.name } });
+      coverId = makeId(file.name);
+      previewUrl = url;
+      // Show the local preview immediately while the upload runs.
+      update({ cover: { id: coverId, url: previewUrl, name: file.name } });
     } catch {
       setCoverError("We couldn't read that image. Please try another file.");
+      return;
+    }
+
+    // Persist the image to storage; keep the blob URL for preview and attach the
+    // returned reference as storedUrl so it survives beyond this browser session.
+    try {
+      const imageBase64 = await readFileAsDataUrl(file);
+      const { url: storedUrl } = await uploadImage({
+        imageBase64,
+        imageMimeType: file.type,
+        kind: "cover",
+      });
+      update({ cover: { id: coverId, url: previewUrl, name: file.name, storedUrl } });
+    } catch {
+      setCoverError("We couldn't save that image to storage. Please check your connection and try again.");
     }
   };
 

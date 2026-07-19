@@ -1247,6 +1247,23 @@ export function uploadReceipt(
   });
 }
 
+/**
+ * Uploads an image (e.g. a campaign cover) to S3 via the API and returns the
+ * stored reference. The reference is persisted on the campaign; read paths turn
+ * it into a presigned URL.
+ */
+export function uploadImage(body: {
+  imageBase64: string;
+  imageMimeType?: string;
+  kind?: "cover" | "logo";
+}) {
+  return fetchJson<{ url: string }>("/api/uploads/image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 // ─── Settlement ──────────────────────────────────────────────────────────────
 
 export interface SettlementReport {
