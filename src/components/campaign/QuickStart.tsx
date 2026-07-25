@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -10,18 +10,19 @@ import {
   Wine,
   Sparkles,
   Check,
+  CheckCircle2,
+  Circle,
+  Wand2,
 } from "lucide-react";
 import { useCampaign, type SupportMethod, type SupportMethods } from "@/lib/campaign-context";
 import { generateCampaignDraft } from "@/lib/api";
 
 /**
- * GoFundMe-style quick start. Asks only the essentials, then asks the backend
- * AI route to prepare a title + story the organizer reviews and edits on the
- * existing Campaign Basics screen. This screen is additive — the full
- * step-by-step builder is still available via Advanced Organizer Mode.
+ * Lovable “Build Your Campaign” — guided substeps:
+ *   purpose → goal/dates → methods → Prepare My Draft → details (review/edit).
  *
- * Method defaults here (Online Donations + Ambassador ON) apply ONLY to the
- * quick-start flow; the full builder's defaults are unchanged.
+ * Method defaults (Online Donations + Ambassador ON) apply ONLY here;
+ * the full builder’s defaults are unchanged.
  */
 
 const METHOD_OPTIONS: {
@@ -61,70 +62,103 @@ const METHOD_OPTIONS: {
   },
 ];
 
+const BUILD_PROGRESS_MESSAGES = [
+  "Reviewing your organization profile",
+  "Using your campaign purpose",
+  "Applying your fundraising methods",
+  "Preparing your campaign story",
+  "Organizing your campaign details",
+];
+
+type BuildSub = "purpose" | "goal" | "methods";
+
 export function QuickStart() {
   const { state, update, goTo } = useCampaign();
 
+  const [sub, setSub] = useState<BuildSub>("purpose");
   const [purpose, setPurpose] = useState(state.description ?? "");
   const [goal, setGoal] = useState(state.goal ?? "");
   const [startDate, setStartDate] = useState(state.startDate ?? "");
   const [endDate, setEndDate] = useState(state.endDate ?? "");
-  // Quick-start defaults: Online Donations + Ambassador ON.
   const [methods, setMethods] = useState<SupportMethods>({
     giveback: false,
     donations: true,
     guestBartending: false,
     ambassador: true,
   });
-  const [busy, setBusy] = useState(false);
+  const [touched, setTouched] = useState(false);
+  const [building, setBuilding] = useState(false);
+  const [progressIdx, setProgressIdx] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [pendingDraft, setPendingDraft] = useState<{
+    title: string;
+    story: string;
+    suggestedImageUrl?: string | null;
+    fromAi: boolean;
+  } | null>(null);
 
   const org = state.nonprofitProfile;
-  const canContinue = purpose.trim().length > 0 && !busy;
-
-  const toggle = (id: SupportMethod) =>
-    setMethods((m) => ({ ...m, [id]: !m[id] }));
-
+  const purposeValid = purpose.trim().split(/\s+/).filter(Boolean).length >= 3;
+  const hasMethod = METHOD_OPTIONS.some((o) => methods[o.id]);
   const selectedLabels = METHOD_OPTIONS.filter((o) => methods[o.id]).map((o) => o.label);
 
-  const applyAndContinue = (
-    title: string,
-    story: string,
-    suggestedImageUrl?: string | null,
-    fromAi = false,
-  ) => {
+  const toggle = (id: SupportMethod) => setMethods((m) => ({ ...m, [id]: !m[id] }));
+
+  const finishToDetails = (draft: {
+    title: string;
+    story: string;
+    suggestedImageUrl?: string | null;
+    fromAi: boolean;
+  }) => {
     const fallbackTitle =
-      title.trim() ||
+      draft.title.trim() ||
       state.title.trim() ||
       (org?.organizationName ? `Support ${org.organizationName}` : "");
     const suggestedCover =
-      !state.cover && suggestedImageUrl?.trim()
+      !state.cover && draft.suggestedImageUrl?.trim()
         ? {
             id: `library-${Date.now()}`,
-            url: suggestedImageUrl.trim(),
+            url: draft.suggestedImageUrl.trim(),
             name: "Suggested from library",
           }
         : null;
     update({
       title: fallbackTitle,
-      description: story.trim() || purpose.trim(),
+      description: draft.story.trim() || purpose.trim(),
       goal: goal ? String(goal) : state.goal,
       startDate: startDate || state.startDate,
       endDate: endDate || state.endDate,
       methods,
-      // Only suggest a cover when the organizer hasn't chosen one; never override.
+      fundsSupport: [purpose.trim()],
       ...(suggestedCover ? { cover: suggestedCover } : {}),
-      // Organizer still reviews/edits + can re-run "Improve My Story".
       storyAccepted: false,
-      // Flag so the details step can surface an "AI draft — review" hint.
-      aiDrafted: fromAi,
+      aiDrafted: draft.fromAi,
     });
-    goTo("details");
+    goTo("campaign-review");
   };
 
-  const submit = async () => {
-    if (!canContinue) return;
-    setBusy(true);
+  useEffect(() => {
+    if (!building) return;
+    if (progressIdx >= BUILD_PROGRESS_MESSAGES.length) {
+      const done = setTimeout(() => {
+        if (pendingDraft) finishToDetails(pendingDraft);
+        else finishToDetails({ title: "", story: purpose.trim(), fromAi: false });
+      }, 400);
+      return () => clearTimeout(done);
+    }
+    const tick = setTimeout(() => setProgressIdx((i) => i + 1), 650);
+    return () => clearTimeout(tick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- drive prepare animation only
+  }, [building, progressIdx, pendingDraft]);
+
+  const prepareDraft = async () => {
+    if (!purposeValid || !hasMethod) {
+      setTouched(true);
+      return;
+    }
     setError(null);
+    setProgressIdx(0);
+    setBuilding(true);
     try {
       const draft = await generateCampaignDraft({
         purpose: purpose.trim(),
@@ -138,161 +172,310 @@ export function QuickStart() {
         organizationType: "nonprofit",
         organizationId: org?.id,
       });
-      applyAndContinue(draft.title, draft.story, draft.suggestedImageUrl, true);
+      setPendingDraft({
+        title: draft.title,
+        story: draft.story,
+        suggestedImageUrl: draft.suggestedImageUrl,
+        fromAi: true,
+      });
     } catch {
-      // AI prep is an enhancement, not a gate. Fall back to the organizer's own
-      // words so the flow is never blocked (e.g. AI key not configured locally).
-      applyAndContinue("", purpose.trim());
-    } finally {
-      setBusy(false);
+      setPendingDraft({ title: "", story: purpose.trim(), fromAi: false });
     }
   };
 
-  return (
-    <>
-      <main className="mx-auto max-w-2xl px-5 py-8 pb-28 sm:px-6">
-        <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
-          <Sparkles className="size-3.5" />
-          Quick start
-        </p>
-        <h1 className="font-display mt-2 text-balance text-3xl font-bold leading-tight tracking-tight">
-          Let&apos;s start your campaign.
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Answer a few questions and ForkUp will prepare a draft — a title and story you can
-          review and edit. You won&apos;t build it from scratch.
-        </p>
+  // Redirect to Find org if somehow opened without a profile (Lovable parity).
+  useEffect(() => {
+    if (!org) goTo("nonprofit-claim");
+  }, [org, goTo]);
 
-        <div className="mt-8 space-y-7">
-          <div>
-            <label htmlFor="qs-purpose" className="text-sm font-semibold">
-              What are you raising money for?
-            </label>
-            <textarea
-              id="qs-purpose"
-              value={purpose}
-              onChange={(e) => setPurpose(e.target.value)}
-              rows={4}
-              placeholder="e.g. New instruments for our elementary school music program so every child can learn to play."
-              className="mt-2 w-full rounded-xl border border-border bg-card p-3 text-sm outline-none transition-colors focus:border-primary"
-            />
+  const panelClass = "mx-auto max-w-xl px-5 py-6 pb-32 sm:px-6";
+  const headlineClass =
+    "font-display text-[1.75rem] font-bold leading-[1.12] tracking-tight sm:text-[2.125rem]";
+
+  const OrgChip = (
+    <div className="mb-6 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-border bg-card px-4 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="truncate text-sm font-bold">
+          {org?.organizationName ?? "Your organization"}
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+          <CheckCircle2 className="size-3" /> Profile Ready
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={() => goTo("start")}
+        className="shrink-0 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+      >
+        Review Profile
+      </button>
+    </div>
+  );
+
+  const Eyebrow = (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-primary">
+      <Wand2 className="size-3" />
+      Build your campaign
+    </span>
+  );
+
+  const StickyFooter = ({
+    onBack,
+    backLabel = "Back",
+    onPrimary,
+    primaryLabel,
+    primaryDisabled,
+    primaryIcon,
+    onSkip,
+  }: {
+    onBack: () => void;
+    backLabel?: string;
+    onPrimary: () => void;
+    primaryLabel: string;
+    primaryDisabled?: boolean;
+    primaryIcon?: React.ReactNode;
+    onSkip?: () => void;
+  }) => (
+    <footer className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/90 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-xl items-center justify-between gap-3 px-5 py-4 sm:px-6">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" />
+          {backLabel}
+        </button>
+        <div className="flex items-center gap-3">
+          {onSkip && (
+            <button
+              type="button"
+              onClick={onSkip}
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Skip for now
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onPrimary}
+            disabled={primaryDisabled}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {primaryIcon}
+            {primaryLabel}
+            {!primaryIcon && <ArrowRight className="size-4" />}
+          </button>
+        </div>
+      </div>
+    </footer>
+  );
+
+  if (building) {
+    return (
+      <main className="mx-auto max-w-xl px-5 py-5 pb-16 sm:px-6">
+        <div className="mx-auto mt-8 max-w-md text-center">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-primary">
+            <Wand2 className="size-3" />
+            Build your campaign
+          </span>
+          <h1 className="font-display mt-4 text-2xl font-bold tracking-tight">
+            ForkUp is preparing your campaign draft
+          </h1>
+          <div className="mt-6 space-y-2.5 text-left">
+            {BUILD_PROGRESS_MESSAGES.map((msg, i) => {
+              const done = i < progressIdx;
+              const active = i === progressIdx;
+              return (
+                <div
+                  key={msg}
+                  className={`flex items-center gap-2.5 rounded-xl border p-3 text-sm transition-colors ${
+                    done
+                      ? "border-emerald-300/60 bg-emerald-50/60"
+                      : active
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-border bg-secondary/30 opacity-60"
+                  }`}
+                >
+                  {done ? (
+                    <CheckCircle2 className="size-4 text-emerald-600" />
+                  ) : active ? (
+                    <Sparkles className="size-4 animate-pulse text-primary" />
+                  ) : (
+                    <Circle className="size-4 text-muted-foreground/50" />
+                  )}
+                  <span className={done || active ? "font-medium" : "text-muted-foreground"}>
+                    {msg}
+                  </span>
+                </div>
+              );
+            })}
           </div>
-
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <label htmlFor="qs-goal" className="text-sm font-semibold">
-                Fundraising goal <span className="font-normal text-muted-foreground">(optional)</span>
-              </label>
-              <div className="mt-2 flex items-center rounded-xl border border-border bg-card px-3">
-                <span className="text-sm text-muted-foreground">$</span>
-                <input
-                  id="qs-goal"
-                  type="number"
-                  min={0}
-                  value={goal}
-                  onChange={(e) => setGoal(e.target.value)}
-                  placeholder="5000"
-                  className="w-full bg-transparent p-3 text-sm outline-none"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="qs-start" className="text-sm font-semibold">
-                  Start <span className="font-normal text-muted-foreground">(optional)</span>
-                </label>
-                <input
-                  id="qs-start"
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-border bg-card p-3 text-sm outline-none transition-colors focus:border-primary"
-                />
-              </div>
-              <div>
-                <label htmlFor="qs-end" className="text-sm font-semibold">
-                  End <span className="font-normal text-muted-foreground">(optional)</span>
-                </label>
-                <input
-                  id="qs-end"
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-border bg-card p-3 text-sm outline-none transition-colors focus:border-primary"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <p className="text-sm font-semibold">How would you like people to support?</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              We&apos;ve suggested a couple to start — adjust anytime.
-            </p>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {METHOD_OPTIONS.map((o) => {
-                const selected = methods[o.id];
-                const Icon = o.icon;
-                return (
-                  <button
-                    key={o.id}
-                    type="button"
-                    onClick={() => toggle(o.id)}
-                    className={`flex items-center gap-3 rounded-2xl p-3.5 text-left transition-all ${
-                      selected
-                        ? "border-2 border-primary bg-accent/40"
-                        : "border border-border bg-card hover:border-primary/40"
-                    }`}
-                  >
-                    <div
-                      className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
-                        selected ? "bg-primary text-primary-foreground" : "bg-accent text-accent-foreground"
-                      }`}
-                    >
-                      <Icon className="size-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold leading-tight">{o.title}</p>
-                      <p className="text-xs text-muted-foreground">{o.hint}</p>
-                    </div>
-                    <div
-                      className={`flex size-6 shrink-0 items-center justify-center rounded-full transition-all ${
-                        selected ? "bg-primary" : "border border-border bg-card"
-                      }`}
-                    >
-                      {selected && <Check className="size-3.5 text-primary-foreground" strokeWidth={3} />}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
       </main>
+    );
+  }
 
-      <footer className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-5 py-4 sm:px-6">
-          <button
-            type="button"
-            onClick={() => goTo("choose-organizer-mode")}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-            Back
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!canContinue}
-            className="inline-flex items-center gap-2 rounded-full bg-primary py-2.5 pl-5 pr-4 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-primary"
-          >
-            {busy ? "Preparing your draft…" : "Prepare my draft"}
-            {!busy && <ArrowRight className="size-4" />}
-          </button>
+  if (sub === "purpose") {
+    return (
+      <>
+        <main className={panelClass}>
+          {OrgChip}
+          {Eyebrow}
+          <h1 className={`mt-4 ${headlineClass}`}>What are you raising money for?</h1>
+          <p className="mt-3 text-base leading-relaxed text-muted-foreground">
+            A short phrase is enough. ForkUp will turn it into a campaign draft you can review and
+            edit.
+          </p>
+          <div className="mt-6">
+            <label className="text-xs font-semibold text-muted-foreground">Campaign purpose</label>
+            <textarea
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              onBlur={() => setTouched(true)}
+              rows={3}
+              placeholder="Team travel expenses, new uniforms, scholarships, equipment, or community support"
+              className={`mt-1.5 w-full rounded-xl border bg-background px-3.5 py-3 text-base outline-none ${
+                touched && !purposeValid ? "border-destructive" : "border-border"
+              }`}
+            />
+            {touched && !purposeValid && (
+              <p className="mt-1.5 text-xs font-medium text-destructive">
+                Please describe what the funds will support in a few words.
+              </p>
+            )}
+          </div>
+        </main>
+        <StickyFooter
+          onBack={() => goTo("start")}
+          backLabel="Back to Organization Home"
+          onPrimary={() => {
+            setTouched(true);
+            if (purposeValid) setSub("goal");
+          }}
+          primaryLabel="Continue"
+          primaryDisabled={!purposeValid}
+        />
+      </>
+    );
+  }
+
+  if (sub === "goal") {
+    return (
+      <>
+        <main className={panelClass}>
+          {OrgChip}
+          {Eyebrow}
+          <h1 className={`mt-4 ${headlineClass}`}>Do you have a goal or campaign dates?</h1>
+          <p className="mt-3 text-base leading-relaxed text-muted-foreground">
+            Add what you know now. You can come back to this before launch.
+          </p>
+          <div className="mt-6">
+            <label className="text-xs font-semibold text-muted-foreground">
+              Fundraising goal amount
+            </label>
+            <input
+              value={goal}
+              onChange={(e) => setGoal(e.target.value)}
+              placeholder="$10,000"
+              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none sm:max-w-xs"
+            />
+          </div>
+          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Start date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">End date</label>
+              <input
+                type="date"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none"
+              />
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Goal and dates are optional for now, but dates must be confirmed before launch.
+          </p>
+        </main>
+        <StickyFooter
+          onBack={() => setSub("purpose")}
+          onPrimary={() => setSub("methods")}
+          onSkip={() => setSub("methods")}
+          primaryLabel="Continue"
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <main className={panelClass}>
+        {OrgChip}
+        {Eyebrow}
+        <h1 className={`mt-4 ${headlineClass}`}>How can people support?</h1>
+        <p className="mt-3 text-base leading-relaxed text-muted-foreground">
+          Choose one or more ways people can participate.
+        </p>
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {METHOD_OPTIONS.map((o) => {
+            const selected = methods[o.id];
+            const Icon = o.icon;
+            return (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => toggle(o.id)}
+                className={`flex items-center gap-3 rounded-2xl p-3.5 text-left transition-all ${
+                  selected
+                    ? "border-2 border-primary bg-accent/40"
+                    : "border border-border bg-card hover:border-primary/40"
+                }`}
+              >
+                <div
+                  className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
+                    selected ? "bg-primary text-primary-foreground" : "bg-accent text-accent-foreground"
+                  }`}
+                >
+                  <Icon className="size-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold leading-tight">{o.title}</p>
+                  <p className="text-xs text-muted-foreground">{o.hint}</p>
+                </div>
+                <div
+                  className={`flex size-6 shrink-0 items-center justify-center rounded-full transition-all ${
+                    selected ? "bg-primary" : "border border-border bg-card"
+                  }`}
+                >
+                  {selected && <Check className="size-3.5 text-primary-foreground" strokeWidth={3} />}
+                </div>
+              </button>
+            );
+          })}
         </div>
-      </footer>
+        {touched && !hasMethod && (
+          <p className="mt-3 text-xs font-medium text-destructive">
+            Select at least one fundraising method to continue.
+          </p>
+        )}
+        {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+      </main>
+      <StickyFooter
+        onBack={() => setSub("goal")}
+        onPrimary={() => void prepareDraft()}
+        primaryLabel="Prepare My Draft"
+        primaryIcon={<Sparkles className="size-4" />}
+        primaryDisabled={!purposeValid || !hasMethod}
+      />
     </>
   );
 }

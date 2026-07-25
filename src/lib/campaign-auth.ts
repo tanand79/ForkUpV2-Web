@@ -28,7 +28,8 @@ const DASHBOARD_STEPS: StepId[] = [
 export const CAMPAIGN_AUTH_STEPS: StepId[] = [
   "start",
   "account-hub",
-  "nonprofit-claim",
+  // nonprofit-claim is intentionally public for org search (Lovable parity).
+  // Auth is enforced inside NonprofitClaim on submit before claim/save.
   "nonprofit-dashboard",
   "business-dashboard",
   "supporter-dashboard",
@@ -36,6 +37,7 @@ export const CAMPAIGN_AUTH_STEPS: StepId[] = [
   "business-invites-nonprofit",
   "choose-organizer-mode",
   "quick-start",
+  "campaign-review",
   "methods",
   "details",
   "businesses",
@@ -70,6 +72,7 @@ export function roleHintFromStep(step: StepId): UserRole | null {
     step === "start" ||
     step === "choose-organizer-mode" ||
     step === "quick-start" ||
+    step === "campaign-review" ||
     step === "methods"
   ) {
     return "nonprofit";

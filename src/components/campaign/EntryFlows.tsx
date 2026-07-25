@@ -12,6 +12,9 @@ import {
   Percent,
   Clock,
   ShieldAlert,
+  Facebook,
+  Instagram,
+  AlertTriangle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -34,8 +37,9 @@ import {
   type NonprofitProfile,
   type BusinessClaimRequestResult,
   type OrganizationSearchCandidate,
+  type OrganizationDraftResult,
 } from "@/lib/api";
-import { OrganizationLookupConfirm } from "@/components/campaign/OrganizationLookupConfirm";
+import { OrganizationLookupConfirm, ORG_TYPE_OPTIONS } from "@/components/campaign/OrganizationLookupConfirm";
 import { loadUserSession } from "@/lib/auth-session";
 import {
   clearBusinessClaimDraft,
@@ -48,12 +52,62 @@ import {
 const field =
   "w-full rounded-xl border border-border bg-background px-4 py-3 text-sm";
 
+/** Lovable Edit organization details — rounded inputs (Ui/OrganizationReadiness). */
+const lovableInput =
+  "mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary/50";
+const lovableLabel = "text-sm font-medium";
+const lovableCard = "rounded-2xl border border-border bg-card p-5";
+const lovablePrimaryBtn =
+  "inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60";
+const lovableGhostBtn =
+  "inline-flex items-center justify-center gap-1.5 rounded-full border border-border px-5 py-2.5 text-sm font-medium hover:bg-secondary";
+
 const METHOD_OPTIONS = [
   { value: "dine_and_donate", label: "Dine & Donate" },
   { value: "shop_and_donate", label: "Shop & Donate" },
   { value: "service_giveback", label: "Service Giveback" },
   { value: "guest_bartending_event", label: "Guest Bartending" },
 ] as const;
+
+/** Session draft so nonprofit claim form survives the sign-in redirect. */
+const NONPROFIT_CLAIM_DRAFT_KEY = "forkup-nonprofit-claim-draft";
+
+type NonprofitClaimDraft = {
+  organizationName: string;
+  contactName: string;
+  contactEmail: string;
+  mission: string;
+  website: string;
+  ein: string;
+  city: string;
+  stateVal: string;
+  zip: string;
+  relationship: string;
+  existingSlug?: string;
+  alreadyClaimed: boolean;
+};
+
+function stashNonprofitClaimDraft(draft: NonprofitClaimDraft) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(NONPROFIT_CLAIM_DRAFT_KEY, JSON.stringify(draft));
+}
+
+function consumeNonprofitClaimDraft(): NonprofitClaimDraft | null {
+  if (typeof window === "undefined") return null;
+  const raw = sessionStorage.getItem(NONPROFIT_CLAIM_DRAFT_KEY);
+  sessionStorage.removeItem(NONPROFIT_CLAIM_DRAFT_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as NonprofitClaimDraft;
+  } catch {
+    return null;
+  }
+}
+
+function clearNonprofitClaimDraft() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(NONPROFIT_CLAIM_DRAFT_KEY);
+}
 
 export function ChooseAccountType() {
   const { goTo } = useCampaign();
@@ -107,6 +161,8 @@ export function NonprofitClaim() {
   const existing = state.nonprofitProfile;
   const isEditing = Boolean(existing?.id);
   const [phase, setPhase] = useState<"lookup" | "form">(isEditing ? "form" : "lookup");
+  /** Remounts lookup so prior search/AI results cannot stick when returning to search. */
+  const [lookupKey, setLookupKey] = useState(0);
   const [organizationName, setOrganizationName] = useState(existing?.organizationName ?? "");
   const [contactName, setContactName] = useState(existing?.contactName ?? "");
   const [contactEmail, setContactEmail] = useState(existing?.contactEmail ?? "");
@@ -122,18 +178,68 @@ export function NonprofitClaim() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<NonprofitClaimRequestResult | null>(null);
+  /** Lovable “Edit organization details” after ForkUp find/AI review. */
+  const [foundByForkUp, setFoundByForkUp] = useState(false);
+  const [orgType, setOrgType] = useState("Nonprofit");
+  const [socialLinks, setSocialLinks] = useState<string[]>([]);
+  /** Keep last ForkUp draft so Back to Review restores the populated card. */
+  const [savedAiDraft, setSavedAiDraft] = useState<OrganizationDraftResult | null>(null);
+  const [reviewActive, setReviewActive] = useState(false);
+
+  const returnToLookup = () => {
+    clearNonprofitClaimDraft();
+    setExistingSlug(undefined);
+    setAlreadyClaimed(false);
+    setError(null);
+    setFoundByForkUp(false);
+    setOrgType("Nonprofit");
+    setSocialLinks([]);
+    setSavedAiDraft(null);
+    setReviewActive(false);
+    setLookupKey((k) => k + 1);
+    setPhase("lookup");
+  };
+
+  /** Back to Review keeps the ForkUp draft — does not wipe search results. */
+  const backToForkUpReview = () => {
+    setFoundByForkUp(false);
+    setError(null);
+    setPhase("lookup");
+  };
+
+  // Restore claim form after sign-in redirect (client-only; avoids SSR mismatch).
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = consumeNonprofitClaimDraft();
+    if (!draft) return;
+    setOrganizationName(draft.organizationName);
+    setContactName(draft.contactName);
+    setContactEmail(draft.contactEmail);
+    setMission(draft.mission);
+    setWebsite(draft.website);
+    setEin(draft.ein);
+    setCity(draft.city);
+    setStateVal(draft.stateVal);
+    setZip(draft.zip);
+    setRelationship(draft.relationship);
+    setExistingSlug(draft.existingSlug);
+    setAlreadyClaimed(draft.alreadyClaimed);
+    setPhase("form");
+  }, [isEditing]);
 
   const applyCandidate = (candidate: OrganizationSearchCandidate) => {
+    // Replace every field so a prior org's mission/email/website cannot linger.
     setOrganizationName(candidate.organizationName);
-    setContactEmail(candidate.contactEmail ?? contactEmail);
-    setMission(candidate.mission ?? mission);
-    setWebsite(candidate.website ?? website);
+    setContactEmail(candidate.contactEmail ?? "");
+    setMission(candidate.mission ?? "");
+    setWebsite(candidate.website ?? "");
     setEin(candidate.ein ?? "");
     setCity(candidate.city ?? "");
     setStateVal(candidate.state ?? "");
     setZip(candidate.zip ?? "");
     setExistingSlug(candidate.slug);
     setAlreadyClaimed(candidate.claimStatus === "claimed");
+    setError(null);
     setPhase("form");
   };
 
@@ -155,6 +261,28 @@ export function NonprofitClaim() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    // Lovable parity: search/confirm is public; sign-in is required only when
+    // claiming or saving the organization profile.
+    if (!getAuthToken()) {
+      stashNonprofitClaimDraft({
+        organizationName: organizationName.trim(),
+        contactName: contactName.trim(),
+        contactEmail: contactEmail.trim(),
+        mission: mission.trim(),
+        website: website.trim(),
+        ein: ein.trim(),
+        city: city.trim(),
+        stateVal: stateVal.trim(),
+        zip: zip.trim(),
+        relationship: relationship.trim(),
+        existingSlug,
+        alreadyClaimed,
+      });
+      stashRoleHint("nonprofit");
+      stashAuthReturnStep("nonprofit-claim");
+      goTo("auth-login");
+      return;
+    }
     setLoading(true);
     try {
       const result = await submitNonprofitClaimRequest({
@@ -200,7 +328,8 @@ export function NonprofitClaim() {
         return;
       }
 
-      goTo("nonprofit-dashboard");
+      // Nick V2 flow: Claim → Organization Ready ("start") → Build Campaign.
+      goTo("start");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save profile");
     } finally {
@@ -209,22 +338,35 @@ export function NonprofitClaim() {
   };
 
   return (
-    <main className="mx-auto max-w-lg px-5 py-10 sm:px-6">
-      <div className="flex items-center gap-3">
-        <div className="flex size-11 items-center justify-center rounded-2xl bg-accent text-primary">
-          <HeartHandshake className="size-5" />
-        </div>
+    <main className={`mx-auto px-5 py-10 sm:px-6 ${foundByForkUp && phase === "form" && !isEditing ? "max-w-3xl" : "max-w-lg"}`}>
+      {!(foundByForkUp && phase === "form" && !isEditing) && !reviewActive && (
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Organization setup</p>
-          <h1 className="text-2xl font-extrabold tracking-tight">
-            {isEditing
-              ? "Update your nonprofit profile"
-              : phase === "lookup"
-                ? "Find your organization"
-                : "Confirm your organization details"}
-          </h1>
+          {phase === "lookup" && !isEditing && (
+            <button
+              type="button"
+              onClick={() => goTo("website-landing")}
+              className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+            >
+              ← Back to Home
+            </button>
+          )}
+          <div className="flex items-center gap-3">
+            <div className="flex size-11 items-center justify-center rounded-2xl bg-accent text-primary">
+              <HeartHandshake className="size-5" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">Organization setup</p>
+              <h1 className="text-2xl font-extrabold tracking-tight">
+                {isEditing
+                  ? "Update your nonprofit profile"
+                  : phase === "lookup"
+                    ? "Find your organization"
+                    : "Confirm your organization details"}
+              </h1>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {outcome ? (
         <div className="mt-6">
@@ -240,9 +382,7 @@ export function NonprofitClaim() {
                 type="button"
                 onClick={() => {
                   setOutcome(null);
-                  setExistingSlug(undefined);
-                  setAlreadyClaimed(false);
-                  setPhase("lookup");
+                  returnToLookup();
                 }}
                 className="mt-6 w-full rounded-full border border-border px-6 py-3 text-sm font-semibold hover:bg-secondary/60"
               >
@@ -261,10 +401,10 @@ export function NonprofitClaim() {
               </p>
               <button
                 type="button"
-                onClick={() => goTo("nonprofit-dashboard")}
+                onClick={() => goTo("start")}
                 className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground"
               >
-                Continue to dashboard
+                Continue — Organization Ready
                 <ArrowRight className="size-4" />
               </button>
             </div>
@@ -273,9 +413,218 @@ export function NonprofitClaim() {
       ) : phase === "lookup" && !isEditing ? (
         <div className="mt-6">
           <OrganizationLookupConfirm
+            key={lookupKey}
             onConfirm={applyCandidate}
-            onManualEntry={() => setPhase("form")}
+            restoredDraft={savedAiDraft}
+            onReviewActiveChange={setReviewActive}
+            onDraftCaptured={setSavedAiDraft}
+            onManualEntry={(prefill) => {
+              // Always replace fields so a previous search cannot leave stagnant data.
+              const locParts = (prefill?.location ?? "")
+                .split(",")
+                .map((p) => p.trim())
+                .filter(Boolean);
+              setOrganizationName(prefill?.organizationName?.trim() ?? "");
+              setWebsite(prefill?.website?.trim() ?? "");
+              setMission(prefill?.mission?.trim() ?? "");
+              setContactName(prefill?.contactName?.trim() ?? "");
+              setContactEmail(prefill?.contactEmail?.trim() ?? "");
+              setEin(prefill?.ein?.trim() ?? "");
+              setCity(prefill?.city?.trim() || locParts[0] || "");
+              setStateVal(prefill?.state?.trim() || locParts[1] || "");
+              setZip("");
+              setOrgType(() => {
+                const t = (prefill?.orgType ?? "").toLowerCase();
+                if (t.includes("foundation")) return "Foundation";
+                if (t.includes("school")) return "School";
+                if (t.includes("team") || t.includes("sport")) return "Team";
+                if (t.includes("community")) return "Community group";
+                if (t.includes("nonprofit") || t.includes("charity") || t.includes("rescue"))
+                  return "Nonprofit";
+                if (ORG_TYPE_OPTIONS.includes(prefill?.orgType as (typeof ORG_TYPE_OPTIONS)[number])) {
+                  return prefill!.orgType!;
+                }
+                return "Nonprofit";
+              });
+              setSocialLinks(prefill?.social ?? []);
+              setFoundByForkUp(Boolean(prefill?.foundByForkUp));
+              setExistingSlug(undefined);
+              setAlreadyClaimed(false);
+              setError(null);
+              setPhase("form");
+            }}
           />
+        </div>
+      ) : foundByForkUp && !isEditing ? (
+        /* Lovable EditOrganizationDetails: Found by ForkUp + Still needed */
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={backToForkUpReview}
+            className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            ← Back to Review
+          </button>
+          <h1 className="font-display text-3xl font-bold tracking-tight">Edit organization details</h1>
+          <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+            Review what ForkUp found and update anything that is missing or incorrect.
+          </p>
+
+          <form onSubmit={submit} className="mt-6 space-y-4">
+            <div className={lovableCard}>
+              <p className="flex items-center gap-2 text-sm font-semibold">
+                <CheckCircle2 className="size-4 text-emerald-600" /> Found by ForkUp
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                ForkUp prefilled these from your website. Correct anything that looks wrong.
+              </p>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className={lovableLabel}>
+                    Organization name <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    required
+                    value={organizationName}
+                    onChange={(e) => setOrganizationName(e.target.value)}
+                    className={lovableInput}
+                  />
+                </div>
+                <div>
+                  <label className={lovableLabel}>Website</label>
+                  <input
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                    placeholder="https://..."
+                    className={lovableInput}
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className={lovableLabel}>
+                      City <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      required
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      className={lovableInput}
+                    />
+                  </div>
+                  <div>
+                    <label className={lovableLabel}>
+                      State <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      required
+                      value={stateVal}
+                      onChange={(e) => setStateVal(e.target.value)}
+                      placeholder="PA"
+                      className={lovableInput}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className={lovableLabel}>Mission or short description</label>
+                  <textarea
+                    value={mission}
+                    onChange={(e) => setMission(e.target.value)}
+                    rows={3}
+                    className={lovableInput}
+                  />
+                </div>
+                {socialLinks.length > 0 && (
+                  <div>
+                    <label className={lovableLabel}>Social links</label>
+                    <div className="mt-2 flex flex-wrap gap-3 text-sm text-muted-foreground">
+                      {socialLinks.includes("Facebook") && (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Facebook className="size-3.5" /> Facebook
+                        </span>
+                      )}
+                      {socialLinks.includes("Instagram") && (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Instagram className="size-3.5" /> Instagram
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className={lovableCard}>
+              <p className="flex items-center gap-2 text-sm font-semibold">
+                <AlertTriangle className="size-4 text-amber-500" /> Still needed
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                ForkUp couldn&apos;t find these. Add them to continue.
+              </p>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className={lovableLabel}>
+                    Organization type <span className="text-destructive">*</span>
+                  </label>
+                  <select
+                    required
+                    value={orgType}
+                    onChange={(e) => setOrgType(e.target.value)}
+                    className={lovableInput}
+                  >
+                    <option value="">Select a type</option>
+                    {ORG_TYPE_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={lovableLabel}>
+                    Primary contact name <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    required
+                    value={contactName}
+                    onChange={(e) => setContactName(e.target.value)}
+                    className={lovableInput}
+                  />
+                </div>
+                <div>
+                  <label className={lovableLabel}>
+                    Primary contact email <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    required
+                    type="email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    className={lovableInput}
+                  />
+                </div>
+                <div>
+                  <label className={lovableLabel}>Your role at this organization (optional)</label>
+                  <input
+                    value={relationship}
+                    onChange={(e) => setRelationship(e.target.value)}
+                    placeholder="e.g. Executive Director, Board Member"
+                    className={lovableInput}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <div className="flex flex-wrap gap-3">
+              <button type="submit" disabled={loading} className={lovablePrimaryBtn}>
+                {loading ? "Saving…" : alreadyClaimed ? "Request access" : "Continue"}
+                {!loading && <ArrowRight className="size-4" />}
+              </button>
+              <button type="button" onClick={backToForkUpReview} className={lovableGhostBtn}>
+                Back to Review
+              </button>
+            </div>
+          </form>
         </div>
       ) : (
         <>
@@ -354,7 +703,7 @@ export function NonprofitClaim() {
             {!isEditing && (
               <button
                 type="button"
-                onClick={() => setPhase("lookup")}
+                onClick={returnToLookup}
                 className="w-full text-sm font-medium text-muted-foreground hover:text-foreground"
               >
                 ← Search by website again
@@ -896,12 +1245,12 @@ export function NonprofitAcceptsInvite() {
 
   if (done === "accepted") {
     const continueSetup = () => {
-      stashAuthReturnStep("details");
+      stashAuthReturnStep("quick-start");
       if (!getAuthToken()) {
         goTo("auth-login");
         return;
       }
-      goTo("details");
+      goTo("quick-start");
     };
 
     return (

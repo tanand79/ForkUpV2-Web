@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { CampaignProvider, useCampaign, type StepId } from "@/lib/campaign-context";
 import {
   consumeAuthReturnStep,
@@ -8,7 +9,6 @@ import {
   getRoleHint,
   resolvePostAuthStep,
   stashRoleHint,
-  UNIFIED_AUTH_COPY,
   type AccountIntent,
 } from "@/lib/campaign-auth";
 import { syncAuthSession, buildSessionPatch } from "@/lib/auth-session";
@@ -24,6 +24,7 @@ import { AmbassadorSetup } from "@/components/campaign/AmbassadorSetup";
 import { GuestBartenderSetup } from "@/components/campaign/GuestBartenderSetup";
 import { CampaignMedia } from "@/components/campaign/CampaignMedia";
 import { ReviewLaunch } from "@/components/campaign/ReviewLaunch";
+import { CampaignReview } from "@/components/campaign/CampaignReview";
 import { CampaignCreated } from "@/components/campaign/CampaignCreated";
 import { CampaignDashboard } from "@/components/campaign/CampaignDashboard";
 import { BusinessProfile } from "@/components/campaign/BusinessProfile";
@@ -41,6 +42,12 @@ import { AdminPreload } from "@/components/campaign/AdminPreload";
 import { AdminEmailLog } from "@/components/campaign/AdminEmailLog";
 import { AdminAccessRequests } from "@/components/campaign/AdminAccessRequests";
 import { OrganizationLibrary } from "@/components/campaign/OrganizationLibrary";
+import {
+  SuperAdminDashboard,
+  SuperAdminForgotPassword,
+  SuperAdminLogin,
+  SuperAdminResetPassword,
+} from "@/components/campaign/SuperAdminPanel";
 import {
   ChooseAccountType,
   NonprofitClaim,
@@ -60,6 +67,7 @@ import { SuccessState } from "@/components/campaign/SuccessStates";
 import { AuthLogin, AccountIntentPicker } from "@/components/campaign/AuthLogin";
 import { ChooseOrganizerMode } from "@/components/campaign/ChooseOrganizerMode";
 import { QuickStart } from "@/components/campaign/QuickStart";
+import { CreateFundraiser } from "@/components/campaign/CreateFundraiser";
 import { GuidedBuilderShell } from "@/components/campaign/GuidedBuilderShell";
 
 function AuthLoginScreen() {
@@ -72,11 +80,6 @@ function AuthLoginScreen() {
     setRoleHint(getRoleHint() ?? "nonprofit");
     setMounted(true);
   }, []);
-
-  const handleRoleHintChange = (next: AccountIntent) => {
-    setRoleHint(next);
-    stashRoleHint(next);
-  };
 
   const finishAuth = async (selectedRole: AccountIntent) => {
     setFinishing(true);
@@ -105,16 +108,13 @@ function AuthLoginScreen() {
   };
 
   return (
-    <main className="mx-auto max-w-2xl px-5 py-10 sm:px-6">
-      <h1 className="text-2xl font-extrabold tracking-tight">Sign in to ForkUp</h1>
-      <p className="mt-2 text-sm text-muted-foreground">{UNIFIED_AUTH_COPY.description}</p>
-
-      <div className="mt-6">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          What are you doing today? (optional)
-        </p>
-        <AccountIntentPicker value={roleHint} onChange={handleRoleHintChange} />
-      </div>
+    <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col justify-center px-5 py-10 sm:px-6">
+      <h1 className="font-display text-3xl font-bold tracking-tight">
+        Welcome back
+      </h1>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Sign in to continue your fundraiser, or create a free account.
+      </p>
 
       {mounted && (
         <div className="mt-8">
@@ -124,6 +124,22 @@ function AuthLoginScreen() {
           )}
         </div>
       )}
+
+      {/* Role intent stays available but de-emphasized — GoFundMe-style auth first. */}
+      <details className="mt-8 rounded-xl border border-border bg-card/40 p-3">
+        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Account type (optional)
+        </summary>
+        <div className="mt-3">
+          <AccountIntentPicker
+            value={roleHint}
+            onChange={(next) => {
+              setRoleHint(next);
+              stashRoleHint(next);
+            }}
+          />
+        </div>
+      </details>
     </main>
   );
 }
@@ -173,8 +189,12 @@ function WizardBody() {
       return <AuthLoginScreen />;
     case "choose-organizer-mode":
       return <ChooseOrganizerMode />;
+    case "create-fundraiser":
+      return <CreateFundraiser />;
     case "quick-start":
       return <QuickStart />;
+    case "campaign-review":
+      return <CampaignReview />;
     case "methods":
       return (
         <GuidedBuilderShell step="methods">
@@ -269,6 +289,18 @@ function WizardBody() {
       return <AdminEmailLog />;
     case "admin-access-requests":
       return <AdminAccessRequests />;
+    case "super-admin-login":
+      return <SuperAdminLogin />;
+    case "super-admin-forgot-password":
+      return <SuperAdminForgotPassword />;
+    case "super-admin-reset-password":
+      return (
+        <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-primary" /></div>}>
+          <SuperAdminResetPassword />
+        </Suspense>
+      );
+    case "super-admin":
+      return <SuperAdminDashboard />;
     case "organization-library":
       return <OrganizationLibrary />;
     case "success-virtual":

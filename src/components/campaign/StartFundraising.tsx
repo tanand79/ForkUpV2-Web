@@ -1,17 +1,14 @@
 "use client";
 
-import { ArrowRight, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight } from "lucide-react";
 import { assetSrc } from "@/lib/utils";
 import forkupLogo from "@/assets/forkup-logo.png";
 import heroCommunity from "@/assets/hero-community.jpg";
 import { useCampaign } from "@/lib/campaign-context";
-import { checkNonprofitReadiness } from "@/lib/api";
 import { resolveDashboardStep } from "@/lib/campaign-auth";
 
 export function StartFundraising() {
-  const { hasDraft, resumeDraft, startNewCampaign, goTo, state, step } = useCampaign();
-  const [checking, setChecking] = useState(false);
+  const { hasDraft, startNewCampaign, goTo, state, step } = useCampaign();
 
   const dashboardStep = resolveDashboardStep(
     state.accountIntent,
@@ -22,27 +19,26 @@ export function StartFundraising() {
   const hasDashboard =
     state.nonprofitMemberships.length > 0 || state.businessMemberships.length > 0;
 
-  const beginCampaign = async () => {
+  /**
+   * Lovable: Organization Ready → Build Your Campaign (quick-start)
+   * → Prepare My Draft → Campaign Review.
+   * Never send claimed orgs to update-profile / nonprofit-claim.
+   * Never resume into the legacy details/media tab builder.
+   */
+  const beginCampaign = () => {
     if (!state.nonprofitProfile) {
       goTo("nonprofit-claim");
       return;
     }
-
-    setChecking(true);
-    try {
-      const readiness = await checkNonprofitReadiness(state.nonprofitProfile.contactEmail);
-      if (readiness.state === "preloaded_unclaimed" || readiness.state === "needs_review") {
-        goTo("nonprofit-claim");
-        return;
-      }
-      if (hasDraft) resumeDraft();
-      else goTo("choose-organizer-mode");
-    } catch {
-      if (hasDraft) resumeDraft();
-      else goTo("choose-organizer-mode");
-    } finally {
-      setChecking(false);
+    // Draft already prepared → Lovable Review screen.
+    if (
+      state.aiDrafted ||
+      (state.title.trim() && state.description.trim() && state.fundsSupport[0]?.trim())
+    ) {
+      goTo("campaign-review");
+      return;
     }
+    goTo("quick-start");
   };
 
   return (
@@ -66,33 +62,43 @@ export function StartFundraising() {
           />
         </button>
         <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">
-          Campaign setup
+          Organization Ready
         </p>
 
         <h1 className="font-display mx-auto mt-2 max-w-2xl text-balance text-3xl font-bold leading-[1.12] tracking-tight sm:text-4xl">
-          Let&apos;s build a campaign your community will rally behind!
+          {state.nonprofitProfile
+            ? `${state.nonprofitProfile.organizationName} is ready.`
+            : "Your organization is ready."}
         </h1>
         <p className="mx-auto mt-2 max-w-xl text-pretty text-sm leading-relaxed text-muted-foreground">
-          Choose guided step-by-step setup or advanced mode for full control. Save anytime and pick up where you left off.
+          Answer a few questions and ForkUp will prepare your campaign draft. You can review and edit
+          everything before launch.
         </p>
 
         <button
           type="button"
-          onClick={() => void beginCampaign()}
-          disabled={checking}
-          className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-primary px-9 py-3.5 text-sm font-semibold text-primary-foreground shadow-xl shadow-primary/20 transition-all hover:bg-primary-dark hover:-translate-y-0.5 active:scale-95 disabled:opacity-60"
+          onClick={beginCampaign}
+          className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-primary px-9 py-3.5 text-sm font-semibold text-primary-foreground shadow-xl shadow-primary/20 transition-all hover:bg-primary-dark hover:-translate-y-0.5 active:scale-95"
         >
-          {checking ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : hasDraft ? (
-            "Resume My Campaign"
-          ) : state.nonprofitProfile ? (
-            "Build My Campaign"
-          ) : (
-            "Set Up Organization"
-          )}
-          {!checking && <ArrowRight className="size-4" />}
+          {state.aiDrafted || (state.title.trim() && state.description.trim())
+            ? "Resume My Campaign"
+            : state.nonprofitProfile
+              ? "Build My Campaign"
+              : "Set Up Organization"}
+          <ArrowRight className="size-4" />
         </button>
+        {state.nonprofitProfile &&
+          !(state.aiDrafted || (state.title.trim() && state.description.trim())) && (
+          <button
+            type="button"
+            onClick={() => {
+              goTo("quick-start");
+            }}
+            className="mt-3 text-xs font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+          >
+            Start building from the beginning
+          </button>
+        )}
         {hasDashboard && (
           <button
             type="button"
@@ -131,9 +137,9 @@ export function StartFundraising() {
 
       <div className="animate-rise mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3 [animation-delay:200ms]">
         {[
-          { n: "1", t: "Choose Your Fundraising Methods", d: "Select the fundraising methods that will help your campaign raise money." },
-          { n: "2", t: "Share Your Story", d: "Help supporters understand why your cause matters." },
-          { n: "3", t: "Engage Your Community", d: "Invite supporters, local businesses, and ambassadors to participate." },
+          { n: "1", t: "Answer a few questions", d: "Purpose, goal, dates, and how people can support." },
+          { n: "2", t: "Review your draft", d: "ForkUp prepares a title and story you can edit." },
+          { n: "3", t: "Invite & launch", d: "Bring in businesses and supporters, then go live." },
         ].map((s) => (
           <div
             key={s.n}

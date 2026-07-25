@@ -95,11 +95,17 @@ export function PastCampaigns() {
       </section>
 
       <section className="mx-auto max-w-6xl px-5 py-12 sm:px-6 md:py-16">
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {pastCampaigns.map((c) => (
-            <PastCampaignCard key={c.slug} campaign={c} onOpen={() => goTo("campaign-directory")} />
-          ))}
-        </div>
+        {pastCampaigns.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-border p-10 text-center text-muted-foreground">
+            No past campaigns to show yet. Completed campaigns will appear here.
+          </p>
+        ) : (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {pastCampaigns.map((c) => (
+              <PastCampaignCard key={c.slug} campaign={c} onOpen={() => goTo("campaign-directory")} />
+            ))}
+          </div>
+        )}
       </section>
     </main>
   );

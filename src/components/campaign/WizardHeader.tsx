@@ -1,10 +1,11 @@
 import { ArrowLeft, LogOut } from "lucide-react";
-import { useCampaign, type StepId } from "@/lib/campaign-context";
+import { useCampaign, SETUP_STEPS, type StepId } from "@/lib/campaign-context";
 import { resolveDashboardStep, roleHintFromStep, stashDashboardReturn } from "@/lib/campaign-auth";
 import { getAuthToken } from "@/lib/auth-storage";
 import { useClientMounted } from "@/lib/use-client-mounted";
 import { RoleSwitcher } from "./RoleSwitcher";
 import { LaunchChecklist } from "./LaunchChecklist";
+import { SetupProgress } from "./SetupProgress";
 import { HeaderAuthActions } from "./HeaderAuthActions";
 import {
   HeaderPillButton,
@@ -12,7 +13,8 @@ import {
   SiteHeaderLogo,
 } from "./SiteHeader";
 
-const BUILDER_STEPS: StepId[] = ["methods", "details", "businesses", "invite", "media", "review"];
+/** Legacy advanced builder (methods → details → media → review) — LaunchChecklist tabs. */
+const ADVANCED_BUILDER_STEPS: StepId[] = ["methods", "details", "media"];
 
 const POST_CREATION_STEPS: StepId[] = [
   "created",
@@ -104,7 +106,44 @@ export function WizardHeader() {
     return null;
   }
 
-  if (step === "start" || step === "choose-organizer-mode" || step === "quick-start") {
+  if (
+    step === "super-admin-login" ||
+    step === "super-admin-forgot-password" ||
+    step === "super-admin-reset-password" ||
+    step === "super-admin"
+  ) {
+    return null;
+  }
+
+  // Lovable Build → Review → Partners → Launch (guided / AI draft path only).
+  const lovableSetup =
+    step === "quick-start" ||
+    step === "campaign-review" ||
+    (Boolean(state.aiDrafted) &&
+      SETUP_STEPS.includes(step) &&
+      !ADVANCED_BUILDER_STEPS.includes(step));
+  if (lovableSetup) {
+    return (
+      <SiteHeader
+        leading={HomeLogo}
+        trailing={
+          <>
+            {BackToDashboard}
+            <RoleSwitcher />
+            <HeaderAuthActions step={step} />
+            {SaveExit}
+          </>
+        }
+        below={
+          <div className="pb-3">
+            <SetupProgress />
+          </div>
+        }
+      />
+    );
+  }
+
+  if (step === "start" || step === "choose-organizer-mode" || step === "create-fundraiser") {
     return (
       <SiteHeader
         sticky={false}
@@ -147,13 +186,17 @@ export function WizardHeader() {
   }
 
   const progress = currentIndex >= 0 ? ((currentIndex + 1) / total) * 100 : 8;
-  const isBuilderStep = BUILDER_STEPS.includes(step);
+  const showLaunchChecklist =
+    ADVANCED_BUILDER_STEPS.includes(step) ||
+    step === "businesses" ||
+    step === "invite" ||
+    step === "review";
 
   return (
     <SiteHeader
       leading={HomeLogo}
       trailing={
-        isBuilderStep ? (
+        showLaunchChecklist ? (
           <>
             {BackToDashboard}
             <RoleSwitcher />
@@ -179,7 +222,7 @@ export function WizardHeader() {
         )
       }
       below={
-        isBuilderStep ? (
+        showLaunchChecklist ? (
           <div className="pb-4">
             <LaunchChecklist />
           </div>

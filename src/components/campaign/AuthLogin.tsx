@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Eye, EyeOff, HeartHandshake, Loader2, LogIn, Store, UserPlus, Users } from "lucide-react";
+import { Eye, EyeOff, HeartHandshake, Loader2, Store, Users } from "lucide-react";
 
 import { loginUser, registerUser, checkEmailAvailable } from "@/lib/api";
 
@@ -57,6 +57,9 @@ export function AuthLogin({
   const [password, setPassword] = useState("");
 
   const [showPassword, setShowPassword] = useState(false);
+
+  /** Blocks browser autofill until the user focuses a field. */
+  const [allowAutofill, setAllowAutofill] = useState(false);
 
   const [fullName, setFullName] = useState("");
 
@@ -237,62 +240,42 @@ export function AuthLogin({
 
 
   return (
-
-    <div className="relative mx-auto max-w-md rounded-2xl border border-border bg-card p-6">
-
-      <p className="text-xs font-semibold uppercase tracking-wide text-primary">{copy.title}</p>
-
-      <p className="mt-2 text-sm text-muted-foreground">
-
-        {mode === "login" ? copy.signInDescription : copy.registerDescription}
-
+    <div className="w-full">
+      <h2 className="text-xl font-bold tracking-tight">
+        {mode === "login" ? "Sign in" : "Create your account"}
+      </h2>
+      <p className="mt-1.5 text-sm text-muted-foreground">
+        {mode === "login"
+          ? "Enter your email and password to continue."
+          : "It only takes a minute — then you can finish your fundraiser."}
       </p>
-
-
-
-      <div className="mb-6 mt-5 flex gap-2">
-
-        <button
-
-          type="button"
-
-          onClick={() => setMode("login")}
-
-          className={`flex-1 rounded-full py-2 text-sm font-semibold ${mode === "login" ? "bg-primary text-primary-foreground" : "bg-secondary"}`}
-
-        >
-
-          <LogIn className="mr-1 inline size-4" />
-
-          Sign in
-
-        </button>
-
-        <button
-
-          type="button"
-
-          onClick={() => setMode("register")}
-
-          className={`flex-1 rounded-full py-2 text-sm font-semibold ${mode === "register" ? "bg-primary text-primary-foreground" : "bg-secondary"}`}
-
-        >
-
-          <UserPlus className="mr-1 inline size-4" />
-
-          Register
-
-        </button>
-
-      </div>
-
-
 
       <form
         onSubmit={submit}
-        autoComplete={mode === "login" ? "on" : "off"}
-        className="space-y-4"
+        autoComplete="off"
+        className="mt-6 space-y-4"
       >
+        {/* Hidden decoys so browsers do not inject saved login into the real fields. */}
+        <input
+          type="text"
+          name="forkup-username-decoy"
+          autoComplete="username"
+          tabIndex={-1}
+          aria-hidden="true"
+          className="pointer-events-none absolute h-0 w-0 opacity-0"
+          value=""
+          readOnly
+        />
+        <input
+          type="password"
+          name="forkup-password-decoy"
+          autoComplete="current-password"
+          tabIndex={-1}
+          aria-hidden="true"
+          className="pointer-events-none absolute h-0 w-0 opacity-0"
+          value=""
+          readOnly
+        />
         {mode === "register" && (
           <label className="block space-y-1.5">
             <span className="text-sm font-semibold">Full name</span>
@@ -301,8 +284,8 @@ export function AuthLogin({
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder={copy.fullNamePlaceholder}
-              autoComplete="name"
-              className="h-12 w-full rounded-xl border border-border px-4 text-sm"
+              autoComplete="off"
+              className="h-12 w-full rounded-xl border border-border bg-card px-4 text-sm"
             />
           </label>
         )}
@@ -310,7 +293,7 @@ export function AuthLogin({
           <span className="text-sm font-semibold">Email</span>
           <input
             type="email"
-            name="email"
+            name="forkup-auth-email"
             id="forkup-auth-email"
             required
             value={email}
@@ -320,47 +303,45 @@ export function AuthLogin({
               setInfo(null);
             }}
             onBlur={() => void checkEmail(email)}
-            placeholder={
-              intent === "business"
-                ? "Business contact email"
-                : intent === "nonprofit"
-                  ? "Work email for your organization"
-                  : "Your email"
-            }
-            autoComplete={mode === "login" ? "username" : "email"}
-            className={`h-12 w-full rounded-xl border px-4 text-sm ${
+            placeholder="you@organization.org"
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-form-type="other"
+            readOnly={!allowAutofill}
+            onFocus={() => setAllowAutofill(true)}
+            className={`h-12 w-full rounded-xl border bg-card px-4 text-sm ${
               emailError ? "border-destructive" : "border-border"
             }`}
           />
-
           {emailError && <p className="text-xs text-destructive">{emailError}</p>}
-
           {info && !emailError && (
-
-            <p className={`text-xs ${emailTaken ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}>
-
+            <p
+              className={`text-xs ${emailTaken ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}
+            >
               {info}
-
             </p>
-
           )}
-
         </label>
-
         <label className="block space-y-1.5">
           <span className="text-sm font-semibold">Password</span>
           <div className="relative">
             <input
               type={showPassword ? "text" : "password"}
-              name="password"
+              name="forkup-auth-password"
               id="forkup-auth-password"
               required
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="At least 8 characters"
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              className="h-12 w-full rounded-xl border border-border px-4 pr-12 text-sm"
+              autoComplete="new-password"
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-form-type="other"
+              readOnly={!allowAutofill}
+              onFocus={() => setAllowAutofill(true)}
+              className="h-12 w-full rounded-xl border border-border bg-card px-4 pr-12 text-sm"
             />
             <button
               type="button"
@@ -375,51 +356,55 @@ export function AuthLogin({
         </label>
 
         {error && (
-
           <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
-
             {error}
-
           </p>
-
         )}
 
         <button
-
           type="submit"
-
           disabled={!canSubmit}
-
-          className="btn-primary w-full rounded-full py-3.5 text-sm disabled:opacity-60"
-
+          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark disabled:opacity-60"
         >
-
           {loading ? (
-
-            <Loader2 className="mx-auto size-4 animate-spin" />
-
+            <Loader2 className="size-4 animate-spin" />
           ) : mode === "login" ? (
-
-            copy.signInCta
-
+            "Sign in"
           ) : emailTaken ? (
-
             "Sign in instead"
-
           ) : (
-
-            copy.registerCta
-
+            "Create account"
           )}
-
         </button>
-
       </form>
 
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        {mode === "login" ? (
+          <>
+            Don&apos;t have an account?{" "}
+            <button
+              type="button"
+              onClick={() => setMode("register")}
+              className="font-semibold text-primary underline-offset-4 hover:underline"
+            >
+              Sign up
+            </button>
+          </>
+        ) : (
+          <>
+            Already have an account?{" "}
+            <button
+              type="button"
+              onClick={() => setMode("login")}
+              className="font-semibold text-primary underline-offset-4 hover:underline"
+            >
+              Sign in
+            </button>
+          </>
+        )}
+      </p>
     </div>
-
   );
-
 }
 
 
@@ -477,67 +462,36 @@ const INTENT_OPTIONS: {
 
 
 export function AccountIntentPicker({
-
   value,
-
   onChange,
-
 }: {
-
   value: AccountIntent | null;
-
   onChange: (intent: AccountIntent) => void;
-
 }) {
-
   return (
-
-    <div className="grid gap-2 sm:grid-cols-3">
-
-      {INTENT_OPTIONS.map((option) => {
-
-        const Icon = option.icon;
-
-        const selected = value === option.id;
-
-        return (
-
-          <button
-
-            key={option.id}
-
-            type="button"
-
-            onClick={() => onChange(option.id)}
-
-            className={`rounded-2xl border p-4 text-left transition-colors ${
-
-              selected
-
-                ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-
-                : "border-border bg-card hover:border-primary/30"
-
-            }`}
-
-          >
-
-            <Icon className={`size-5 ${selected ? "text-primary" : "text-muted-foreground"}`} />
-
-            <p className="mt-2 text-sm font-semibold">{option.label}</p>
-
-            <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
-
-          </button>
-
-        );
-
-      })}
-
-    </div>
-
+    <label className="block space-y-1.5">
+      <span className="sr-only">Account type</span>
+      <select
+        value={value ?? ""}
+        onChange={(e) => {
+          const next = e.target.value as AccountIntent | "";
+          if (next === "nonprofit" || next === "business" || next === "supporter") {
+            onChange(next);
+          }
+        }}
+        className="h-12 w-full rounded-xl border border-border bg-card px-4 text-sm outline-none focus:border-primary/50"
+      >
+        <option value="" disabled>
+          Select account type (optional)
+        </option>
+        {INTENT_OPTIONS.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
-
 }
 
 

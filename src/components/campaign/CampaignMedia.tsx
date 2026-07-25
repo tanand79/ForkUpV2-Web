@@ -3,6 +3,7 @@ import { ImagePlus, X, Sparkles, Building2, Image as ImageIcon, Video, Replace, 
 import { useCampaign, type CampaignImage, type CampaignVideo } from "@/lib/campaign-context";
 import { uploadImage } from "@/lib/api";
 import { ActionBar } from "./ChooseBusinesses";
+import { useLovableFlowRedirect } from "./useLovableFlowRedirect";
 
 const LOGO_MIN = 500;
 const COVER_MIN_WIDTH = 1200;
@@ -133,6 +134,7 @@ function PromotionField({
 }
 
 export function CampaignMedia() {
+  useLovableFlowRedirect();
   const { state, update, addImages, removeImage, next, back, designMode } = useCampaign();
 
   const logoRef = useRef<HTMLInputElement>(null);

@@ -63,12 +63,14 @@ export function resolvePostAuthDestination(
   roleHint: UserRole | null,
   avail: RoleAvailability,
 ): StepId {
-  if (roleHint) {
-    return ROLE_DASHBOARD[roleHint];
-  }
-
+  // Prefer an explicit return destination (auth-gated claim/setup) so the
+  // interrupted flow can resume after sign-in. Role dashboard is the fallback.
   if (returnStep && returnStep !== "auth-login") {
     return returnStep;
+  }
+
+  if (roleHint) {
+    return ROLE_DASHBOARD[roleHint];
   }
 
   const roles = availableRoles(avail);

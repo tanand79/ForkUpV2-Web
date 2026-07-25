@@ -51,32 +51,35 @@ function computeSelectedBusinesses(s: CampaignState): Business[] {
 const DRAFT_KEY = "forkup-campaign-draft";
 
 const BUILDER_FLOW_STEPS: StepId[] = [
+  "quick-start",
+  "campaign-review",
   "methods",
   "details",
-  "businesses",
-  "invite",
   "media",
   "review",
+  "businesses",
+  "invite",
 ];
 
 function isBuilderFlowStep(step: StepId): boolean {
   return BUILDER_FLOW_STEPS.includes(step);
 }
 
-/** Wizard steps for the selected fundraising methods (matches progress + checklist order). */
+/**
+ * Lovable campaign-creation order:
+ *   Build (quick-start) → Review (campaign-review) → Partners (optional) → Launch (review).
+ * Legacy methods/details/media screens remain in the codebase for Design Mode
+ * deep-links only — they are not part of this flow.
+ */
 export function builderFlowForState(
   state: Pick<CampaignState, "methods" | "campaignOrigin" | "lockedBusinessPartners">,
 ): StepId[] {
-  const steps: StepId[] = [];
-  if (state.campaignOrigin !== "business_invite") {
-    steps.push("methods");
-  }
-  steps.push("details");
+  const steps: StepId[] = ["quick-start", "campaign-review"];
   const partnerLocked = hasLockedBusinessPartners(state);
   const needsBusinessStep =
     (state.methods.giveback || state.methods.guestBartending) && !partnerLocked;
   if (needsBusinessStep) steps.push("businesses");
-  steps.push("media", "review");
+  steps.push("review");
   return steps;
 }
 
@@ -131,10 +134,22 @@ function loadDraft(): CampaignDraft | null {
       return null;
     }
 
-    const resumeSteps: StepId[] = ["methods", "details", "businesses", "invite", "media", "review"];
-    const lastStep = resumeSteps.includes(draft.lastStep as StepId)
+    const resumeSteps: StepId[] = [
+      "quick-start",
+      "campaign-review",
+      "methods",
+      "details",
+      "media",
+      "review",
+      "businesses",
+      "invite",
+    ];
+    let lastStep = resumeSteps.includes(draft.lastStep as StepId)
       ? (draft.lastStep as StepId)
-      : "methods";
+      : "quick-start";
+    // Legacy builder steps → Lovable resume targets.
+    if (lastStep === "methods") lastStep = "quick-start";
+    if (lastStep === "details" || lastStep === "media") lastStep = "campaign-review";
     const savedState = draft.state as Partial<CampaignState>;
 
     return {
@@ -211,8 +226,12 @@ export type StepId =
   | "auth-login"
   | "account-hub"
   | "choose-organizer-mode"
+  // GoFundMe-style first questions (who / region / purpose) before Find Org.
+  | "create-fundraiser"
   // Simplified GoFundMe-style entry — asks a few questions, AI prepares a draft.
   | "quick-start"
+  // Lovable Review Your Campaign (after Prepare My Draft) — not the old details/media tabs.
+  | "campaign-review"
   | "methods"
   | "businesses"
   | "invite"
@@ -247,6 +266,11 @@ export type StepId =
   // Admin-only — read-only email delivery log (hidden from public).
   | "admin-email-log"
   | "admin-access-requests"
+  // Platform Super Admin console (verification, profile, AI, charges, SMTP).
+  | "super-admin-login"
+  | "super-admin-forgot-password"
+  | "super-admin-reset-password"
+  | "super-admin"
   // Reusable content + assets for the active organization.
   | "organization-library"
   | "guestBartending"
@@ -485,6 +509,16 @@ export interface CampaignState {
   /** Optional per-method timeline overrides (inherit campaign window if unset). */
   methodTiming: MethodTimingMap;
   description: string;
+  /**
+   * GoFundMe-style create entry: who the fundraiser supports.
+   * Additive — older drafts without this field remain valid.
+   */
+  fundraisingFor?: "nonprofit" | "someone_else" | "myself" | null;
+  /**
+   * GoFundMe-style create entry: country or "Country|State" for US.
+   * Additive — older drafts without this field remain valid.
+   */
+  createRegion?: string;
   giveback: number;
   goal: string;
   fundsSupport: string[];
@@ -559,6 +593,8 @@ const initialState: CampaignState = {
   invitationsClosed: false,
   methodTiming: {},
   description: "",
+  fundraisingFor: null,
+  createRegion: "",
   giveback: 15,
   goal: "",
   fundsSupport: [],
@@ -586,12 +622,50 @@ const initialState: CampaignState = {
 // support methods the nonprofit selected.
 const STEP_LABELS: Partial<Record<StepId, string>> = {
   "choose-organizer-mode": "Choose Experience",
+  "quick-start": "Build",
+  "campaign-review": "Campaign Review",
   methods: "Fundraising Methods",
   details: "Campaign Basics",
   businesses: "Choose / Invite Businesses",
   media: "Campaign Assets",
   review: "Review & Launch",
 };
+
+/** Lovable four-stage journey: Build → Review → Partners → Launch. */
+export const SETUP_STAGES = ["Build", "Review", "Partners", "Launch"] as const;
+
+/** Steps that show the Lovable SetupProgress header. */
+export const SETUP_STEPS: StepId[] = [
+  "quick-start",
+  "campaign-review",
+  "businesses",
+  "invite",
+  "review",
+  // Legacy advanced builder still maps into the four stages when resumed.
+  "methods",
+  "details",
+  "media",
+];
+
+/** Map a step to its four-stage index (or -1 when it is not a setup step). */
+export function setupStageIndex(step: StepId): number {
+  switch (step) {
+    case "quick-start":
+    case "methods":
+      return 0;
+    case "campaign-review":
+    case "details":
+    case "media":
+      return 1;
+    case "businesses":
+    case "invite":
+      return 2;
+    case "review":
+      return 3;
+    default:
+      return -1;
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // Campaign Launch Checklist
@@ -630,6 +704,45 @@ export function computeChecklist(state: CampaignState): ChecklistItem[] {
   return order.map((id): ChecklistItem => {
     const label = STEP_LABELS[id] ?? id;
     switch (id) {
+      case "quick-start": {
+        const any =
+          state.methods.giveback ||
+          state.methods.donations ||
+          state.methods.guestBartending ||
+          state.methods.ambassador;
+        const purposeOk = (state.fundsSupport[0] ?? "").trim().length > 0 || !!state.aiDrafted;
+        const complete = any && purposeOk;
+        return {
+          id,
+          label,
+          required: true,
+          status: complete ? "complete" : any || purposeOk ? "attention" : "notStarted",
+          message: "Answer purpose, goal, and fundraising methods.",
+        };
+      }
+      case "campaign-review": {
+        const started =
+          !!state.title.trim() ||
+          !!state.startDate ||
+          !!state.endDate ||
+          !!state.description.trim() ||
+          !!state.cover;
+        // Lovable Review attention: title, dates, featured image. Logo optional.
+        const complete =
+          !!state.title.trim() &&
+          !!state.startDate &&
+          !!state.endDate &&
+          !!state.description.trim() &&
+          !!state.cover &&
+          givebackValid(state);
+        return {
+          id,
+          label,
+          required: true,
+          status: complete ? "complete" : started ? "attention" : "notStarted",
+          message: "Finish campaign review: title, dates, story, and featured image.",
+        };
+      }
       case "methods": {
         const any =
           state.methods.giveback || state.methods.donations || state.methods.guestBartending || state.methods.ambassador;
@@ -689,14 +802,14 @@ export function computeChecklist(state: CampaignState): ChecklistItem[] {
         };
       }
       case "media": {
-        const complete = !!state.logo && !!state.cover;
+        const complete = !!state.cover;
         const started = !!state.logo || !!state.cover;
         return {
           id,
           label,
           required: true,
           status: complete ? "complete" : started ? "attention" : "notStarted",
-          message: "Logo and cover image required.",
+          message: "Featured campaign image required.",
         };
       }
       case "review":
@@ -1265,7 +1378,8 @@ export function CampaignProvider({
     setState((prev) => ({
       ...initialState,
       nonprofitProfile: prev.nonprofitProfile,
-      organizerMode: prev.organizerMode,
+      // Default GoFundMe-style guided builder; advanced remains via choose-organizer-mode.
+      organizerMode: "guided",
       nonprofitMemberships: prev.nonprofitMemberships,
       businessMemberships: prev.businessMemberships,
       accountIntent: prev.accountIntent,
@@ -1275,7 +1389,7 @@ export function CampaignProvider({
     }));
     discardLocalDraft({ force: true });
     void refreshServerDrafts();
-    goTo("choose-organizer-mode");
+    goTo("quick-start");
   };
 
 
@@ -1307,7 +1421,7 @@ export function CampaignProvider({
       }
       const npId = stateRef.current.nonprofitProfile?.id;
       if (!npId) {
-        goTo("choose-organizer-mode");
+        goTo("quick-start");
         return;
       }
       try {
@@ -1320,16 +1434,12 @@ export function CampaignProvider({
       } catch {
         /* fall through */
       }
-      goTo("choose-organizer-mode");
+      goTo("quick-start");
     })();
   }, [goTo, resumeCampaignBuilder]);
 
-  // The wizard flow focuses on creating and launching the campaign. Campaign
-  // Basics (details) comes before business selection so invitations have
-  // campaign context. Business selection appears when a Giveback campaign or a
-  // Guest Bartending Event is enabled (both need a participating location).
-  // Guest Bartender and Ambassador activation happen AFTER launch in the
-  // Campaign Success Dashboard — they are no longer builder steps.
+  // Nick V2 / Lovable: Build → Review → Partners (optional) → Launch.
+  // Guest Bartender and Ambassador activation remain post-launch.
   const flow = useMemo<StepId[]>(() => builderFlowForState(state), [
     state.methods.giveback,
     state.methods.guestBartending,
@@ -1348,12 +1458,31 @@ export function CampaignProvider({
   const activeProgressIndex = progressSteps.findIndex((s) => s.id === activeFlowId);
 
   const next = () => {
-    const idx = flow.indexOf(step === "invite" ? "businesses" : step);
-    if (idx >= 0 && idx < flow.length - 1) goTo(flow[idx + 1]);
-    else if (step === "review") goTo("created");
+    // Lovable path: Campaign Review → Partners (if needed) or Launch review.
+    if (step === "campaign-review") {
+      if (state.methods.giveback || state.methods.guestBartending) goTo("businesses");
+      else goTo("review");
+      return;
+    }
+    const current = step === "invite" ? "businesses" : step;
+    const idx = flow.indexOf(current);
+    if (idx >= 0 && idx < flow.length - 1) {
+      goTo(flow[idx + 1]);
+      return;
+    }
+    // After inviting businesses (last flow step), return to Review to launch.
+    if (current === "businesses") {
+      goTo("review");
+      return;
+    }
+    if (step === "review") goTo("created");
   };
 
   const back = () => {
+    if (step === "campaign-review") {
+      goTo("quick-start");
+      return;
+    }
     const current = step === "invite" ? "businesses" : step;
     const idx = flow.indexOf(current);
     if (idx > 0) goTo(flow[idx - 1]);
@@ -1647,11 +1776,10 @@ export function CampaignProvider({
   const completedCount = checklist.filter((i) => i.status === "complete").length;
   const requiredRemaining = checklist.filter((i) => i.required && i.status !== "complete").length;
   const firstIncompleteStepId = useMemo(() => firstIncompleteStep(state), [state]);
-  // Review & Launch is the only locked section. It unlocks once every other
-  // required item is complete — all earlier sections (Basics, Businesses,
-  // Assets) can be completed freely in any order.
+  // Review unlocks once Build steps (methods/details/media) are complete.
+  // Businesses come AFTER review in Nick's V2 order, so they do not gate Review.
   const reviewUnlocked = checklist
-    .filter((i) => i.required && i.id !== "review")
+    .filter((i) => i.required && i.id !== "review" && i.id !== "businesses")
     .every((i) => i.status === "complete");
 
   // Derived lifecycle stage. Design Mode can force any stage for previewing.

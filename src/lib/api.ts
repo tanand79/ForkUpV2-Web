@@ -16,6 +16,7 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const baseUrl = getApiBaseUrl();
   const url = normalizeApiPath(`${baseUrl}${path}`);
   const res = await fetch(url, {
+    cache: "no-store",
     ...init,
     headers: {
       ...authHeaders(),
@@ -259,6 +260,8 @@ export function searchOrganizations(params: {
   if (params.website?.trim()) search.set("website", params.website.trim());
   if (params.ein?.trim()) search.set("ein", params.ein.trim());
   if (params.location?.trim()) search.set("location", params.location.trim());
+  // Bust any intermediary GET cache so a new search never shows a prior org.
+  search.set("_", String(Date.now()));
   return fetchJson<OrganizationSearchResult>(
     `/api/profiles/nonprofits/search?${search.toString()}`,
   );
@@ -332,6 +335,43 @@ export function generateCampaignDraft(body: {
   organizationId?: number;
 }) {
   return fetchJson<CampaignDraftResult>("/api/generate-campaign-draft", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Lovable-style org draft from a website URL (review before save — never auto-claims). */
+export interface OrganizationDraftResult {
+  website: string;
+  kind: string;
+  generatedFields: {
+    organizationName?: string;
+    missionStatement?: string;
+    about?: string;
+    website?: string;
+    contactEmail?: string;
+    phone?: string;
+    location?: string;
+    causeCategory?: string;
+    city?: string;
+    state?: string;
+    ein?: string;
+  };
+  orgType?: string;
+  social?: string[];
+  missingFields?: string[];
+  confirmationStatus: "AI Draft" | "Found Profile" | string;
+  provider?: string;
+}
+
+export function generateOrganizationDraft(body: {
+  website?: string;
+  name?: string;
+  kind?: "nonprofit" | "business";
+  extraContext?: string;
+}) {
+  return fetchJson<OrganizationDraftResult>("/api/generate-organization-draft", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -1416,4 +1456,165 @@ export interface CampaignAnalytics {
 
 export function fetchCampaignAnalytics(slug: string) {
   return fetchJson<CampaignAnalytics>(`/api/manage/campaigns/${slug}/analytics`);
+}
+
+// --- Platform Super Admin ----------------------------------------------------
+
+export type SuperAdminUser = {
+  id: number;
+  email: string;
+  fullName: string | null;
+  username: string | null;
+  isPlatformAdmin: boolean;
+};
+
+export function superAdminLogin(username: string, password: string) {
+  return fetchJson<{ token: string; user: SuperAdminUser }>("/api/superadmin/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export function superAdminForgotPassword(emailOrUsername: string) {
+  return fetchJson<{ success: boolean; message: string }>("/api/superadmin/forgot-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ emailOrUsername }),
+  });
+}
+
+export function superAdminResetPassword(token: string, password: string) {
+  return fetchJson<{ success: boolean }>("/api/superadmin/reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, password }),
+  });
+}
+
+export function fetchSuperAdminMe() {
+  return fetchJson<{ user: SuperAdminUser }>("/api/superadmin/me");
+}
+
+export function updateSuperAdminProfile(body: { fullName?: string; email?: string }) {
+  return fetchJson<{ user: SuperAdminUser }>("/api/superadmin/profile", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function changeSuperAdminPassword(currentPassword: string, newPassword: string) {
+  return fetchJson<{ success: boolean }>("/api/superadmin/change-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export function fetchSuperAdminAiSettings() {
+  return fetchJson<{
+    selectedModelId: string;
+    models: {
+      id: string;
+      label: string;
+      vendor: string;
+      tier: string;
+      blurb: string;
+      inputPer1M: number;
+      outputPer1M: number;
+      estimatedRunCost: number;
+    }[];
+  }>("/api/superadmin/settings/ai");
+}
+
+export function saveSuperAdminAiSettings(modelId: string) {
+  return fetchJson<{ success: boolean; selectedModelId: string }>("/api/superadmin/settings/ai", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ modelId }),
+  });
+}
+
+export function fetchSuperAdminCharges() {
+  return fetchJson<{
+    platformFeePercent: number;
+    example: {
+      eligibleSales: number;
+      givebackPercentage: number;
+      donationPool: number;
+      platformFee: number;
+      netNonprofitAmount: number;
+    };
+  }>("/api/superadmin/settings/charges");
+}
+
+export function saveSuperAdminCharges(platformFeePercent: number) {
+  return fetchJson<{ success: boolean; platformFeePercent: number }>(
+    "/api/superadmin/settings/charges",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platformFeePercent }),
+    },
+  );
+}
+
+export function fetchSuperAdminSmtp() {
+  return fetchJson<{
+    emailProvider: string;
+    smtpHost: string;
+    smtpPort: number;
+    smtpUser: string;
+    smtpPassSet: boolean;
+    smtpPassMasked: string;
+    smtpFrom: string;
+    smtpSecure: boolean;
+    sesConfigured: boolean;
+  }>("/api/superadmin/settings/smtp");
+}
+
+export function saveSuperAdminSmtp(body: Record<string, unknown>) {
+  return fetchJson<{ success: boolean }>("/api/superadmin/settings/smtp", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function testSuperAdminSmtp(to?: string) {
+  return fetchJson<{
+    success: boolean;
+    result: {
+      status: string;
+      provider: string;
+      messageId: string | null;
+      errorMessage?: string | null;
+    };
+  }>("/api/superadmin/settings/smtp/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to }),
+  });
+}
+
+export function fetchSuperAdminAccessRequests(status = "pending") {
+  const qs = new URLSearchParams({ status });
+  return fetchJson<AccessRequest[]>(`/api/superadmin/access-requests?${qs}`);
+}
+
+export function approveSuperAdminAccessRequest(id: number) {
+  return fetchJson<{ success: boolean }>(`/api/superadmin/access-requests/${id}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
+export function denySuperAdminAccessRequest(id: number) {
+  return fetchJson<{ success: boolean }>(`/api/superadmin/access-requests/${id}/deny`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
 }

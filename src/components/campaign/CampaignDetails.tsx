@@ -8,6 +8,7 @@ import {
   storyWordCount,
 } from "@/lib/story-validation";
 import { ActionBar } from "./ChooseBusinesses";
+import { useLovableFlowRedirect } from "./useLovableFlowRedirect";
 
 
 const GIVEBACK = [10, 15, 20];
@@ -29,6 +30,7 @@ function buildTitle(name: string) {
 
 
 export function CampaignDetails() {
+  useLovableFlowRedirect();
   const { state, update, setMethodTiming, clearMethodTiming, next, back, nonprofitName, designMode } = useCampaign();
 
   const enabledMethods = (Object.keys(METHOD_LABELS) as SupportMethod[]).filter(
@@ -460,11 +462,7 @@ export function CampaignDetails() {
         backLabel="Back"
         onBack={back}
         meta={remainingMeta}
-        nextLabel={
-          state.methods.giveback || state.methods.guestBartending
-            ? "Next: Choose / Invite Businesses"
-            : "Next: Campaign Assets"
-        }
+        nextLabel="Next: Campaign Assets"
         nextDisabled={!valid && !designMode}
         onNext={() => {
           if (storyMet && !state.storyAccepted) {

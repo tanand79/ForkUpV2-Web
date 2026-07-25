@@ -2,6 +2,7 @@ import { Check, Store, Heart, Trophy, Wine, ArrowRight, ArrowLeft } from "lucide
 import { assetSrc } from "@/lib/utils";
 import { useCampaign, type SupportMethod } from "@/lib/campaign-context";
 import forkupLogo from "@/assets/forkup-logo.png";
+import { useLovableFlowRedirect } from "./useLovableFlowRedirect";
 
 const OPTIONS: {
   id: SupportMethod;
@@ -63,6 +64,7 @@ const OPTIONS: {
 ];
 
 export function ChooseMethods() {
+  useLovableFlowRedirect();
   const { state, toggleMethod, hasAnyMethod, next, goTo, designMode } = useCampaign();
 
   return (

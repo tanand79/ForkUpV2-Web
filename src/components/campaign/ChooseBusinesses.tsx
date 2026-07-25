@@ -324,7 +324,7 @@ export function ChooseBusinesses() {
               ? "Other active methods can continue while business invites are pending."
               : `${totalOnList} business${totalOnList > 1 ? "es" : ""} on your invite list`
         }
-        nextLabel={canSkip ? "Skip for now" : "Next: Campaign Assets"}
+        nextLabel={canSkip ? "Skip for now — back to Review" : "Next: Review & Launch"}
         nextDisabled={requireBusiness && !designMode}
         onNext={next}
       />

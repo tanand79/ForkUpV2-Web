@@ -108,11 +108,17 @@ export function SuccessStories() {
       </section>
 
       <section className="mx-auto max-w-6xl px-5 py-12 sm:px-6 md:py-16">
-        <div className="grid gap-5 md:grid-cols-2">
-          {successStories.map((c) => (
-            <SuccessStoryCard key={c.slug} campaign={c} onOpen={() => goTo("campaign-directory")} />
-          ))}
-        </div>
+        {successStories.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-border p-10 text-center text-muted-foreground">
+            No success stories yet. Featured completed campaigns will appear here.
+          </p>
+        ) : (
+          <div className="grid gap-5 md:grid-cols-2">
+            {successStories.map((c) => (
+              <SuccessStoryCard key={c.slug} campaign={c} onOpen={() => goTo("campaign-directory")} />
+            ))}
+          </div>
+        )}
       </section>
     </main>
   );

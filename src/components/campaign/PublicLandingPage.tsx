@@ -20,14 +20,15 @@ import { formatCurrency } from "@/data/campaigns";
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchCampaigns } from "@/lib/api";
 import { stashAccountIntent } from "@/lib/campaign-auth";
+import { getAuthToken } from "@/lib/auth-storage";
 import type { CampaignListItem } from "@/lib/campaign-types";
 import { CampaignDirectoryCard } from "@/components/campaign/CampaignDirectoryCard";
 
 /**
  * Public Landing Page — the broad public ForkUp marketplace front door.
  *
- * Routing into the current build:
- *   • Start a Campaign        → Campaign Setup Landing ("start")
+ * Routing into the current build (Lovable flow direction):
+ *   • Start a Campaign        → Find org ("nonprofit-claim") or Org Ready ("start") if claimed
  *   • Explore Live Campaigns  → scroll to Live Campaigns section
  *   • Local business? Join    → Business Claim ("business-claim")
  *   • Campaigns dropdown       → scroll to Live Campaigns / campaign directory
@@ -35,6 +36,10 @@ import { CampaignDirectoryCard } from "@/components/campaign/CampaignDirectoryCa
  *   • For Businesses nav       → scroll to For Local Businesses section
  *   • How ForkUp Works nav     → scroll to How ForkUp Works section
  *   • Campaign card            → /campaign/{slug} (live API data)
+ *
+ * Full nonprofit path:
+ *   Landing → Find org → Claim/edit → Org Ready → Quick Start → Details → Media
+ *   → Review → Invite businesses (if giveback) → Launch
  */
 
 const HOW_IT_WORKS = [
@@ -82,7 +87,7 @@ const WHY_LOVE = [
 ];
 
 export function PublicLandingPage() {
-  const { goTo } = useCampaign();
+  const { goTo, state } = useCampaign();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [liveCampaigns, setLiveCampaigns] = useState<CampaignListItem[]>([]);
   const [campaignsLoading, setCampaignsLoading] = useState(true);
@@ -120,9 +125,16 @@ export function PublicLandingPage() {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  // Lovable parity — Start a Campaign flow direction only:
+  //   no org yet  → Find your organization (nonprofit-claim)
+  //   org already → Organization Ready (start)
   const startCampaign = () => {
     stashAccountIntent("nonprofit");
-    goTo("start");
+    if (state.nonprofitProfile) {
+      goTo("start");
+      return;
+    }
+    goTo("nonprofit-claim");
   };
 
   const joinAsBusiness = () => {
@@ -586,7 +598,19 @@ export function PublicLandingPage() {
 
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-5 py-8 text-sm text-muted-foreground sm:px-6 md:flex-row">
-          <p>© {new Date().getFullYear()} ForkUp. Do good, locally.</p>
+          <p>
+            © {new Date().getFullYear()}{" "}
+            <button
+              type="button"
+              onDoubleClick={() => goTo(getAuthToken() ? "super-admin" : "super-admin-login")}
+              className="cursor-default"
+              title=""
+              aria-label="ForkUp"
+            >
+              ForkUp
+            </button>
+            . Do good, locally.
+          </p>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
             <button onClick={() => scrollTo("campaigns")} className="transition-colors hover:text-foreground">
               Live Campaigns
@@ -602,6 +626,14 @@ export function PublicLandingPage() {
             </button>
             <button onClick={() => scrollTo("businesses")} className="transition-colors hover:text-foreground">
               For Businesses
+            </button>
+            {/* Quiet staff entry — same footer row, low contrast so it isn’t a marketing CTA */}
+            <button
+              type="button"
+              onClick={() => goTo(getAuthToken() ? "super-admin" : "super-admin-login")}
+              className="text-xs text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+            >
+              Staff
             </button>
           </div>
         </div>

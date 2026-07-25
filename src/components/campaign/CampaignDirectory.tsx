@@ -49,7 +49,7 @@ export function CampaignDirectory() {
               type="button"
               onClick={() => {
                 stashAccountIntent("nonprofit");
-                goTo("start");
+                goTo("nonprofit-claim");
               }}
               className="font-semibold text-primary"
             >

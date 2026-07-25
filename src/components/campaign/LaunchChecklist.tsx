@@ -11,9 +11,9 @@ import {
 const PROGRESS_LABEL: Partial<Record<StepId, string>> = {
   methods: "Choose Your Fundraising Methods",
   details: "Tell Your Story",
-  businesses: "Invite Business Partners",
   media: "Add Photos & Branding",
-  review: "Review & Launch",
+  review: "Review Campaign",
+  businesses: "Invite Business Partners",
 };
 
 // Once a step is complete, the chip reads as a finished accomplishment from

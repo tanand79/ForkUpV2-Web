@@ -104,6 +104,8 @@ const SECTIONS: Section[] = [
       { id: "admin-preload", label: "Preload Nonprofits & Businesses" },
       { id: "admin-email-log", label: "Email Log" },
       { id: "admin-access-requests", label: "Trust & Verification Queue" },
+      { id: "super-admin-login", label: "Super Admin Login" },
+      { id: "super-admin", label: "Super Admin Console" },
     ],
   },
   {
