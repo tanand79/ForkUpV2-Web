@@ -2,7 +2,7 @@
 
 import { ArrowRight } from "lucide-react";
 import { assetSrc } from "@/lib/utils";
-import forkupLogo from "@/assets/forkup-logo.png";
+import forkupLogo from "@/assets/new-forkup-6.png";
 import heroCommunity from "@/assets/hero-community.jpg";
 import { useCampaign } from "@/lib/campaign-context";
 import { resolveDashboardStep } from "@/lib/campaign-auth";
@@ -56,9 +56,9 @@ export function StartFundraising() {
           <img
             src={assetSrc(forkupLogo)}
             alt="ForkUp"
-            width={96}
-            height={100}
-            className="h-14 w-auto object-contain"
+            width={220}
+            height={155}
+            className="h-24 w-auto object-contain"
           />
         </button>
         <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">

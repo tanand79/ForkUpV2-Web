@@ -291,7 +291,7 @@ export function PublicLandingPage() {
             height={1080}
             className="h-full w-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-foreground/70 via-foreground/50 to-foreground/20" />
+          <div className="absolute inset-0 bg-gradient-to-r from-foreground/80 via-foreground/60 to-foreground/35" />
         </div>
 
         <div className="relative mx-auto max-w-6xl px-5 pb-16 pt-12 sm:px-6 md:pb-24 md:pt-16">
@@ -300,9 +300,9 @@ export function PublicLandingPage() {
               <img
                 src={assetSrc(forkupLogo)}
                 alt="ForkUp"
-                width={300}
-                height={150}
-                className="h-[104px] w-auto object-contain"
+                width={380}
+                height={190}
+                className="h-[148px] w-auto object-contain md:h-[168px]"
               />
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-background/90">
                 Do good through everyday spending

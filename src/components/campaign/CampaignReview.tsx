@@ -2,7 +2,7 @@
 
 /**
  * Lovable “Review Your Campaign” (step after Prepare My Draft).
- * Inputs: campaign state (title, purpose, dates, goal, methods, story, cover, logo).
+ * Inputs: campaign state (title, purpose, dates, goal, methods, story, cover, logo, promotion).
  * Outputs: editable review UI → Partners (if giveback/guest bartending) or Launch review.
  */
 
@@ -56,6 +56,7 @@ export function CampaignReview() {
   const { state, update, goTo, saveAndExit } = useCampaign();
   const [editBasics, setEditBasics] = useState(false);
   const [editStory, setEditStory] = useState(false);
+  const [editPromotion, setEditPromotion] = useState(false);
   const [featuredOpen, setFeaturedOpen] = useState(false);
   const imageRef = useRef<HTMLInputElement>(null);
   const basicsRef = useRef<HTMLDivElement>(null);
@@ -274,6 +275,101 @@ export function CampaignReview() {
                 <div className="whitespace-pre-wrap rounded-xl bg-secondary/40 p-3 text-sm text-foreground">
                   {state.description ||
                     "Your prepared campaign story will appear here. You can edit anything that needs attention."}
+                </div>
+              )}
+            </ReviewSection>
+
+            {/*
+              Promotion channels — same fields as Campaign Media (old flow).
+              New Lovable path skips Media, so Facebook / Instagram / website live here.
+            */}
+            <ReviewSection
+              title="Promotion channels"
+              action={
+                <button
+                  type="button"
+                  onClick={() => setEditPromotion((v) => !v)}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                >
+                  <Pencil className="size-3" />
+                  {editPromotion ? "Done" : "Edit"}
+                </button>
+              }
+            >
+              <p className="mb-3 text-xs text-muted-foreground">
+                Optional — tell ForkUp where supporters already hear from you. Used for posts,
+                reminders, and sharing tools.
+              </p>
+              {editPromotion ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Facebook Page URL
+                    </label>
+                    <input
+                      value={state.promotion.facebookUrl}
+                      onChange={(e) =>
+                        update({
+                          promotion: { ...state.promotion, facebookUrl: e.target.value },
+                        })
+                      }
+                      className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
+                      placeholder="https://facebook.com/yourorganization"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Instagram Handle
+                    </label>
+                    <input
+                      value={state.promotion.instagramHandle}
+                      onChange={(e) =>
+                        update({
+                          promotion: { ...state.promotion, instagramHandle: e.target.value },
+                        })
+                      }
+                      className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
+                      placeholder="@yourorganization"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">Website URL</label>
+                    <input
+                      value={state.promotion.websiteUrl}
+                      onChange={(e) =>
+                        update({
+                          promotion: { ...state.promotion, websiteUrl: e.target.value },
+                        })
+                      }
+                      className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
+                      placeholder="https://yourorganization.org"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Newsletter / Email List Link or Notes
+                    </label>
+                    <input
+                      value={state.promotion.newsletter}
+                      onChange={(e) =>
+                        update({
+                          promotion: { ...state.promotion, newsletter: e.target.value },
+                        })
+                      }
+                      className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
+                      placeholder="Link to your newsletter, or notes about your email list"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  <ReadField label="Facebook Page URL" value={state.promotion.facebookUrl} />
+                  <ReadField label="Instagram Handle" value={state.promotion.instagramHandle} />
+                  <ReadField label="Website URL" value={state.promotion.websiteUrl} />
+                  <ReadField
+                    label="Newsletter / Email list"
+                    value={state.promotion.newsletter}
+                  />
                 </div>
               )}
             </ReviewSection>

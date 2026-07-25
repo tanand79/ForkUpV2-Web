@@ -5,59 +5,27 @@ import {
   Building2,
   Facebook,
   Globe,
-  Hash,
   Instagram,
   Loader2,
   MapPin,
-  Search,
   Sparkles,
 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import {
   searchOrganizations,
+  suggestUsNonprofits,
   generateOrganizationDraft,
   type OrganizationBusinessWarning,
   type OrganizationMatchStrength,
   type OrganizationSearchCandidate,
   type OrganizationDraftResult,
 } from "@/lib/api";
-
-const field =
-  "w-full rounded-xl border border-border bg-background px-4 py-3 text-sm";
-
-type SearchMode = "name" | "website" | "ein" | "location";
-
-const MODE_CONFIG: Record<
-  SearchMode,
-  { toggle: string; label: string; placeholder: string; inputType: string }
-> = {
-  name: {
-    toggle: "By name",
-    label: "Organization name",
-    placeholder: "e.g. Bayside Animal Rescue",
-    inputType: "text",
-  },
-  website: {
-    toggle: "By website",
-    label: "Organization website",
-    placeholder: "https://yourorganization.org",
-    inputType: "url",
-  },
-  ein: {
-    toggle: "By EIN",
-    label: "EIN (tax ID)",
-    placeholder: "e.g. 12-3456789",
-    inputType: "text",
-  },
-  location: {
-    toggle: "By location",
-    label: "City, state, or ZIP",
-    placeholder: "e.g. West Chester, PA or 19380",
-    inputType: "text",
-  },
-};
-
-const MODE_ORDER: SearchMode[] = ["name", "website", "ein", "location"];
+import {
+  OrganizationNameSuggest,
+  detectOrganizationSearchParams,
+  mergeOrganizationSuggestions,
+} from "@/components/campaign/OrganizationNameSuggest";
+import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
 
 const STRENGTH_META: Record<
   OrganizationMatchStrength,
@@ -126,18 +94,19 @@ function normalizeWebsiteInput(raw: string): string {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
-function prefillFromSearch(mode: SearchMode, value: string): ManualEntryPrefill {
+function prefillFromSearch(value: string): ManualEntryPrefill {
   const trimmed = value.trim();
   if (!trimmed) return {};
-  if (mode === "website") {
+  const params = detectOrganizationSearchParams(trimmed);
+  if (params.website) {
     return {
       website: normalizeWebsiteInput(trimmed),
       organizationName: suggestNameFromWebsite(trimmed),
     };
   }
-  if (mode === "name") return { organizationName: trimmed };
-  if (mode === "ein") return { ein: trimmed };
-  return { city: trimmed };
+  if (params.ein) return { ein: trimmed };
+  if (params.location) return { city: trimmed };
+  return { organizationName: trimmed };
 }
 
 interface OrganizationLookupConfirmProps {
@@ -166,7 +135,6 @@ export function OrganizationLookupConfirm({
   onReviewActiveChange,
   onDraftCaptured,
 }: OrganizationLookupConfirmProps) {
-  const [mode, setMode] = useState<SearchMode>("website");
   const [value, setValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -177,6 +145,8 @@ export function OrganizationLookupConfirm({
   const [aiDraft, setAiDraft] = useState<OrganizationDraftResult | null>(restoredDraft);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  /** When true, hide typeahead (user picked a suggestion or submitted Find). */
+  const [suppressSuggest, setSuppressSuggest] = useState(false);
   /** Ignores stale AI/search responses when the user searches again quickly. */
   const requestIdRef = useRef(0);
 
@@ -269,11 +239,13 @@ export function OrganizationLookupConfirm({
     if (!value.trim()) return;
     const reqId = ++requestIdRef.current;
     setLoading(true);
+    setSuppressSuggest(true);
     resetResults();
     try {
       const trimmed = value.trim();
+      const params = detectOrganizationSearchParams(trimmed);
       // Lovable: website input → coherent website profile review (known/AI), not directory-first.
-      if (mode === "website" || looksLikeWebsite(trimmed)) {
+      if (params.website || looksLikeWebsite(trimmed)) {
         setSearched(true);
         try {
           const result = await searchOrganizations({ website: trimmed });
@@ -288,19 +260,36 @@ export function OrganizationLookupConfirm({
         return;
       }
 
-      const params =
-        mode === "name"
-          ? { q: trimmed }
-          : mode === "ein"
-            ? { ein: trimmed }
-            : { location: trimmed };
       const result = await searchOrganizations(params);
       if (reqId !== requestIdRef.current) return;
-      setCandidates(result.candidates);
+
+      let merged = (result.candidates ?? []).map((c) => ({
+        ...c,
+        source: c.source ?? ("forkup" as const),
+      }));
+
+      // Enrich Find results with national US IRS matches (same one-list UX as typeahead).
+      if (params.q || params.ein || params.location) {
+        try {
+          const usQuery = params.q || params.ein || params.location || trimmed;
+          const stateMatch = trimmed.match(/,\s*([A-Za-z]{2})\s*$/);
+          const us = await suggestUsNonprofits({
+            q: usQuery,
+            state: stateMatch?.[1]?.toUpperCase(),
+            limit: 25,
+          });
+          if (reqId !== requestIdRef.current) return;
+          merged = mergeOrganizationSuggestions(merged, us.candidates ?? [], 25);
+        } catch {
+          /* local results still usable */
+        }
+      }
+
+      setCandidates(merged);
       setBusinessWarning(result.businessWarning);
       setSearched(true);
       // Name miss → known profile / AI draft (production enhancement over Lovable sample-only).
-      if (result.candidates.length === 0 && mode === "name") {
+      if (merged.length === 0 && params.q) {
         void tryAiDraft(trimmed);
       }
     } catch (err) {
@@ -317,96 +306,97 @@ export function OrganizationLookupConfirm({
     resetResults();
     setLoading(false);
     setSearched(false);
+    setSuppressSuggest(false);
     // Keep the query so the user can edit; force a fresh lookup next submit.
   };
 
-  const selectMode = (m: SearchMode) => {
-    if (m === mode) return;
+  /** GoFundMe-style: pick from typeahead → show the same confirm card as Find. */
+  const selectSuggestion = (candidate: OrganizationSearchCandidate) => {
     requestIdRef.current += 1;
-    setMode(m);
-    resetResults();
+    setSuppressSuggest(true);
+    setValue(candidate.organizationName);
+    setCandidates([candidate]);
+    setBusinessWarning(null);
+    setError(null);
+    setAiDraft(null);
+    setAiError(null);
+    setAiBusy(false);
+    onDraftCaptured?.(null);
+    setSearched(true);
     setLoading(false);
-    setSearched(false);
   };
 
   if (!searched) {
     return (
       <div>
-        <p className="text-sm text-muted-foreground">
-          Search the ForkUp directory by website or name. If we don&apos;t have a profile yet,
-          ForkUp can draft one from the website (like Lovable) for you to review — nothing is saved
-          until you confirm.
+        {/* Lovable Find Your Organization search shell (Ui/OrganizationReadiness). */}
+        <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+          Enter your website or organization name. ForkUp will look for an existing profile or help
+          create one you can review before continuing.
         </p>
-        <div className="mt-5 flex flex-wrap gap-1 rounded-2xl border border-border p-1">
-          {MODE_ORDER.map((m) => (
+        <form onSubmit={(e) => void runSearch(e)} className="mt-6">
+          <div className="relative flex items-center gap-2 rounded-xl border border-border bg-background px-3">
+            <Globe className="size-4 shrink-0 text-muted-foreground" />
+            <input
+              required
+              type="text"
+              autoComplete="off"
+              placeholder="Enter website or organization name"
+              value={value}
+              onChange={(e) => {
+                setSuppressSuggest(false);
+                setValue(e.target.value);
+              }}
+              onFocus={() => setSuppressSuggest(false)}
+              className="w-full bg-transparent py-2.5 text-sm outline-none"
+            />
             <button
-              key={m}
-              type="button"
-              onClick={() => selectMode(m)}
-              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-                mode === m
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              type="submit"
+              disabled={loading}
+              className="my-1 shrink-0 rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
             >
-              {MODE_CONFIG[m].toggle}
-            </button>
-          ))}
-        </div>
-        <form onSubmit={(e) => void runSearch(e)} className="mt-4 space-y-4">
-          <label className="block space-y-1.5">
-            <span className="text-sm font-semibold">{MODE_CONFIG[mode].label}</span>
-            <div className="relative">
-              {mode === "name" ? (
-                <Building2 className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              ) : mode === "website" ? (
-                <Globe className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              ) : mode === "ein" ? (
-                <Hash className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              {loading ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Searching…
+                </span>
               ) : (
-                <MapPin className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                "Continue"
               )}
-              <input
-                required
-                type={MODE_CONFIG[mode].inputType}
-                placeholder={MODE_CONFIG[mode].placeholder}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                className={`${field} pl-11`}
-              />
-            </div>
-          </label>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Searching…
-              </>
-            ) : (
-              <>
-                <Search className="size-4" />
-                Find organization
-              </>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => onManualEntry()}
-            className="w-full text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            Enter organization details manually
-          </button>
+            </button>
+            <OrganizationNameSuggest
+              query={value}
+              enabled={!loading && !suppressSuggest}
+              onSelect={selectSuggestion}
+            />
+          </div>
+          {error && (
+            <p className="mt-2 flex items-center gap-1.5 text-sm text-destructive">
+              <AlertTriangle className="size-4" /> {error}
+            </p>
+          )}
+          <p className="mt-2 text-xs text-muted-foreground">
+            Website works best for creating a profile. Organization name works best for finding an
+            existing profile.
+          </p>
+          <div className="mt-8 border-t border-border/60 pt-4">
+            <p className="text-sm text-muted-foreground">
+              Don&apos;t have a website or can&apos;t find your organization?
+            </p>
+            <button
+              type="button"
+              onClick={() => onManualEntry()}
+              className="mt-1 text-sm font-medium text-primary underline-offset-4 transition-colors hover:underline"
+            >
+              Add your organization
+            </button>
+          </div>
         </form>
       </div>
     );
   }
 
-  const createNew = () => onManualEntry(prefillFromSearch(mode, value));
+  const createNew = () => onManualEntry(prefillFromSearch(value));
 
   return (
     <div className="space-y-4">
@@ -562,7 +552,7 @@ export function OrganizationLookupConfirm({
               <p className="text-sm text-muted-foreground">
                 No directory match for <span className="font-medium">{value}</span>.
               </p>
-              {mode === "website" && (
+              {looksLikeWebsite(value) && (
                 <button
                   type="button"
                   onClick={() => void tryAiDraft(value)}
@@ -591,82 +581,99 @@ export function OrganizationLookupConfirm({
         </div>
       ) : (
         <>
-          <p className="text-sm text-muted-foreground">
-            We found{" "}
-            {candidates.length === 1
-              ? "a possible match"
-              : `${candidates.length} possible matches`}
-            . Please confirm which organization is yours.
+          {/* Lovable match-results card treatment (Ui/OrganizationReadiness). */}
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {candidates.length} possible {candidates.length === 1 ? "match" : "matches"} found.
           </p>
-          {STRENGTH_ORDER.map((strength) => {
-            const group = candidates.filter((c) => c.matchStrength === strength);
-            if (group.length === 0) return null;
-            return group.map((candidate) => (
-              <article
-                key={candidate.id ?? candidate.slug}
-                className="rounded-2xl border border-border bg-card p-5"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-secondary">
-                    <Building2 className="size-6 text-muted-foreground" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold">{candidate.organizationName}</p>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STRENGTH_META[candidate.matchStrength].cls}`}
-                      >
-                        {STRENGTH_META[candidate.matchStrength].label}
-                      </span>
+          <p className="text-sm text-muted-foreground">
+            Please confirm which organization is yours.
+          </p>
+          <div className="mt-6 space-y-3">
+            {STRENGTH_ORDER.map((strength) => {
+              const group = candidates.filter((c) => c.matchStrength === strength);
+              if (group.length === 0) return null;
+              return group.map((candidate) => (
+                <article
+                  key={candidate.id ?? candidate.slug}
+                  className="rounded-2xl border border-border bg-card p-4 transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <OrganizationAvatar
+                      className="size-12"
+                      organizationName={candidate.organizationName}
+                      logoUrl={candidate.logoUrl}
+                      website={candidate.website}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold">{candidate.organizationName}</span>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${STRENGTH_META[candidate.matchStrength].cls}`}
+                        >
+                          {STRENGTH_META[candidate.matchStrength].label}
+                        </span>
+                      </div>
+                      {([candidate.city, candidate.state].filter(Boolean).join(", ") ||
+                        candidate.causeCategory) && (
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                          <MapPin className="size-3" />
+                          {[candidate.city, candidate.state].filter(Boolean).join(", ") ||
+                            candidate.causeCategory}
+                          {candidate.website ? ` · ${candidate.website.replace(/^https?:\/\//, "")}` : ""}
+                        </p>
+                      )}
+                      {!([candidate.city, candidate.state].filter(Boolean).join(", ") ||
+                        candidate.causeCategory) &&
+                        candidate.website && (
+                          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                            <Globe className="size-3" />
+                            {candidate.website.replace(/^https?:\/\//, "")}
+                          </p>
+                        )}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Source:{" "}
+                        {candidate.source === "irs_us"
+                          ? "US IRS directory"
+                          : "ForkUp directory"}
+                        {candidate.claimStatus === "claimed" ? " · already claimed" : ""}
+                        {candidate.ein ? ` · EIN ${candidate.ein}` : ""}
+                      </p>
                     </div>
-                    {candidate.website && (
-                      <p className="mt-1 inline-flex items-center gap-1 text-sm text-muted-foreground">
-                        <Globe className="size-3.5" />
-                        {candidate.website}
-                      </p>
-                    )}
-                    {([candidate.city, candidate.state].filter(Boolean).join(", ") ||
-                      candidate.causeCategory) && (
-                      <p className="mt-1 inline-flex items-center gap-1 text-sm text-muted-foreground">
-                        <MapPin className="size-3.5" />
-                        {[candidate.city, candidate.state].filter(Boolean).join(", ") ||
-                          candidate.causeCategory}
-                      </p>
-                    )}
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Source: ForkUp directory
-                      {candidate.claimStatus === "claimed" ? " · already claimed" : ""}
-                    </p>
                   </div>
-                </div>
-                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={() => onConfirm(candidate)}
-                    className="flex-1 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"
-                  >
-                    {candidate.claimStatus === "claimed"
-                      ? "This is my organization — request access"
-                      : "Yes, this is my organization"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={searchAgain}
-                    className="flex-1 rounded-full border border-border px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-secondary/60"
-                  >
-                    No, search again
-                  </button>
-                </div>
-              </article>
-            ));
-          })}
-          <button
-            type="button"
-            onClick={createNew}
-            className="w-full text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            None of these — create new organization
-          </button>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onConfirm(candidate)}
+                      className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                    >
+                      {candidate.claimStatus === "claimed"
+                        ? "Request access"
+                        : "This is my organization"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={searchAgain}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-full border border-border px-5 py-2.5 text-sm font-medium transition-colors hover:bg-secondary"
+                    >
+                      Search again
+                    </button>
+                  </div>
+                </article>
+              ));
+            })}
+          </div>
+          <div className="mt-8 border-t border-border/60 pt-4">
+            <p className="text-sm text-muted-foreground">
+              Don&apos;t have a website or can&apos;t find your organization?
+            </p>
+            <button
+              type="button"
+              onClick={createNew}
+              className="mt-1 text-sm font-medium text-primary underline-offset-4 transition-colors hover:underline"
+            >
+              Add your organization
+            </button>
+          </div>
         </>
       )}
     </div>

@@ -163,6 +163,8 @@ export interface NonprofitProfile {
   claimStatus: string;
   profileStatus: string;
   verified: boolean;
+  /** Additive: org logo when stored on the ForkUp nonprofit row. */
+  logoUrl?: string | null;
 }
 
 export type ReadinessState = "complete" | "needs_review" | "preloaded_unclaimed" | "not_found";
@@ -226,8 +228,13 @@ export function claimNonprofitProfile(body: {
 
 export type OrganizationMatchStrength = "strong" | "partial" | "weak";
 
+/** Additive: local ForkUp directory vs national IRS (ProPublica) match. */
+export type OrganizationDirectorySource = "forkup" | "irs_us";
+
 export interface OrganizationSearchCandidate extends NonprofitProfile {
   matchStrength: OrganizationMatchStrength;
+  /** Present on US IRS suggestions; omitted for legacy local-only search rows. */
+  source?: OrganizationDirectorySource;
 }
 
 export interface OrganizationBusinessWarning {
@@ -264,6 +271,59 @@ export function searchOrganizations(params: {
   search.set("_", String(Date.now()));
   return fetchJson<OrganizationSearchResult>(
     `/api/profiles/nonprofits/search?${search.toString()}`,
+  );
+}
+
+export interface UsNonprofitSuggestResult {
+  query: string;
+  state: string | null;
+  matchCount: number;
+  totalResults: number;
+  provider: string;
+  candidates: OrganizationSearchCandidate[];
+}
+
+/**
+ * GoFundMe-style US nonprofit typeahead (IRS via ProPublica).
+ * method: GET /api/profiles/nonprofits/us-suggest
+ */
+export function suggestUsNonprofits(params: {
+  q: string;
+  state?: string;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  search.set("q", params.q.trim());
+  if (params.state?.trim()) search.set("state", params.state.trim());
+  if (params.limit != null) search.set("limit", String(params.limit));
+  search.set("_", String(Date.now()));
+  return fetchJson<UsNonprofitSuggestResult>(
+    `/api/profiles/nonprofits/us-suggest?${search.toString()}`,
+  );
+}
+
+export interface UsNonprofitEnrichment {
+  ein: string;
+  organizationName: string | null;
+  website: string | null;
+  logoUrl: string | null;
+  mission: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  providers: string[];
+}
+
+/**
+ * Enrich a US IRS pick with website/logo/ZIP/mission (Every.org + ProPublica detail).
+ * method: GET /api/profiles/nonprofits/us-enrich
+ */
+export function enrichUsNonprofit(params: { ein: string }) {
+  const search = new URLSearchParams();
+  search.set("ein", params.ein.trim());
+  search.set("_", String(Date.now()));
+  return fetchJson<UsNonprofitEnrichment>(
+    `/api/profiles/nonprofits/us-enrich?${search.toString()}`,
   );
 }
 
@@ -315,12 +375,16 @@ export interface CampaignDraftResult {
   story: string;
   purpose: string;
   suggestedImageUrl?: string | null;
+  /** AI / library-suggested promotion channels (optional; organizer can edit). */
+  facebookUrl?: string;
+  instagramHandle?: string;
+  websiteUrl?: string;
 }
 
 /**
  * GoFundMe-style quick-start: send the organizer's short answers and receive an
- * AI-prepared title / story / purpose to review and edit. Text only — no image
- * generation. Mirrors the improve-story gateway route on the backend.
+ * AI-prepared title / story / purpose (and optional social/website links) to
+ * review and edit. Text only — no image generation.
  */
 export function generateCampaignDraft(body: {
   purpose: string;
@@ -333,6 +397,7 @@ export function generateCampaignDraft(body: {
   methods?: string[];
   organizationType?: "nonprofit" | "business";
   organizationId?: number;
+  website?: string;
 }) {
   return fetchJson<CampaignDraftResult>("/api/generate-campaign-draft", {
     method: "POST",

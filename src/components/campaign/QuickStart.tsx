@@ -15,7 +15,8 @@ import {
   Wand2,
 } from "lucide-react";
 import { useCampaign, type SupportMethod, type SupportMethods } from "@/lib/campaign-context";
-import { generateCampaignDraft } from "@/lib/api";
+import { fetchManageCampaigns, generateCampaignDraft } from "@/lib/api";
+import { getAuthToken } from "@/lib/auth-storage";
 
 /**
  * Lovable “Build Your Campaign” — guided substeps:
@@ -23,6 +24,9 @@ import { generateCampaignDraft } from "@/lib/api";
  *
  * Method defaults (Online Donations + Ambassador ON) apply ONLY here;
  * the full builder’s defaults are unchanged.
+ *
+ * Goal screen also offers memory fundraising: if this nonprofit has a prior
+ * campaign with funds raised, prompt to reuse that amount as the new goal.
  */
 
 const METHOD_OPTIONS: {
@@ -72,6 +76,99 @@ const BUILD_PROGRESS_MESSAGES = [
 
 type BuildSub = "purpose" | "goal" | "methods";
 
+const FUNDRAISING_MEMORY_KEY = "forkup-fundraising-memory";
+
+/** Format a prior amount for the memory prompt (e.g. $15,000). */
+function formatRaisedAmount(n: number): string {
+  return `$${Math.round(n).toLocaleString()}`;
+}
+
+function orgMemoryKey(org: { id?: number; organizationName: string } | null | undefined): string {
+  if (!org) return "";
+  if (org.id) return `id:${org.id}`;
+  return `name:${org.organizationName.trim().toLowerCase()}`;
+}
+
+type PriorFunds = {
+  amount: number;
+  campaignName: string;
+  kind: "raised" | "goal" | "memory";
+};
+
+type MemoryStore = Record<string, { amount: number; campaignName?: string }>;
+
+function readFundraisingMemory(key: string): PriorFunds | null {
+  if (!key || typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(FUNDRAISING_MEMORY_KEY);
+    if (!raw) return null;
+    const store = JSON.parse(raw) as MemoryStore;
+    const row = store[key];
+    if (!row || !(Number(row.amount) > 0)) return null;
+    return {
+      amount: Number(row.amount),
+      campaignName: row.campaignName?.trim() || "",
+      kind: "memory",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeFundraisingMemory(
+  key: string,
+  amount: number,
+  campaignName?: string,
+): void {
+  if (!key || !(amount > 0) || typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(FUNDRAISING_MEMORY_KEY);
+    const store: MemoryStore = raw ? (JSON.parse(raw) as MemoryStore) : {};
+    store[key] = {
+      amount,
+      ...(campaignName?.trim() ? { campaignName: campaignName.trim() } : {}),
+    };
+    window.localStorage.setItem(FUNDRAISING_MEMORY_KEY, JSON.stringify(store));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function parseGoalNumber(raw: string): number {
+  const n = Number(String(raw).replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Memory fundraising auto-detection.
+ * Prefer prior raised > 0; else prior campaign goal > 0 (API order is newest first).
+ */
+function pickPriorFunds(
+  rows: { raised: number; goal: number; status: string; name: string }[],
+): PriorFunds | null {
+  const withRaised = rows.filter((r) => Number(r.raised) > 0);
+  if (withRaised.length > 0) {
+    const preferred =
+      withRaised.find((r) => /completed|settled|closed|live|ready/i.test(r.status)) ??
+      withRaised[0];
+    return {
+      amount: Number(preferred.raised),
+      campaignName: preferred.name,
+      kind: "raised",
+    };
+  }
+  const withGoal = rows.filter((r) => Number(r.goal) > 0);
+  if (withGoal.length === 0) return null;
+  const preferred =
+    withGoal.find((r) => /completed|settled|closed|live|ready/i.test(r.status)) ??
+    withGoal[0];
+  return {
+    amount: Number(preferred.goal),
+    campaignName: preferred.name,
+    kind: "goal",
+  };
+}
+
 export function QuickStart() {
   const { state, update, goTo } = useCampaign();
 
@@ -90,10 +187,16 @@ export function QuickStart() {
   const [building, setBuilding] = useState(false);
   const [progressIdx, setProgressIdx] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  /** Prior fundraising amount for the “repeat?” prompt on the goal screen. */
+  const [priorFunds, setPriorFunds] = useState<PriorFunds | null>(null);
+  const [priorPromptDismissed, setPriorPromptDismissed] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<{
     title: string;
     story: string;
     suggestedImageUrl?: string | null;
+    facebookUrl?: string;
+    instagramHandle?: string;
+    websiteUrl?: string;
     fromAi: boolean;
   } | null>(null);
 
@@ -108,6 +211,9 @@ export function QuickStart() {
     title: string;
     story: string;
     suggestedImageUrl?: string | null;
+    facebookUrl?: string;
+    instagramHandle?: string;
+    websiteUrl?: string;
     fromAi: boolean;
   }) => {
     const fallbackTitle =
@@ -131,6 +237,13 @@ export function QuickStart() {
       methods,
       fundsSupport: [purpose.trim()],
       ...(suggestedCover ? { cover: suggestedCover } : {}),
+      promotion: {
+        facebookUrl: (draft.facebookUrl ?? "").trim() || state.promotion.facebookUrl,
+        instagramHandle:
+          (draft.instagramHandle ?? "").trim() || state.promotion.instagramHandle,
+        websiteUrl: (draft.websiteUrl ?? "").trim() || state.promotion.websiteUrl,
+        newsletter: state.promotion.newsletter,
+      },
       storyAccepted: false,
       aiDrafted: draft.fromAi,
     });
@@ -156,6 +269,7 @@ export function QuickStart() {
       setTouched(true);
       return;
     }
+    rememberGoalIfAny();
     setError(null);
     setProgressIdx(0);
     setBuilding(true);
@@ -171,11 +285,15 @@ export function QuickStart() {
         methods: selectedLabels,
         organizationType: "nonprofit",
         organizationId: org?.id,
+        website: state.promotion.websiteUrl || undefined,
       });
       setPendingDraft({
         title: draft.title,
         story: draft.story,
         suggestedImageUrl: draft.suggestedImageUrl,
+        facebookUrl: draft.facebookUrl,
+        instagramHandle: draft.instagramHandle,
+        websiteUrl: draft.websiteUrl,
         fromAi: true,
       });
     } catch {
@@ -187,6 +305,36 @@ export function QuickStart() {
   useEffect(() => {
     if (!org) goTo("nonprofit-claim");
   }, [org, goTo]);
+
+  // Memory fundraising: detect prior raised / goal for this nonprofit (amount screen).
+  useEffect(() => {
+    const memKey = orgMemoryKey(org);
+    const fromMemory = readFundraisingMemory(memKey);
+
+    const nonprofitId = org?.id;
+    if (!nonprofitId || !getAuthToken()) {
+      setPriorFunds(fromMemory);
+      return;
+    }
+    let cancelled = false;
+    void fetchManageCampaigns(nonprofitId)
+      .then((rows) => {
+        if (cancelled) return;
+        setPriorFunds(pickPriorFunds(rows) ?? fromMemory);
+      })
+      .catch(() => {
+        if (!cancelled) setPriorFunds(fromMemory);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [org?.id, org?.organizationName]);
+
+  /** Persist typed goal into local memory so the prompt can return next time. */
+  const rememberGoalIfAny = () => {
+    const amount = parseGoalNumber(goal);
+    if (amount > 0) writeFundraisingMemory(orgMemoryKey(org), amount);
+  };
 
   const panelClass = "mx-auto max-w-xl px-5 py-6 pb-32 sm:px-6";
   const headlineClass =
@@ -380,6 +528,69 @@ export function QuickStart() {
               placeholder="$10,000"
               className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none sm:max-w-xs"
             />
+            {/* Memory fundraising auto-detection — prior raised / goal prompt. */}
+            {priorFunds && !priorPromptDismissed && (
+              <div className="mt-3 rounded-2xl border border-primary/25 bg-accent/40 p-3.5 sm:max-w-md">
+                <p className="text-sm leading-relaxed text-foreground">
+                  {priorFunds.kind === "raised" ? (
+                    <>
+                      Your last campaign
+                      {priorFunds.campaignName ? (
+                        <>
+                          {" "}
+                          (<span className="font-semibold">{priorFunds.campaignName}</span>)
+                        </>
+                      ) : null}{" "}
+                      raised{" "}
+                      <span className="font-semibold">
+                        {formatRaisedAmount(priorFunds.amount)}
+                      </span>
+                      . Would you like to repeat the funds raised previously?
+                    </>
+                  ) : (
+                    <>
+                      Your last campaign
+                      {priorFunds.campaignName ? (
+                        <>
+                          {" "}
+                          (<span className="font-semibold">{priorFunds.campaignName}</span>)
+                        </>
+                      ) : null}{" "}
+                      used a fundraising goal of{" "}
+                      <span className="font-semibold">
+                        {formatRaisedAmount(priorFunds.amount)}
+                      </span>
+                      . Would you like to repeat the funds raised previously?
+                    </>
+                  )}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const formatted = formatRaisedAmount(priorFunds.amount);
+                      setGoal(formatted);
+                      writeFundraisingMemory(
+                        orgMemoryKey(org),
+                        priorFunds.amount,
+                        priorFunds.campaignName,
+                      );
+                      setPriorPromptDismissed(true);
+                    }}
+                    className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                  >
+                    Yes, use {formatRaisedAmount(priorFunds.amount)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPriorPromptDismissed(true)}
+                    className="inline-flex items-center rounded-full border border-border bg-card px-4 py-2 text-xs font-medium transition-colors hover:bg-secondary"
+                  >
+                    No thanks
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
@@ -408,8 +619,14 @@ export function QuickStart() {
         </main>
         <StickyFooter
           onBack={() => setSub("purpose")}
-          onPrimary={() => setSub("methods")}
-          onSkip={() => setSub("methods")}
+          onPrimary={() => {
+            rememberGoalIfAny();
+            setSub("methods");
+          }}
+          onSkip={() => {
+            rememberGoalIfAny();
+            setSub("methods");
+          }}
           primaryLabel="Continue"
         />
       </>

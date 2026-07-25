@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowRight, Building2, Heart, User } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { stashAccountIntent } from "@/lib/campaign-auth";
 import { assetSrc } from "@/lib/utils";
-import forkupLogo from "@/assets/forkup-logo-transparent.png";
+import forkupLogo from "@/assets/new-forkup-6.png";
 
 /**
  * GoFundMe-style create entry (Nick V2 speed layer).
@@ -130,9 +130,9 @@ export function CreateFundraiser() {
         <img
           src={assetSrc(forkupLogo)}
           alt="ForkUp"
-          width={120}
-          height={40}
-          className="h-9 w-auto object-contain"
+          width={200}
+          height={90}
+          className="h-16 w-auto object-contain"
         />
       </button>
 

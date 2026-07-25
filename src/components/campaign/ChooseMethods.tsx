@@ -1,7 +1,7 @@
 import { Check, Store, Heart, Trophy, Wine, ArrowRight, ArrowLeft } from "lucide-react";
 import { assetSrc } from "@/lib/utils";
 import { useCampaign, type SupportMethod } from "@/lib/campaign-context";
-import forkupLogo from "@/assets/forkup-logo.png";
+import forkupLogo from "@/assets/new-forkup-6.png";
 import { useLovableFlowRedirect } from "./useLovableFlowRedirect";
 
 const OPTIONS: {
@@ -160,7 +160,7 @@ export function ChooseMethods() {
               alt="ForkUp"
               width={96}
               height={100}
-              className="h-16 w-auto object-contain"
+              className="h-20 w-auto object-contain"
             />
           </button>
         </div>

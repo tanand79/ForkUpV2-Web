@@ -6,6 +6,7 @@ import {
   Send,
   CheckCircle2,
   Loader2,
+  ArrowLeft,
   ArrowRight,
   XCircle,
   MapPin,
@@ -31,6 +32,7 @@ import {
   fetchNonprofitCampaignInvite,
   linkUserOrganization,
   searchNonprofits,
+  enrichUsNonprofit,
   sendNonprofitCampaignInvite,
   type NonprofitCampaignInvite,
   type NonprofitClaimRequestResult,
@@ -40,6 +42,7 @@ import {
   type OrganizationDraftResult,
 } from "@/lib/api";
 import { OrganizationLookupConfirm, ORG_TYPE_OPTIONS } from "@/components/campaign/OrganizationLookupConfirm";
+import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
 import { loadUserSession } from "@/lib/auth-session";
 import {
   clearBusinessClaimDraft,
@@ -168,6 +171,7 @@ export function NonprofitClaim() {
   const [contactEmail, setContactEmail] = useState(existing?.contactEmail ?? "");
   const [mission, setMission] = useState(existing?.mission ?? "");
   const [website, setWebsite] = useState("");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [ein, setEin] = useState("");
   const [city, setCity] = useState("");
   const [stateVal, setStateVal] = useState("");
@@ -233,6 +237,7 @@ export function NonprofitClaim() {
     setContactEmail(candidate.contactEmail ?? "");
     setMission(candidate.mission ?? "");
     setWebsite(candidate.website ?? "");
+    setLogoUrl(candidate.logoUrl ?? null);
     setEin(candidate.ein ?? "");
     setCity(candidate.city ?? "");
     setStateVal(candidate.state ?? "");
@@ -241,6 +246,29 @@ export function NonprofitClaim() {
     setAlreadyClaimed(candidate.claimStatus === "claimed");
     setError(null);
     setPhase("form");
+
+    // US IRS picks often lack website/logo/ZIP in ProPublica search — enrich via Every.org + detail.
+    const einValue = candidate.ein?.trim();
+    if (
+      einValue &&
+      (candidate.source === "irs_us" || !candidate.website || !candidate.logoUrl || !candidate.zip)
+    ) {
+      void enrichUsNonprofit({ ein: einValue })
+        .then((enriched) => {
+          if (enriched.website) setWebsite(enriched.website);
+          if (enriched.logoUrl) setLogoUrl(enriched.logoUrl);
+          if (enriched.zip) setZip(enriched.zip);
+          if (enriched.mission) setMission((prev) => prev || enriched.mission || "");
+          if (enriched.city) setCity((prev) => prev || enriched.city || "");
+          if (enriched.state) setStateVal((prev) => prev || enriched.state || "");
+          if (enriched.organizationName) {
+            setOrganizationName((prev) => prev || enriched.organizationName || "");
+          }
+        })
+        .catch(() => {
+          /* keep ProPublica fields — enrichment is best-effort */
+        });
+    }
   };
 
   const applyActiveProfile = (nonprofit: NonprofitProfile) => {
@@ -337,34 +365,38 @@ export function NonprofitClaim() {
     }
   };
 
+  // Lovable OrganizationReadiness Shell: max-w-3xl, Playfair titles, back link.
   return (
-    <main className={`mx-auto px-5 py-10 sm:px-6 ${foundByForkUp && phase === "form" && !isEditing ? "max-w-3xl" : "max-w-lg"}`}>
+    <main className="mx-auto max-w-3xl px-5 py-8 sm:px-6">
       {!(foundByForkUp && phase === "form" && !isEditing) && !reviewActive && (
         <div>
           {phase === "lookup" && !isEditing && (
             <button
               type="button"
               onClick={() => goTo("website-landing")}
-              className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+              className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
-              ← Back to Home
+              <ArrowLeft className="size-4" />
+              Back to Home
             </button>
           )}
-          <div className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-accent text-primary">
-              <HeartHandshake className="size-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-primary">Organization setup</p>
-              <h1 className="text-2xl font-extrabold tracking-tight">
-                {isEditing
-                  ? "Update your nonprofit profile"
-                  : phase === "lookup"
-                    ? "Find your organization"
+          {phase === "lookup" && !isEditing ? (
+            <h1 className="font-display text-3xl font-bold tracking-tight">Find your organization</h1>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex size-11 items-center justify-center rounded-2xl bg-accent text-primary">
+                <HeartHandshake className="size-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Organization setup</p>
+                <h1 className="font-display text-3xl font-bold tracking-tight">
+                  {isEditing
+                    ? "Update your nonprofit profile"
                     : "Confirm your organization details"}
-              </h1>
+                </h1>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -426,6 +458,7 @@ export function NonprofitClaim() {
                 .filter(Boolean);
               setOrganizationName(prefill?.organizationName?.trim() ?? "");
               setWebsite(prefill?.website?.trim() ?? "");
+              setLogoUrl(null);
               setMission(prefill?.mission?.trim() ?? "");
               setContactName(prefill?.contactName?.trim() ?? "");
               setContactEmail(prefill?.contactEmail?.trim() ?? "");
@@ -635,8 +668,28 @@ export function NonprofitClaim() {
           </p>
 
           <form onSubmit={submit} className="mt-8 space-y-4">
+            <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
+              <OrganizationAvatar
+                className="size-14"
+                organizationName={organizationName || "Organization"}
+                logoUrl={logoUrl}
+                website={website}
+              />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">
+                  {organizationName || "Organization"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {logoUrl || website
+                    ? "Profile image from public charity directory"
+                    : "No public logo on file — using initials"}
+                </p>
+              </div>
+            </div>
             <label className="block space-y-1.5">
-              <span className="text-sm font-semibold">Organization name</span>
+              <span className="text-sm font-semibold">
+                Organization name <span className="text-destructive">*</span>
+              </span>
               <input required value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} className={field} />
             </label>
             <label className="block space-y-1.5">
@@ -666,7 +719,9 @@ export function NonprofitClaim() {
               <input value={contactName} onChange={(e) => setContactName(e.target.value)} className={field} />
             </label>
             <label className="block space-y-1.5">
-              <span className="text-sm font-semibold">Contact email</span>
+              <span className="text-sm font-semibold">
+                Contact email <span className="text-destructive">*</span>
+              </span>
               <input required type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={field} />
             </label>
             <label className="block space-y-1.5">
@@ -914,7 +969,9 @@ export function BusinessClaim() {
       ) : (
       <form onSubmit={submit} className="mt-8 space-y-4">
         <label className="block space-y-1.5">
-          <span className="text-sm font-semibold">Business name</span>
+          <span className="text-sm font-semibold">
+            Business name <span className="text-destructive">*</span>
+          </span>
           <input
             required
             value={businessName}
@@ -932,7 +989,9 @@ export function BusinessClaim() {
           />
         </label>
         <label className="block space-y-1.5">
-          <span className="text-sm font-semibold">Contact email</span>
+          <span className="text-sm font-semibold">
+            Contact email <span className="text-destructive">*</span>
+          </span>
           <input
             required
             type="email"

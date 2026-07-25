@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { assetSrc } from "@/lib/utils";
-import forkupLogo from "@/assets/forkup-logo.png";
+import forkupLogo from "@/assets/new-forkup-6.png";
 
 export const headerPillClass =
   "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:border-primary/40";
@@ -19,9 +19,9 @@ export function SiteHeaderLogo({
     <img
       src={assetSrc(forkupLogo)}
       alt="ForkUp"
-      width={232}
-      height={100}
-      className="h-12 w-auto object-contain"
+      width={280}
+      height={120}
+      className="h-16 w-auto object-contain"
     />
   );
 
@@ -101,7 +101,7 @@ export function SiteHeader({
   return (
     <header className={`${sticky ? "sticky top-0 z-50" : ""} ${headerShellClass}`}>
       <div className="mx-auto max-w-5xl px-5 sm:px-6">
-        <div className="flex h-16 items-center justify-between gap-3">
+        <div className="flex h-20 items-center justify-between gap-3">
           {leading ?? <SiteHeaderLogo href={logoHref} onClick={logoOnClick} />}
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
             {trailing}
