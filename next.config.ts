@@ -18,7 +18,8 @@ const nextConfig: NextConfig = {
   ...(useStaticExport ? { output: "export" as const } : {}),
   trailingSlash: true,
   images: { unoptimized: true },
-  outputFileTracingRoot: path.join(__dirname, ".."),
+  // Standalone Forkup-Web repo (Amplify). Use app root — not parent (that was for local monorepo layout).
+  outputFileTracingRoot: __dirname,
   devIndicators: false,
   experimental: {
     // Avoid lucide barrel import issues in dev (missing icon modules).

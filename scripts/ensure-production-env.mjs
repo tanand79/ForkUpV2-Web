@@ -6,6 +6,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.join(root, "..");
 const target = path.join(webRoot, ".env.production");
 const source = path.join(webRoot, "_env.production");
+const sourceExample = path.join(webRoot, "_env.production.example");
 
 function isLoopbackApiUrl(url) {
   try {
@@ -36,6 +37,9 @@ if (fromProcess) {
 } else if (fs.existsSync(source)) {
   fs.copyFileSync(source, target);
   console.log("Wrote web/.env.production from _env.production");
+} else if (fs.existsSync(sourceExample)) {
+  fs.copyFileSync(sourceExample, target);
+  console.log("Wrote web/.env.production from _env.production.example");
 } else {
   console.error(
     "Missing NEXT_PUBLIC_API_URL: supply Amplify env or Forkup-Web/_env.production",
@@ -46,7 +50,8 @@ if (fromProcess) {
 const resolved =
   fromProcess ||
   readApiUrlFromEnvFile(target) ||
-  readApiUrlFromEnvFile(source);
+  readApiUrlFromEnvFile(source) ||
+  readApiUrlFromEnvFile(sourceExample);
 
 if (!resolved) {
   console.error("NEXT_PUBLIC_API_URL is empty for production build");

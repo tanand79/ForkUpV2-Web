@@ -1,0 +1,4 @@
+# Used by `npm run build` via scripts/ensure-production-env.mjs → .env.production
+# Also set the same key in Amplify → Environment variables so cloud builds pick it up.
+
+NEXT_PUBLIC_API_URL=http://54.242.154.3:3001

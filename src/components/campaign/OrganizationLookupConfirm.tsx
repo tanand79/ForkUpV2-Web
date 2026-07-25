@@ -263,7 +263,7 @@ export function OrganizationLookupConfirm({
       const result = await searchOrganizations(params);
       if (reqId !== requestIdRef.current) return;
 
-      let merged = (result.candidates ?? []).map((c) => ({
+      let merged: OrganizationSearchCandidate[] = (result.candidates ?? []).map((c) => ({
         ...c,
         source: c.source ?? ("forkup" as const),
       }));

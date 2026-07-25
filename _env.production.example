@@ -1,15 +1,4 @@
 # Baked into `npm run build` as NEXT_PUBLIC_API_URL.
 # Copy to `_env.production` (local) and/or set in Amplify Environment variables.
-# Do not hardcode the API URL in public/runtime-config.js unless you need a post-deploy override.
-#
-# Mixed content note:
-# Amplify serves the site over HTTPS. Browsers block calls to http:// API URLs.
-# Keep this as http:// for Amplify *build-time* fetches (SSG), but configure
-# Amplify Rewrites (see amplify-rewrites.json) so the browser uses same-origin
-# /api → proxied to EC2. The client auto-falls back to same-origin when the
-# page is HTTPS and this value is HTTP.
-#
-# Longer-term: put HTTPS on the API (ALB/ACM or nginx+Let's Encrypt) and set:
-#   NEXT_PUBLIC_API_URL=https://api.yourdomain.com
 
-NEXT_PUBLIC_API_URL=https://forkup.duckdns.org
+NEXT_PUBLIC_API_URL=http://54.242.154.3:3001
