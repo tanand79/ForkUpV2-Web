@@ -291,7 +291,7 @@ export function PublicLandingPage() {
             height={1080}
             className="h-full w-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-foreground/80 via-foreground/60 to-foreground/35" />
+          <div className="absolute inset-0 bg-foreground/78" />
         </div>
 
         <div className="relative mx-auto max-w-6xl px-5 pb-16 pt-12 sm:px-6 md:pb-24 md:pt-16">

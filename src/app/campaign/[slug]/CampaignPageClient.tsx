@@ -17,20 +17,23 @@ function slugFromPathname(pathname: string): string {
   return decodeURIComponent(raw);
 }
 
-/** Static Apache hosts rewrite to /campaign/_/index.html — read slug from the URL bar. */
-function useCampaignSlugFromUrl(): string {
-  const [slug, setSlug] = useState(() =>
-    typeof window !== "undefined" ? slugFromPathname(window.location.pathname) : "",
-  );
+/**
+ * Static Apache hosts rewrite to /campaign/_/index.html — read slug from the URL bar.
+ * Must start empty on server and client so the first paint matches (avoids hydration mismatch).
+ */
+function useCampaignSlugFromUrl(): { slug: string; ready: boolean } {
+  const [slug, setSlug] = useState("");
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const read = () => setSlug(slugFromPathname(window.location.pathname));
     read();
+    setReady(true);
     window.addEventListener("popstate", read);
     return () => window.removeEventListener("popstate", read);
   }, []);
 
-  return slug;
+  return { slug, ready };
 }
 
 function CampaignPageShell({ children }: { children: React.ReactNode }) {
@@ -61,7 +64,7 @@ export default function CampaignPageClient({
 }: {
   initialCampaign?: CampaignDetail | null;
 }) {
-  const slug = useCampaignSlugFromUrl();
+  const { slug, ready } = useCampaignSlugFromUrl();
 
   const { data: campaign, isPending, isError } = useQuery({
     queryKey: ["campaigns", slug],
@@ -70,6 +73,11 @@ export default function CampaignPageClient({
     initialData: initialCampaign ?? undefined,
     staleTime: 30_000,
   });
+
+  // Same tree on SSR + first client paint — slug is only known after mount.
+  if (!ready || (isPending && !campaign)) {
+    return <PublicCampaignSkeleton />;
+  }
 
   if (!slug) {
     return (
@@ -80,10 +88,6 @@ export default function CampaignPageClient({
         </Link>
       </CampaignPageShell>
     );
-  }
-
-  if (isPending && !campaign) {
-    return <PublicCampaignSkeleton />;
   }
 
   if (isError || !campaign) {

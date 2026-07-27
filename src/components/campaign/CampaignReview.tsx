@@ -20,8 +20,22 @@ import {
   Replace,
 } from "lucide-react";
 import { useCampaign, SUPPORT_METHOD_META, type SupportMethod } from "@/lib/campaign-context";
+import { uploadImage } from "@/lib/api";
+import { CampaignGalleryPicker } from "@/components/campaign/CampaignGalleryPicker";
 
 const METHOD_LABELS = SUPPORT_METHOD_META;
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+
+/** Reads a File as a data-URL string for the upload API. */
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Could not read the selected image"));
+    reader.readAsDataURL(file);
+  });
+}
 
 function ReadField({ label, value }: { label: string; value: string }) {
   return (
@@ -58,6 +72,8 @@ export function CampaignReview() {
   const [editStory, setEditStory] = useState(false);
   const [editPromotion, setEditPromotion] = useState(false);
   const [featuredOpen, setFeaturedOpen] = useState(false);
+  const [featuredError, setFeaturedError] = useState<string | null>(null);
+  const [featuredUploading, setFeaturedUploading] = useState(false);
   const imageRef = useRef<HTMLInputElement>(null);
   const basicsRef = useRef<HTMLDivElement>(null);
   const startDateRef = useRef<HTMLInputElement>(null);
@@ -102,12 +118,42 @@ export function CampaignReview() {
     });
   }
 
-  const ready = attention.length === 0;
+  const ready = attention.length === 0 && !featuredUploading;
 
-  const handleImage = (file: File | null) => {
+  /**
+   * Sets a local preview immediately, then uploads to storage so `storedUrl`
+   * is durable (S3 or /uploads/…). Without this, launch would persist a blob: URL.
+   */
+  const handleImage = async (file: File | null) => {
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    update({ cover: { id: `cover-${Date.now()}`, url, name: file.name } });
+    setFeaturedError(null);
+    if (!IMAGE_TYPES.includes(file.type)) {
+      setFeaturedError("Image must be a JPG, PNG, or WEBP file.");
+      return;
+    }
+    if (file.size > IMAGE_MAX_BYTES) {
+      setFeaturedError("Image must be 10MB or smaller.");
+      return;
+    }
+
+    const coverId = `cover-${Date.now()}`;
+    const previewUrl = URL.createObjectURL(file);
+    update({ cover: { id: coverId, url: previewUrl, name: file.name } });
+    setFeaturedUploading(true);
+    try {
+      const imageBase64 = await readFileAsDataUrl(file);
+      const { url: storedUrl } = await uploadImage({
+        imageBase64,
+        imageMimeType: file.type,
+        kind: "cover",
+      });
+      update({ cover: { id: coverId, url: previewUrl, name: file.name, storedUrl } });
+      setFeaturedOpen(false);
+    } catch {
+      setFeaturedError("We couldn't save that image. Please check your connection and try again.");
+    } finally {
+      setFeaturedUploading(false);
+    }
   };
 
   const continueNext = () => {
@@ -383,9 +429,13 @@ export function CampaignReview() {
                     <div className="relative aspect-[21/9] w-full bg-secondary">
                       {featuredImage ? (
                         <img
-                          src={featuredImage.url}
+                          src={featuredImage.url || featuredImage.storedUrl}
                           alt="Featured campaign image"
                           className="size-full object-cover"
+                          onError={() => {
+                            // Drop broken library/social URLs so the user can upload or reload.
+                            update({ cover: null });
+                          }}
                         />
                       ) : (
                         <div className="flex size-full flex-col items-center justify-center gap-1.5 text-muted-foreground">
@@ -406,6 +456,13 @@ export function CampaignReview() {
                     </button>
                   </div>
                 </div>
+
+                <CampaignGalleryPicker
+                  promotion={state.promotion}
+                  cover={state.cover}
+                  images={state.images}
+                  onChange={({ cover, images }) => update({ cover, images })}
+                />
 
                 <div className="flex items-center gap-3 rounded-xl bg-secondary/40 p-3">
                   <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-background ring-1 ring-border">
@@ -510,8 +567,7 @@ export function CampaignReview() {
         accept="image/png,image/jpeg,image/webp"
         className="hidden"
         onChange={(e) => {
-          handleImage(e.target.files?.[0] ?? null);
-          setFeaturedOpen(false);
+          void handleImage(e.target.files?.[0] ?? null);
           e.target.value = "";
         }}
       />
@@ -524,7 +580,8 @@ export function CampaignReview() {
               <button
                 type="button"
                 onClick={() => setFeaturedOpen(false)}
-                className="text-xs font-medium text-muted-foreground hover:text-foreground"
+                disabled={featuredUploading}
+                className="text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"
               >
                 Close
               </button>
@@ -533,11 +590,15 @@ export function CampaignReview() {
               <button
                 type="button"
                 onClick={() => imageRef.current?.click()}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-secondary/30 px-4 py-8 text-sm font-semibold transition-colors hover:bg-secondary"
+                disabled={featuredUploading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-secondary/30 px-4 py-8 text-sm font-semibold transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <ImageIcon className="size-5" />
-                Upload an image
+                {featuredUploading ? "Saving image…" : "Upload an image"}
               </button>
+              {featuredError && (
+                <p className="text-xs font-medium text-destructive">{featuredError}</p>
+              )}
             </div>
           </div>
         </div>

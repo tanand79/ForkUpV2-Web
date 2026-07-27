@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { assetSrc } from "@/lib/utils";
-import forkupLogo from "@/assets/new-forkup-6.png";
+import forkupLogo from "@/assets/forkup-logo.png";
 
 export const headerPillClass =
   "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:border-primary/40";

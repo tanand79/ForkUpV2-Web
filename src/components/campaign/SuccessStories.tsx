@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Heart, Quote, Sparkles, Store, Users } from "lucide-react";
+import { ArrowLeft, Heart, Quote, Sparkles, Store, Users } from "lucide-react";
 import { successStories, formatCurrency, type Campaign } from "@/data/campaigns";
 import { useCampaign } from "@/lib/campaign-context";
 
@@ -8,9 +8,10 @@ import { useCampaign } from "@/lib/campaign-context";
  * Success Stories — a standalone public, curated proof-of-concept view (not a
  * homepage section). Opened from the Campaigns dropdown → "Success Stories".
  * Reuses selected completed campaign data with community-impact framing.
+ * Cards are display-only — story/impact copy is already on the card (no redirect to live directory).
  */
 
-function SuccessStoryCard({ campaign, onOpen }: { campaign: Campaign; onOpen: () => void }) {
+function SuccessStoryCard({ campaign }: { campaign: Campaign }) {
   return (
     <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
       <div className="relative aspect-[16/9] overflow-hidden bg-muted">
@@ -66,15 +67,6 @@ function SuccessStoryCard({ campaign, onOpen }: { campaign: Campaign; onOpen: ()
           </span>
         </div>
 
-        <div className="mt-auto pt-2">
-          <button
-            onClick={onOpen}
-            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-md shadow-primary/20 transition-all hover:bg-primary-dark hover:-translate-y-0.5 active:scale-95"
-          >
-            View Story
-            <ArrowRight className="size-4" />
-          </button>
-        </div>
       </div>
     </article>
   );
@@ -115,7 +107,7 @@ export function SuccessStories() {
         ) : (
           <div className="grid gap-5 md:grid-cols-2">
             {successStories.map((c) => (
-              <SuccessStoryCard key={c.slug} campaign={c} onOpen={() => goTo("campaign-directory")} />
+              <SuccessStoryCard key={c.slug} campaign={c} />
             ))}
           </div>
         )}

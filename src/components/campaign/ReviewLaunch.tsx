@@ -17,8 +17,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { useCampaign, SUPPORT_METHOD_META, type SupportMethod } from "@/lib/campaign-context";
-import { createCampaign, updateCampaign } from "@/lib/api";
-import { buildCreateCampaignPayload } from "@/lib/builder-submit";
+import { createCampaign, updateCampaign, putCampaignImages } from "@/lib/api";
+import { buildCreateCampaignPayload, buildCampaignGalleryPayload, durableCoverImageUrl } from "@/lib/builder-submit";
 
 function formatDate(d: string) {
   if (!d) return "";
@@ -81,6 +81,13 @@ export function ReviewLaunch() {
       goTo("nonprofit-claim");
       return;
     }
+    // Block launch when the cover is only a temporary blob: preview (never persisted).
+    if (!durableCoverImageUrl(state)) {
+      setLaunchError(
+        "Your campaign image wasn't saved to storage. Go back and re-upload the featured image, then try again.",
+      );
+      return;
+    }
 
     setLaunching(true);
     setLaunchError(null);
@@ -100,6 +107,14 @@ export function ReviewLaunch() {
       const result = state.campaignSlug
         ? await updateCampaign(state.campaignSlug, payload)
         : await createCampaign(payload);
+      const gallery = buildCampaignGalleryPayload(state);
+      if (gallery.length > 0) {
+        try {
+          await putCampaignImages(result.slug, gallery);
+        } catch (galleryErr) {
+          console.warn("Campaign gallery save skipped:", galleryErr);
+        }
+      }
       update({
         campaignSlug: result.slug,
         invited: state.invited.map((b) => ({ ...b, persisted: true })),

@@ -574,8 +574,11 @@ function AiTab() {
       tier: string;
       blurb: string;
       estimatedRunCost: number;
+      pricingSource?: "aws" | "fallback";
     }[]
   >([]);
+  const [pricingSource, setPricingSource] = useState<"aws" | "fallback" | "mixed" | null>(null);
+  const [pricingFetchedAt, setPricingFetchedAt] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -585,6 +588,8 @@ function AiTab() {
       .then((r) => {
         setSelected(r.selectedModelId);
         setModels(r.models);
+        setPricingSource(r.pricingSource ?? null);
+        setPricingFetchedAt(r.pricingFetchedAt ?? null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false));
@@ -609,6 +614,16 @@ function AiTab() {
     );
   }
 
+  const pricingLabel =
+    pricingSource === "aws"
+      ? "Live from AWS"
+      : pricingSource === "mixed"
+        ? "Live from AWS (partial)"
+        : "Cached estimate";
+  const fetchedLabel = pricingFetchedAt
+    ? ` · updated ${new Date(pricingFetchedAt).toLocaleString()}`
+    : "";
+
   return (
     <section className="rounded-2xl border border-border bg-card p-5">
       <h2 className="flex items-center gap-2 text-lg font-bold">
@@ -617,6 +632,10 @@ function AiTab() {
       <p className="mt-1 text-sm text-muted-foreground">
         Choose the Bedrock model used for organization and campaign drafts. Estimated run cost shown
         per typical draft (~10k in / 3.5k out tokens).
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Pricing: <span className="font-medium text-foreground">{pricingLabel}</span>
+        {fetchedLabel}
       </p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {models.map((m) => (
@@ -635,6 +654,9 @@ function AiTab() {
             <p className="mt-1 text-xs text-muted-foreground">{m.blurb}</p>
             <p className="mt-2 text-xs font-semibold text-primary">
               Est. {formatCost(m.estimatedRunCost)} / run
+              <span className="ml-1 font-normal text-muted-foreground">
+                · {m.pricingSource === "aws" ? "Live from AWS" : "Cached estimate"}
+              </span>
             </p>
           </button>
         ))}
@@ -722,14 +744,13 @@ function ChargesTab() {
 }
 
 function SmtpTab() {
-  const [emailProvider, setEmailProvider] = useState("ses");
+  const [emailProvider, setEmailProvider] = useState("smtp");
   const [smtpHost, setSmtpHost] = useState("");
   const [smtpPort, setSmtpPort] = useState(587);
   const [smtpUser, setSmtpUser] = useState("");
   const [smtpPass, setSmtpPass] = useState("");
   const [smtpFrom, setSmtpFrom] = useState("");
   const [smtpSecure, setSmtpSecure] = useState(false);
-  const [sesConfigured, setSesConfigured] = useState(false);
   const [passSet, setPassSet] = useState(false);
   const [testTo, setTestTo] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -739,13 +760,13 @@ function SmtpTab() {
   useEffect(() => {
     void fetchSuperAdminSmtp()
       .then((r) => {
-        setEmailProvider(r.emailProvider);
+        // SES is hidden — coerce legacy "ses" to SMTP.
+        setEmailProvider(r.emailProvider === "noop" ? "noop" : "smtp");
         setSmtpHost(r.smtpHost);
         setSmtpPort(r.smtpPort);
         setSmtpUser(r.smtpUser);
         setSmtpFrom(r.smtpFrom);
         setSmtpSecure(r.smtpSecure);
-        setSesConfigured(r.sesConfigured);
         setPassSet(r.smtpPassSet);
         if (r.smtpPassSet) setSmtpPass("");
       })
@@ -757,8 +778,9 @@ function SmtpTab() {
     setError(null);
     setMessage(null);
     try {
+      const provider = emailProvider === "noop" ? "noop" : "smtp";
       await saveSuperAdminSmtp({
-        emailProvider,
+        emailProvider: provider,
         smtpHost,
         smtpPort,
         smtpUser,
@@ -766,6 +788,7 @@ function SmtpTab() {
         smtpSecure,
         ...(smtpPass.trim() ? { smtpPass } : {}),
       });
+      setEmailProvider(provider);
       setMessage("SMTP settings saved.");
       setPassSet(Boolean(smtpPass.trim()) || passSet);
       setSmtpPass("");
@@ -806,8 +829,7 @@ function SmtpTab() {
     <section className="rounded-2xl border border-border bg-card p-5">
       <h2 className="text-lg font-bold">Email / SMTP setup</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Choose how ForkUp sends mail. SES uses server env vars; SMTP uses the fields below.
-        {sesConfigured ? " SES env looks configured." : " SES env is not fully configured."}
+        Configure Brevo (or other) SMTP below. All system emails use these settings.
       </p>
 
       <div className="mt-4">
@@ -817,7 +839,6 @@ function SmtpTab() {
           onChange={(e) => setEmailProvider(e.target.value)}
           className={fieldClass}
         >
-          <option value="ses">AWS SES</option>
           <option value="smtp">SMTP</option>
           <option value="noop">No-op (log only)</option>
         </select>

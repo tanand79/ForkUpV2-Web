@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Calendar, Users } from "lucide-react";
 import { assetSrc } from "@/lib/utils";
 import heroImg from "@/assets/hero-campaign.jpg";
-import forkupLogo from "@/assets/forkup-logo-transparent.png";
+import forkupLogo from "@/assets/forkup-logo.png";
 import { useCampaign } from "@/lib/campaign-context";
 import {
   getCampaignTitle,

@@ -1,24 +1,26 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  BadgeCheck,
   Calendar,
   CheckCircle2,
+  ChevronDown,
   ExternalLink,
   Heart,
   Loader2,
   MapPin,
   Receipt,
-  Share2,
-  Store,
-  Users,
 } from "lucide-react";
-import { formatCurrency } from "@/data/campaigns";
 import { resolveCampaignImage } from "@/lib/campaign-images";
 import type { CampaignDetail, ParticipatingLocation } from "@/lib/campaign-types";
-import { submitParticipation } from "@/lib/api";
+import { submitParticipation, fetchCampaignDonations, fetchCampaignImages } from "@/lib/api";
 import { DonationModal } from "@/components/campaign/DonationModal";
+import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
+import { PublicCampaignDonationsFeed } from "@/components/campaign/PublicCampaignDonationsFeed";
+import { PublicCampaignFundraisingPanel } from "@/components/campaign/PublicCampaignFundraisingPanel";
 import { HeaderPillLink, SiteHeader } from "@/components/campaign/SiteHeader";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
@@ -250,12 +252,68 @@ function LocationCard({ loc, campaignSlug }: { loc: ParticipatingLocation; campa
   );
 }
 
+function CampaignStory({ description }: { description: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = description.length > 480 || description.split("\n").length > 6;
+
+  return (
+    <section className="mt-10">
+      <div className="relative">
+        <p
+          className={`whitespace-pre-line text-base leading-relaxed text-foreground/90 md:text-lg ${
+            !expanded && isLong ? "max-h-[280px] overflow-hidden" : ""
+          }`}
+        >
+          {description}
+        </p>
+        {!expanded && isLong && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background to-transparent" />
+        )}
+      </div>
+      {isLong && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+        >
+          {expanded ? "Show less" : "Read more"}
+          <ChevronDown className={`size-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        </button>
+      )}
+    </section>
+  );
+}
+
 export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
   const [donateOpen, setDonateOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [donationRefreshKey, setDonationRefreshKey] = useState(0);
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
 
   const showDonations = campaign.methods.some((m) => m.methodType === "virtual_donations");
   const showLocations = campaign.participatingLocations.length > 0;
+
+  const { data: donationsData } = useQuery({
+    queryKey: ["campaign-donations", campaign.slug, donationRefreshKey],
+    queryFn: () => fetchCampaignDonations(campaign.slug),
+    enabled: showDonations,
+    staleTime: 30_000,
+  });
+
+  const { data: galleryData } = useQuery({
+    queryKey: ["campaign-images", campaign.slug],
+    queryFn: () => fetchCampaignImages(campaign.slug),
+    staleTime: 60_000,
+  });
+
+  const galleryUrls = (() => {
+    const fromApi = (galleryData?.images ?? [])
+      .map((i) => i.imageUrl)
+      .filter(Boolean);
+    if (fromApi.length > 0) return fromApi;
+    return [resolveCampaignImage(campaign.image)];
+  })();
+  const heroSrc = galleryUrls[Math.min(activeImageIdx, galleryUrls.length - 1)] ?? resolveCampaignImage(campaign.image);
 
   const scrollToLocations = () => {
     document.getElementById("locations")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -285,11 +343,22 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
     }
   };
 
-  const pct =
-    campaign.goal > 0 ? Math.min(100, Math.round((campaign.raised / campaign.goal) * 100)) : 0;
+  const panelProps = {
+    raised: campaign.raised,
+    goal: campaign.goal,
+    supportersGoing: campaign.supportersGoing,
+    participatingLocationCount: campaign.participatingLocationCount,
+    donationCount: donationsData?.totalCount,
+    showDonate: showDonations,
+    showLocations,
+    copied,
+    onDonate: () => setDonateOpen(true),
+    onShare: () => void handleShare(),
+    onParticipate: scrollToLocations,
+  };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-24 lg:pb-12">
       <SiteHeader
         trailing={
           <>
@@ -306,132 +375,182 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
         }
       />
 
-      <section className="relative border-b border-border bg-muted">
-        <div className="relative mx-auto w-full">
-          <img
-            src={resolveCampaignImage(campaign.image)}
-            alt={campaign.name}
-            className="mx-auto block w-full max-h-[min(520px,70vh)] object-contain object-center"
-          />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-foreground/85 via-foreground/45 to-transparent pt-20 sm:pt-28">
-            <div className="mx-auto max-w-3xl px-5 pb-8 text-background">
-              <p className="text-xs font-medium uppercase tracking-wider text-background/80">
-                {campaign.nonprofit}
-                {campaign.nonprofitVerified && " · Verified"}
-              </p>
-              <h1 className="font-display mt-2 text-4xl font-semibold tracking-tight sm:text-5xl">
-                {campaign.name}
-              </h1>
-              <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-background/90">
-                <Calendar className="size-4" />
-                {campaign.dateRange}
-              </p>
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 md:py-10">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-10 xl:grid-cols-[minmax(0,1fr)_380px]">
+          {/* Main column — GoFundMe-style content flow */}
+          <div className="min-w-0">
+            <div className="overflow-hidden rounded-2xl border border-border bg-muted">
+              <img
+                src={heroSrc}
+                alt={campaign.name}
+                className="aspect-[16/10] w-full object-cover"
+              />
             </div>
-          </div>
-        </div>
-      </section>
+            {galleryUrls.length > 1 && (
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                {galleryUrls.map((src, idx) => (
+                  <button
+                    key={`${src}-${idx}`}
+                    type="button"
+                    onClick={() => setActiveImageIdx(idx)}
+                    className={`size-16 shrink-0 overflow-hidden rounded-lg ring-2 transition-shadow ${
+                      idx === activeImageIdx ? "ring-primary" : "ring-transparent opacity-80 hover:opacity-100"
+                    }`}
+                  >
+                    <img src={src} alt="" className="size-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
 
-      <div className="mx-auto max-w-3xl px-5 py-10">
-        <div className="rounded-2xl border border-border bg-card p-6">
-          <p className="font-display text-3xl font-semibold text-primary">
-            {formatCurrency(campaign.raised)}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            raised{campaign.goal > 0 ? ` of ${formatCurrency(campaign.goal)} goal` : ""}
-          </p>
-          {campaign.goal > 0 && (
-            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-secondary">
-              <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+            <h1 className="font-display mt-6 text-2xl font-bold leading-tight tracking-tight text-foreground sm:text-3xl md:text-4xl">
+              {campaign.name}
+            </h1>
+
+            <div className="mt-5 flex items-center gap-3">
+              <OrganizationAvatar
+                organizationName={campaign.nonprofit}
+                className="size-11 rounded-full"
+              />
+              <div>
+                <p className="text-sm text-foreground">
+                  <span className="font-semibold">{campaign.nonprofit}</span> is organizing
+                </p>
+                {campaign.nonprofitVerified && (
+                  <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                    <BadgeCheck className="size-3.5" />
+                    Verified nonprofit
+                  </p>
+                )}
+              </div>
             </div>
-          )}
-          <div className="mt-4 flex flex-wrap gap-4 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              <Users className="size-4" />
-              {campaign.supportersGoing} supporters going
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Store className="size-4" />
-              {campaign.participatingLocationCount} locations
-            </span>
+
+            {/* Mobile fundraising summary */}
+            <div className="mt-6 lg:hidden">
+              <PublicCampaignFundraisingPanel {...panelProps} compact />
+            </div>
+
+            <CampaignStory description={campaign.description} />
+
+            {showDonations && (
+              <section className="mt-10">
+                <PublicCampaignDonationsFeed
+                  slug={campaign.slug}
+                  refreshKey={donationRefreshKey}
+                  data={donationsData}
+                />
+              </section>
+            )}
+
+            {showLocations && (
+              <section id="locations" className="mt-10 scroll-mt-24">
+                <h2 className="text-xl font-bold">Participating businesses</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Visit these locations during the campaign window. A portion of eligible sales
+                  supports {campaign.nonprofit}.
+                </p>
+                <ul className="mt-6 space-y-4">
+                  {campaign.participatingLocations.map((loc) => (
+                    <LocationCard
+                      key={`${loc.businessId}-${loc.locationId}-${loc.methodId}`}
+                      loc={loc}
+                      campaignSlug={campaign.slug}
+                    />
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {campaign.methods.length > 0 && (
+              <section className="mt-10 border-t border-border pt-8">
+                <ul className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                  <li className="inline-flex items-center gap-1.5">
+                    <Calendar className="size-4" />
+                    {campaign.dateRange}
+                  </li>
+                  {campaign.methods.map((m) => (
+                    <li
+                      key={m.id}
+                      className="rounded-full border border-border bg-secondary/40 px-3 py-1 text-xs font-medium text-foreground"
+                    >
+                      {m.methodName}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
-          <div className="mt-6 flex flex-wrap gap-3">
+
+          {/* Sticky sidebar — desktop */}
+          <aside className="hidden lg:block">
+            <div className="sticky top-24 space-y-6">
+              <PublicCampaignFundraisingPanel {...panelProps} />
+
+              <div className="rounded-2xl border border-border bg-card p-5">
+                <h3 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                  Organizer
+                </h3>
+                <div className="mt-4 flex items-center gap-3">
+                  <OrganizationAvatar
+                    organizationName={campaign.nonprofit}
+                    className="size-12 rounded-full"
+                  />
+                  <div>
+                    <p className="font-semibold">{campaign.nonprofit}</p>
+                    <p className="text-sm text-muted-foreground">Nonprofit organizer</p>
+                  </div>
+                </div>
+                <p className="mt-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Calendar className="size-4" />
+                  {campaign.dateRange}
+                </p>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </main>
+
+      {/* Mobile sticky donate bar — GoFundMe pattern */}
+      {(showDonations || showLocations) && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 p-4 backdrop-blur-md lg:hidden">
+          <div className="mx-auto flex max-w-lg gap-2">
             {showDonations && (
               <button
                 type="button"
                 onClick={() => setDonateOpen(true)}
-                className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-bold text-primary-foreground"
               >
                 <Heart className="size-4" />
                 Donate
               </button>
             )}
-            {showLocations && (
+            {showLocations && !showDonations && (
               <button
                 type="button"
                 onClick={scrollToLocations}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-secondary/60"
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-bold text-primary-foreground"
               >
                 <MapPin className="size-4" />
-                Where to participate
+                Participate
               </button>
             )}
             <button
               type="button"
               onClick={() => void handleShare()}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-secondary/60"
+              className="inline-flex items-center justify-center rounded-full border border-border px-4 py-3 text-sm font-semibold"
             >
-              {copied ? <CheckCircle2 className="size-4 text-primary" /> : <Share2 className="size-4" />}
-              {copied ? "Link copied" : "Share"}
+              {copied ? <CheckCircle2 className="size-4 text-primary" /> : "Share"}
             </button>
           </div>
         </div>
-
-        <section className="mt-10">
-          <h2 className="text-xl font-bold">About this campaign</h2>
-          <p className="mt-3 whitespace-pre-line text-lg leading-relaxed text-foreground/90">
-            {campaign.description}
-          </p>
-        </section>
-
-        {showLocations && (
-          <section id="locations" className="mt-10 scroll-mt-20">
-            <h2 className="text-xl font-bold">Participating businesses</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Visit these locations during the campaign window. A portion of eligible sales supports{" "}
-              {campaign.nonprofit}.
-            </p>
-            <ul className="mt-6 space-y-4">
-              {campaign.participatingLocations.map((loc) => (
-                <LocationCard
-                  key={`${loc.businessId}-${loc.locationId}-${loc.methodId}`}
-                  loc={loc}
-                  campaignSlug={campaign.slug}
-                />
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {campaign.methods.length > 0 && (
-          <section className="mt-10">
-            <h2 className="text-xl font-bold">Fundraising methods</h2>
-            <ul className="mt-3 flex flex-wrap gap-2">
-              {campaign.methods.map((m) => (
-                <li
-                  key={m.id}
-                  className="rounded-full border border-border bg-secondary/50 px-3 py-1 text-sm font-medium"
-                >
-                  {m.methodName}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-      </div>
+      )}
 
       <DonationModal
         open={donateOpen}
-        onOpenChange={setDonateOpen}
+        onOpenChange={(open) => {
+          setDonateOpen(open);
+          if (!open) setDonationRefreshKey((k) => k + 1);
+        }}
         campaignSlug={campaign.slug}
         nonprofitName={campaign.nonprofit}
       />

@@ -59,3 +59,16 @@ export interface CampaignDetail extends CampaignListItem {
   methods: CampaignMethod[];
   participatingLocations: ParticipatingLocation[];
 }
+
+/** Public donation row for campaign page feed. */
+export interface CampaignDonation {
+  donorName: string;
+  amount: number;
+  createdAt: string;
+  anonymous: boolean;
+}
+
+export interface CampaignDonationsResponse {
+  totalCount: number;
+  donations: CampaignDonation[];
+}

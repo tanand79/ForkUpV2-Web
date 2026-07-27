@@ -316,11 +316,20 @@ export interface UsNonprofitEnrichment {
 
 /**
  * Enrich a US IRS pick with website/logo/ZIP/mission (Every.org + ProPublica detail).
+ * When website is still missing, AI-guesses from organization name (optional name/city/state).
  * method: GET /api/profiles/nonprofits/us-enrich
  */
-export function enrichUsNonprofit(params: { ein: string }) {
+export function enrichUsNonprofit(params: {
+  ein: string;
+  organizationName?: string;
+  city?: string;
+  state?: string;
+}) {
   const search = new URLSearchParams();
   search.set("ein", params.ein.trim());
+  if (params.organizationName?.trim()) search.set("name", params.organizationName.trim());
+  if (params.city?.trim()) search.set("city", params.city.trim());
+  if (params.state?.trim()) search.set("state", params.state.trim());
   search.set("_", String(Date.now()));
   return fetchJson<UsNonprofitEnrichment>(
     `/api/profiles/nonprofits/us-enrich?${search.toString()}`,
@@ -1119,6 +1128,12 @@ export function deleteLibraryItem(id: number) {
 
 // ─── Virtual donations ───────────────────────────────────────────────────────
 
+export function fetchCampaignDonations(slug: string, limit = 20) {
+  return fetchJson<import("@/lib/campaign-types").CampaignDonationsResponse>(
+    `/api/campaigns/${slug}/donations?limit=${limit}`,
+  );
+}
+
 export function submitVirtualDonation(
   slug: string,
   body: {
@@ -1369,6 +1384,60 @@ export function uploadImage(body: {
   });
 }
 
+// ─── Campaign gallery images (max 6) ─────────────────────────────────────────
+
+export interface SuggestedCampaignImage {
+  url: string;
+  source: "website" | "facebook" | "instagram" | "social_suggest";
+  sourceUrl: string | null;
+}
+
+export interface CampaignGalleryImage {
+  id: number;
+  imageUrl: string;
+  storedUrl?: string;
+  source: string;
+  sourceUrl: string | null;
+  sortOrder: number;
+  isCover: boolean;
+}
+
+/** POST /api/campaign-images/suggest — OG/preview images from social + website. */
+export function suggestCampaignImages(body: {
+  facebookUrl?: string;
+  instagramHandle?: string;
+  websiteUrl?: string;
+  limit?: number;
+}) {
+  return fetchJson<{ images: SuggestedCampaignImage[] }>("/api/campaign-images/suggest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** GET /api/campaign-images/:slug — public gallery. */
+export function fetchCampaignImages(slug: string) {
+  return fetchJson<{ images: CampaignGalleryImage[] }>(`/api/campaign-images/${slug}`);
+}
+
+/** PUT /api/campaign-images/:slug — replace gallery (auth required). */
+export function putCampaignImages(
+  slug: string,
+  images: {
+    imageUrl: string;
+    source?: string;
+    sourceUrl?: string | null;
+    isCover?: boolean;
+  }[],
+) {
+  return fetchJson<{ images: CampaignGalleryImage[] }>(`/api/campaign-images/${slug}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ images }),
+  });
+}
+
 // ─── Settlement ──────────────────────────────────────────────────────────────
 
 export interface SettlementReport {
@@ -1577,9 +1646,17 @@ export function changeSuperAdminPassword(currentPassword: string, newPassword: s
   });
 }
 
+/**
+ * GET /api/superadmin/settings/ai
+ * Response: selectedModelId, pricingSource ("aws"|"fallback"|"mixed"),
+ * pricingFetchedAt (ISO), models[{ id, label, vendor, tier, blurb,
+ * inputPer1M, outputPer1M, pricingSource, estimatedRunCost }]
+ */
 export function fetchSuperAdminAiSettings() {
   return fetchJson<{
     selectedModelId: string;
+    pricingSource?: "aws" | "fallback" | "mixed";
+    pricingFetchedAt?: string;
     models: {
       id: string;
       label: string;
@@ -1588,6 +1665,7 @@ export function fetchSuperAdminAiSettings() {
       blurb: string;
       inputPer1M: number;
       outputPer1M: number;
+      pricingSource?: "aws" | "fallback";
       estimatedRunCost: number;
     }[];
   }>("/api/superadmin/settings/ai");

@@ -1,7 +1,7 @@
 import { Check, Store, Heart, Trophy, Wine, ArrowRight, ArrowLeft } from "lucide-react";
 import { assetSrc } from "@/lib/utils";
 import { useCampaign, type SupportMethod } from "@/lib/campaign-context";
-import forkupLogo from "@/assets/new-forkup-6.png";
+import forkupLogo from "@/assets/forkup-logo.png";
 import { useLovableFlowRedirect } from "./useLovableFlowRedirect";
 
 const OPTIONS: {

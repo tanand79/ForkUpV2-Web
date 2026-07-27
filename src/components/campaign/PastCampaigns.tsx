@@ -10,12 +10,13 @@ import { useCampaign } from "@/lib/campaign-context";
  * campaigns and their final results with a "Back to Home" affordance.
  */
 
-function PastCampaignCard({ campaign, onOpen }: { campaign: Campaign; onOpen: () => void }) {
+/**
+ * Past campaign result card — display-only (no link to live directory).
+ * These fixtures are not live API campaigns.
+ */
+function PastCampaignCard({ campaign }: { campaign: Campaign }) {
   return (
-    <button
-      onClick={onOpen}
-      className="group block w-full overflow-hidden rounded-2xl border border-border bg-card text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
-    >
+    <article className="group block w-full overflow-hidden rounded-2xl border border-border bg-card text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
         <img
           src={campaign.image}
@@ -67,7 +68,7 @@ function PastCampaignCard({ campaign, onOpen }: { campaign: Campaign; onOpen: ()
           </div>
         </div>
       </div>
-    </button>
+    </article>
   );
 }
 
@@ -102,7 +103,7 @@ export function PastCampaigns() {
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {pastCampaigns.map((c) => (
-              <PastCampaignCard key={c.slug} campaign={c} onOpen={() => goTo("campaign-directory")} />
+              <PastCampaignCard key={c.slug} campaign={c} />
             ))}
           </div>
         )}

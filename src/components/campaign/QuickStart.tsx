@@ -226,6 +226,8 @@ export function QuickStart() {
             id: `library-${Date.now()}`,
             url: draft.suggestedImageUrl.trim(),
             name: "Suggested from library",
+            storedUrl: draft.suggestedImageUrl.trim(),
+            source: "library" as const,
           }
         : null;
     update({

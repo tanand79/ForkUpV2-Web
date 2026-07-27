@@ -28,8 +28,8 @@ import {
   lockedPartnerToBusiness,
   stateFromBuilderCampaign,
 } from "@/lib/campaign-flow";
-import { createCampaign, fetchBuilderCampaign, fetchManageCampaigns, updateCampaign } from "@/lib/api";
-import { buildDraftSavePayload, canSaveDraftToServer } from "@/lib/builder-submit";
+import { createCampaign, fetchBuilderCampaign, fetchManageCampaigns, updateCampaign, putCampaignImages } from "@/lib/api";
+import { buildDraftSavePayload, buildCampaignGalleryPayload, canSaveDraftToServer } from "@/lib/builder-submit";
 import { subtractCalendarDays, toDateOnlyString } from "@/lib/date-only";
 import { invalidateNonprofitDashboardCache } from "@/lib/nonprofit-dashboard-cache";
 
@@ -309,6 +309,15 @@ export interface CampaignImage {
    * is what gets persisted on the campaign.
    */
   storedUrl?: string;
+  /** Where the image came from (social suggest, manual upload, etc.). */
+  source?:
+    | "manual"
+    | "website"
+    | "facebook"
+    | "instagram"
+    | "library"
+    | "social_suggest";
+  sourceUrl?: string | null;
 }
 
 export interface CampaignVideo {
@@ -1191,6 +1200,14 @@ export function CampaignProvider({
         const result = slug
           ? await updateCampaign(slug, payload)
           : await createCampaign(payload);
+        const gallery = buildCampaignGalleryPayload(stateRef.current);
+        if (gallery.length > 0) {
+          try {
+            await putCampaignImages(result.slug, gallery);
+          } catch {
+            /* gallery is additive — draft save still succeeds without it */
+          }
+        }
         setState((prev) => ({
           ...prev,
           campaignSlug: result.slug,

@@ -1,3 +1,4 @@
+import { apiUrl } from "@/lib/api-config";
 import { assetSrc } from "@/lib/utils";
 import restaurant from "@/assets/campaign-restaurant.jpg";
 import animals from "@/assets/campaign-animals.jpg";
@@ -26,12 +27,19 @@ const BY_FILENAME: Record<string, string> = {
   "placeholder-cover.jpg": assetSrc(heroCampaign),
 };
 
-/** Resolve API cover_image_url to a browser-loadable src. */
+/**
+ * Resolve API cover_image_url to a browser-loadable src.
+ * Passes through http(s), /assets/, and /uploads/ (disk) paths; maps known
+ * filenames; otherwise falls back to the shared hero image.
+ */
 export function resolveCampaignImage(image: string | null | undefined): string {
   if (!image?.trim()) return assetSrc(heroCampaign);
   const trimmed = image.trim();
+  // Temporary browser object URLs are not durable — treat as missing.
+  if (trimmed.startsWith("blob:") || trimmed.startsWith("data:")) return assetSrc(heroCampaign);
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
   if (trimmed.startsWith("/assets/")) return trimmed;
+  if (trimmed.startsWith("/uploads/")) return apiUrl(trimmed);
   const key = trimmed.replace(/^\//, "");
   return BY_FILENAME[key] ?? BY_FILENAME[trimmed] ?? assetSrc(heroCampaign);
 }

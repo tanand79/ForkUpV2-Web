@@ -55,6 +55,15 @@ import {
 const field =
   "w-full rounded-xl border border-border bg-background px-4 py-3 text-sm";
 
+/**
+ * Keep US ZIP as 5 digits (drop ZIP+4 / extra characters).
+ * Input: raw zip string from form, draft, or directory enrichment.
+ * Output: up to 5 digits, or empty string.
+ */
+function normalizeUsZip(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 5);
+}
+
 /** Lovable Edit organization details — rounded inputs (Ui/OrganizationReadiness). */
 const lovableInput =
   "mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary/50";
@@ -224,7 +233,7 @@ export function NonprofitClaim() {
     setEin(draft.ein);
     setCity(draft.city);
     setStateVal(draft.stateVal);
-    setZip(draft.zip);
+    setZip(normalizeUsZip(draft.zip));
     setRelationship(draft.relationship);
     setExistingSlug(draft.existingSlug);
     setAlreadyClaimed(draft.alreadyClaimed);
@@ -241,7 +250,7 @@ export function NonprofitClaim() {
     setEin(candidate.ein ?? "");
     setCity(candidate.city ?? "");
     setStateVal(candidate.state ?? "");
-    setZip(candidate.zip ?? "");
+    setZip(normalizeUsZip(candidate.zip ?? ""));
     setExistingSlug(candidate.slug);
     setAlreadyClaimed(candidate.claimStatus === "claimed");
     setError(null);
@@ -253,11 +262,16 @@ export function NonprofitClaim() {
       einValue &&
       (candidate.source === "irs_us" || !candidate.website || !candidate.logoUrl || !candidate.zip)
     ) {
-      void enrichUsNonprofit({ ein: einValue })
+      void enrichUsNonprofit({
+        ein: einValue,
+        organizationName: candidate.organizationName,
+        city: candidate.city ?? undefined,
+        state: candidate.state ?? undefined,
+      })
         .then((enriched) => {
           if (enriched.website) setWebsite(enriched.website);
           if (enriched.logoUrl) setLogoUrl(enriched.logoUrl);
-          if (enriched.zip) setZip(enriched.zip);
+          if (enriched.zip) setZip(normalizeUsZip(enriched.zip));
           if (enriched.mission) setMission((prev) => prev || enriched.mission || "");
           if (enriched.city) setCity((prev) => prev || enriched.city || "");
           if (enriched.state) setStateVal((prev) => prev || enriched.state || "");
@@ -711,7 +725,14 @@ export function NonprofitClaim() {
               </label>
               <label className="block space-y-1.5">
                 <span className="text-sm font-semibold">ZIP</span>
-                <input value={zip} onChange={(e) => setZip(e.target.value)} className={field} />
+                <input
+                  value={zip}
+                  onChange={(e) => setZip(normalizeUsZip(e.target.value))}
+                  maxLength={5}
+                  inputMode="numeric"
+                  autoComplete="postal-code"
+                  className={field}
+                />
               </label>
             </div>
             <label className="block space-y-1.5">

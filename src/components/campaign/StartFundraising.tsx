@@ -2,7 +2,7 @@
 
 import { ArrowRight } from "lucide-react";
 import { assetSrc } from "@/lib/utils";
-import forkupLogo from "@/assets/new-forkup-6.png";
+import forkupLogo from "@/assets/forkup-logo.png";
 import heroCommunity from "@/assets/hero-community.jpg";
 import { useCampaign } from "@/lib/campaign-context";
 import { resolveDashboardStep } from "@/lib/campaign-auth";

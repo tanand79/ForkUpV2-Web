@@ -102,6 +102,78 @@ function givebackMethodForSelection(business: Business): ApiMethodType {
   return map[uiType] ?? "dine_and_donate";
 }
 
+/**
+ * Returns a durable cover URL suitable for DB storage.
+ * Prefers `storedUrl` (S3 or /uploads/…); never returns blob:/data: preview URLs.
+ */
+export function durableCoverImageUrl(state: CampaignState): string {
+  const stored = state.cover?.storedUrl?.trim() ?? "";
+  if (stored && !stored.startsWith("blob:") && !stored.startsWith("data:")) return stored;
+  const url = state.cover?.url?.trim() ?? "";
+  if (url && !url.startsWith("blob:") && !url.startsWith("data:")) return url;
+  return "";
+}
+
+/** Durable URL for a gallery/cover image (never blob:/data:). */
+export function durableCampaignImageUrl(img: {
+  url?: string;
+  storedUrl?: string;
+} | null | undefined): string {
+  if (!img) return "";
+  const stored = img.storedUrl?.trim() ?? "";
+  if (stored && !stored.startsWith("blob:") && !stored.startsWith("data:")) return stored;
+  const url = img.url?.trim() ?? "";
+  if (url && !url.startsWith("blob:") && !url.startsWith("data:")) return url;
+  return "";
+}
+
+export const MAX_CAMPAIGN_GALLERY_IMAGES = 6;
+
+/**
+ * Builds PUT /api/campaign-images/:slug payload from wizard state (max 6).
+ * Cover is marked isCover; gallery images from state.images fill the rest.
+ */
+export function buildCampaignGalleryPayload(state: CampaignState): {
+  imageUrl: string;
+  source?: string;
+  sourceUrl?: string | null;
+  isCover?: boolean;
+}[] {
+  const coverUrl = durableCoverImageUrl(state);
+  const out: {
+    imageUrl: string;
+    source?: string;
+    sourceUrl?: string | null;
+    isCover?: boolean;
+  }[] = [];
+  const seen = new Set<string>();
+
+  if (coverUrl) {
+    seen.add(coverUrl);
+    out.push({
+      imageUrl: coverUrl,
+      source: state.cover?.source ?? "manual",
+      sourceUrl: state.cover?.sourceUrl ?? null,
+      isCover: true,
+    });
+  }
+
+  for (const img of state.images) {
+    if (out.length >= MAX_CAMPAIGN_GALLERY_IMAGES) break;
+    const url = durableCampaignImageUrl(img);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    out.push({
+      imageUrl: url,
+      source: img.source ?? "manual",
+      sourceUrl: img.sourceUrl ?? null,
+      isCover: false,
+    });
+  }
+
+  return out;
+}
+
 export function buildCreateCampaignPayload(
   state: CampaignState,
   nonprofit: NonprofitProfileInput,
@@ -179,7 +251,7 @@ export function buildCreateCampaignPayload(
     campaignGoal: Number.parseInt(state.goal.replace(/\D/g, ""), 10) || 0,
     startDate: state.startDate,
     endDate: state.endDate,
-    coverImage: state.cover?.storedUrl ?? state.cover?.url ?? "",
+    coverImage: durableCoverImageUrl(state),
     methods,
     invitations,
     newBusinessInvites,
@@ -226,7 +298,13 @@ export function buildDraftSavePayload(
     campaignStory: state.description.trim() || "Campaign details in progress.",
     startDate: state.startDate || defaults.startDate,
     endDate: state.endDate || defaults.endDate,
-    coverImage: state.cover?.storedUrl || state.cover?.url || state.logo?.storedUrl || state.logo?.url || DEFAULT_COVER,
+    coverImage:
+      durableCoverImageUrl(state) ||
+      (state.logo?.storedUrl && !state.logo.storedUrl.startsWith("blob:")
+        ? state.logo.storedUrl
+        : "") ||
+      (state.logo?.url && !state.logo.url.startsWith("blob:") ? state.logo.url : "") ||
+      DEFAULT_COVER,
     termsAccepted: false,
     launch: false,
     existingSlug: state.campaignSlug ?? undefined,
