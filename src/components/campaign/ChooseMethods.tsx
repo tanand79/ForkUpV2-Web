@@ -1,7 +1,7 @@
 import { Check, Store, Heart, Trophy, Wine, ArrowRight, ArrowLeft } from "lucide-react";
 import { assetSrc } from "@/lib/utils";
 import { useCampaign, type SupportMethod } from "@/lib/campaign-context";
-import forkupLogo from "@/assets/forkup-logo.png";
+import forkupLogo from "@/assets/forkup-logo-header.png";
 import { useLovableFlowRedirect } from "./useLovableFlowRedirect";
 
 const OPTIONS: {
@@ -152,7 +152,7 @@ export function ChooseMethods() {
           <button
             type="button"
             onClick={() => goTo("website-landing")}
-            className="rounded-lg opacity-80 transition-opacity hover:opacity-100"
+            className="rounded-lg"
             aria-label="ForkUp home"
           >
             <img

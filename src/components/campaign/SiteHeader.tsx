@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { assetSrc } from "@/lib/utils";
-import forkupLogo from "@/assets/forkup-logo.png";
+import forkupLogo from "@/assets/forkup-logo-header.png";
 
 export const headerPillClass =
   "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:border-primary/40";
@@ -30,7 +30,7 @@ export function SiteHeaderLogo({
       <button
         type="button"
         onClick={onClick}
-        className="flex shrink-0 items-center rounded-lg transition-opacity hover:opacity-80"
+        className="flex shrink-0 items-center rounded-lg"
         aria-label="ForkUp home"
       >
         {image}
@@ -41,7 +41,7 @@ export function SiteHeaderLogo({
   return (
     <Link
       href={href}
-      className="flex shrink-0 items-center rounded-lg transition-opacity hover:opacity-80"
+      className="flex shrink-0 items-center rounded-lg"
       aria-label="ForkUp home"
     >
       {image}

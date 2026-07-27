@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowRight, Building2, Heart, User } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { stashAccountIntent } from "@/lib/campaign-auth";
 import { assetSrc } from "@/lib/utils";
-import forkupLogo from "@/assets/forkup-logo.png";
+import forkupLogo from "@/assets/forkup-logo-header.png";
 
 /**
  * GoFundMe-style create entry (Nick V2 speed layer).

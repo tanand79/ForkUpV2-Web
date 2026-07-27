@@ -24,8 +24,8 @@ export const metadata: Metadata = {
   title: "ForkUp — Turn everyday spending into real community impact",
   description: "ForkUp helps nonprofits and local businesses create fundraising campaigns.",
   icons: {
-    icon: "/assets/forkup-logo.png",
-    apple: "/assets/forkup-logo.png",
+    icon: "/assets/forkup-logo-header.png",
+    apple: "/assets/forkup-logo-header.png",
   },
 };
 

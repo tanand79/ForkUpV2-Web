@@ -2,7 +2,7 @@
 
 import { ArrowRight } from "lucide-react";
 import { assetSrc } from "@/lib/utils";
-import forkupLogo from "@/assets/forkup-logo.png";
+import forkupLogo from "@/assets/forkup-logo-header.png";
 import heroCommunity from "@/assets/hero-community.jpg";
 import { useCampaign } from "@/lib/campaign-context";
 import { resolveDashboardStep } from "@/lib/campaign-auth";
@@ -50,7 +50,7 @@ export function StartFundraising() {
         <button
           type="button"
           onClick={() => goTo("website-landing")}
-          className="mb-3 rounded-lg transition-opacity hover:opacity-80"
+          className="mb-3 rounded-lg"
           aria-label="ForkUp home"
         >
           <img

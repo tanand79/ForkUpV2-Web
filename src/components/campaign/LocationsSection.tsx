@@ -5,7 +5,7 @@ import useEmblaCarousel from "embla-carousel-react";
 import { ScrollReveal } from "@/components/ScrollReveal";
 import { useCampaign } from "@/lib/campaign-context";
 import { getNonprofitName, getPublicLocations } from "@/lib/campaign-display";
-import forkupLogo from "@/assets/forkup-logo.png";
+import forkupLogo from "@/assets/forkup-logo-header.png";
 
 type BusinessType = "dine" | "shop" | "service" | "event" | "other";
 
