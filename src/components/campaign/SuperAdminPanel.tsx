@@ -66,6 +66,7 @@ import {
 } from "@/components/ui/dialog";
 
 type Tab = "verification" | "forkup-review" | "profile" | "ai" | "charges" | "smtp";
+type VerificationFilter = "pending" | "approved" | "denied";
 
 const fieldClass =
   "mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20";
