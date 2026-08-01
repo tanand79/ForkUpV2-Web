@@ -19,14 +19,12 @@ import {
 import { useCampaign, SUPPORT_METHOD_META, type SupportMethod } from "@/lib/campaign-context";
 import { createCampaign, updateCampaign, putCampaignImages } from "@/lib/api";
 import { buildCreateCampaignPayload, buildCampaignGalleryPayload, durableCoverImageUrl } from "@/lib/builder-submit";
+import { formatDateUs } from "@/lib/date-only";
 
 function formatDate(d: string) {
   if (!d) return "";
-  return new Date(d + "T00:00:00").toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  const label = formatDateUs(d);
+  return label === "—" ? "" : label;
 }
 
 const PREP_STEPS = [

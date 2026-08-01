@@ -88,8 +88,16 @@ function AuthLoginScreen() {
       const returnStep = consumeAuthReturnStep();
       const role = selectedRole;
 
-      const session = await syncAuthSession(role, { force: true });
-      if (!session) return;
+      // Bound wait so a stuck /auth/context cannot leave the spinner forever.
+      const session = await Promise.race([
+        syncAuthSession(role, { force: true }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000)),
+      ]);
+      if (!session) {
+        // Token is already saved — send user to hub; dashboard will retry sync.
+        goTo(role === "business" ? "business-dashboard" : role === "supporter" ? "supporter-dashboard" : "nonprofit-dashboard");
+        return;
+      }
 
       update(buildSessionPatch(session));
       switchActiveRole(role);

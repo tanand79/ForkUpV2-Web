@@ -12,9 +12,13 @@ import {
   Store,
   ShieldCheck,
   Clock,
+  XCircle,
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { campaignPublicPath } from "@/lib/campaign-paths";
+import { syncAuthSession } from "@/lib/auth-session";
+import { getAuthToken } from "@/lib/auth-storage";
+import { formatDateUs, formatDateTimeUs, looksLikeIsoDateTime } from "@/lib/date-only";
 import { fetchBusinessCollaborations, fetchCurrentUser, type BusinessCollaboration } from "@/lib/api";
 
 type CollabTab = "pending" | "active" | "completed";
@@ -29,11 +33,7 @@ const STATUS_TONE: Record<StatusTone, string> = {
 
 function formatDateRange(start: string | null, end: string | null): string | undefined {
   const fmt = (d: string) =>
-    new Date(d.includes("T") ? d : `${d}T00:00:00`).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    looksLikeIsoDateTime(d) ? formatDateTimeUs(d) : formatDateUs(d);
   if (start && end) return `${fmt(start)} – ${fmt(end)}`;
   if (start) return `From ${fmt(start)}`;
   return undefined;
@@ -89,13 +89,22 @@ function StatusPill({ label, tone }: { label: string; tone: StatusTone }) {
 }
 
 export function BusinessDashboard() {
-  const { goTo, state } = useCampaign();
+  const { goTo, state, setBusinessProfile } = useCampaign();
   const biz = state.businessProfile;
   const [accountName, setAccountName] = useState<string | null>(null);
   const [tab, setTab] = useState<CollabTab>("active");
   const [collaborations, setCollaborations] = useState<BusinessCollaboration[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Refresh claim / access-request status from the server on each visit.
+  useEffect(() => {
+    if (!getAuthToken()) return;
+    void syncAuthSession(undefined, { force: true }).then((session) => {
+      if (!session?.businessProfile) return;
+      setBusinessProfile(session.businessProfile);
+    });
+  }, [setBusinessProfile]);
 
   const loadCollaborations = useCallback(() => {
     if (!biz?.id) return;
@@ -179,7 +188,12 @@ export function BusinessDashboard() {
               <ShieldCheck className="size-3.5" />
               Verified business
             </span>
-          ) : biz.claimStatus === "needs_review" ? (
+          ) : biz.accessRequestStatus === "denied" ? (
+            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+              <XCircle className="size-3.5" />
+              Verification denied
+            </span>
+          ) : biz.claimStatus === "needs_review" || biz.accessRequestStatus === "pending" ? (
             <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
               <Clock className="size-3.5" />
               Verification pending

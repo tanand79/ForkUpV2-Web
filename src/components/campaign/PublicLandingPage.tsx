@@ -21,6 +21,7 @@ import { useCampaign } from "@/lib/campaign-context";
 import { fetchCampaigns } from "@/lib/api";
 import { stashAccountIntent } from "@/lib/campaign-auth";
 import { getAuthToken } from "@/lib/auth-storage";
+import { useClientMounted } from "@/lib/use-client-mounted";
 import type { CampaignListItem } from "@/lib/campaign-types";
 import { CampaignDirectoryCard } from "@/components/campaign/CampaignDirectoryCard";
 
@@ -88,6 +89,8 @@ const WHY_LOVE = [
 
 export function PublicLandingPage() {
   const { goTo, state } = useCampaign();
+  const mounted = useClientMounted();
+  const isLoggedIn = mounted && Boolean(getAuthToken());
   const [mobileOpen, setMobileOpen] = useState(false);
   const [liveCampaigns, setLiveCampaigns] = useState<CampaignListItem[]>([]);
   const [campaignsLoading, setCampaignsLoading] = useState(true);
@@ -232,6 +235,15 @@ export function PublicLandingPage() {
           </nav>
 
           <div className="flex items-center gap-2">
+            {isLoggedIn && (
+              <button
+                type="button"
+                onClick={() => goTo("nonprofit-dashboard")}
+                className="rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                My Dashboard
+              </button>
+            )}
             <button
               onClick={startCampaign}
               className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-md shadow-primary/20 transition-all hover:bg-primary-dark hover:-translate-y-0.5 active:scale-95"
@@ -277,6 +289,18 @@ export function PublicLandingPage() {
                 {item.label}
               </button>
             ))}
+            {isLoggedIn && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileOpen(false);
+                  goTo("nonprofit-dashboard");
+                }}
+                className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                My Dashboard
+              </button>
+            )}
           </div>
         )}
       </header>

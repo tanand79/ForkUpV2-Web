@@ -15,12 +15,14 @@ import {
   Trash2,
   ShieldCheck,
   Clock,
+  XCircle,
   type LucideIcon,
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
-import { loadUserSession } from "@/lib/auth-session";
+import { loadUserSession, syncAuthSession } from "@/lib/auth-session";
 import { getAuthToken } from "@/lib/auth-storage";
 import { useClientMounted } from "@/lib/use-client-mounted";
+import { formatDateUs, formatDateTimeUs, looksLikeIsoDateTime } from "@/lib/date-only";
 import {
   deleteManageCampaign,
   fetchManageCampaigns,
@@ -51,11 +53,7 @@ const STATUS_TONE: Record<StatusTone, string> = {
 
 function formatDateRange(start: string | null, end: string | null): string | undefined {
   const fmt = (d: string) =>
-    new Date(d.includes("T") ? d : `${d}T00:00:00`).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    looksLikeIsoDateTime(d) ? formatDateTimeUs(d) : formatDateUs(d);
   if (start && end) return `${fmt(start)} – ${fmt(end)}`;
   if (start) return `From ${fmt(start)}`;
   return undefined;
@@ -74,7 +72,7 @@ function statusLabel(status: string, startDate?: string | null): string {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (start.getTime() > today.getTime()) {
-      return `Scheduled · ${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+      return `Scheduled · ${formatDateUs(String(startDate).slice(0, 10))}`;
     }
   }
   const labels: Record<string, string> = {
@@ -115,6 +113,7 @@ export function NonprofitDashboard() {
     discardLocalDraft,
     refreshServerDrafts,
     startNewCampaign,
+    setNonprofitProfile,
   } = useCampaign();
   const [tab, setTab] = useState<CampaignTab>("active");
   const [campaigns, setCampaigns] = useState<ManageCampaignSummary[]>([]);
@@ -126,6 +125,15 @@ export function NonprofitDashboard() {
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
 
   const nonprofitId = state.nonprofitProfile?.id;
+
+  // Refresh verification / access-request status from the server on each visit.
+  useEffect(() => {
+    if (!getAuthToken()) return;
+    void syncAuthSession(undefined, { force: true }).then((session) => {
+      if (!session?.nonprofitProfile) return;
+      setNonprofitProfile(session.nonprofitProfile);
+    });
+  }, [setNonprofitProfile]);
 
   const refreshCampaigns = useCallback(() => {
     if (!nonprofitId) return;
@@ -572,7 +580,13 @@ export function NonprofitDashboard() {
               <ShieldCheck className="size-3.5" />
               Verified organization
             </span>
-          ) : state.nonprofitProfile?.verificationStatus === "needs_review" ? (
+          ) : state.nonprofitProfile?.accessRequestStatus === "denied" ? (
+            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+              <XCircle className="size-3.5" />
+              Verification denied
+            </span>
+          ) : state.nonprofitProfile?.verificationStatus === "needs_review" ||
+            state.nonprofitProfile?.accessRequestStatus === "pending" ? (
             <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
               <Clock className="size-3.5" />
               Verification pending

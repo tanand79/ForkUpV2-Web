@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Trophy, LinkIcon, Plus, Trash2, Pencil, Users, Clock, CheckCircle2, X, Loader2 } from "lucide-react";
 import { useCampaign, type Ambassador, type AmbassadorRole } from "@/lib/campaign-context";
+import { formatDateUs } from "@/lib/date-only";
 import { ActionBar } from "./ChooseBusinesses";
 import {
   addCampaignParticipant,
@@ -52,11 +53,7 @@ function reminderDueDate(startDate: string): string {
 
 function formatDate(d: string) {
   if (!d) return "—";
-  return new Date(d + "T00:00:00").toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatDateUs(d);
 }
 
 export function AmbassadorSetup() {

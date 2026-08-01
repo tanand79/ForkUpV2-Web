@@ -17,6 +17,7 @@ import {
 import { useCampaign, type SupportMethod, type SupportMethods } from "@/lib/campaign-context";
 import { fetchManageCampaigns, generateCampaignDraft } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-storage";
+import { UsDateInput } from "@/components/campaign/UsDateInput";
 
 /**
  * Lovable “Build Your Campaign” — guided substeps:
@@ -597,20 +598,18 @@ export function QuickStart() {
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="text-xs font-semibold text-muted-foreground">Start date</label>
-              <input
-                type="date"
+              <UsDateInput
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={setStartDate}
                 className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none"
               />
             </div>
             <div>
               <label className="text-xs font-semibold text-muted-foreground">End date</label>
-              <input
-                type="date"
+              <UsDateInput
                 value={endDate}
                 min={startDate || undefined}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={setEndDate}
                 className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none"
               />
             </div>

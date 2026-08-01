@@ -15,6 +15,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { useCampaign, type GuestBartender } from "@/lib/campaign-context";
+import { formatDateUs } from "@/lib/date-only";
+import { UsDateInput } from "@/components/campaign/UsDateInput";
 import { ActionBar } from "./ChooseBusinesses";
 import {
   addCampaignParticipant,
@@ -39,11 +41,7 @@ const field =
 
 function formatDate(d: string) {
   if (!d) return "—";
-  return new Date(d + "T00:00:00").toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatDateUs(d);
 }
 
 function formatTime(t: string) {
@@ -238,11 +236,10 @@ export function GuestBartenderSetup() {
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
               <label className="text-sm font-semibold">Event Date *</label>
-              <input
+              <UsDateInput
                 className={field}
-                type="date"
                 value={form.eventDate}
-                onChange={(e) => setForm({ ...form, eventDate: e.target.value })}
+                onChange={(iso) => setForm({ ...form, eventDate: iso })}
               />
               {touched && !form.eventDate.trim() && (
                 <p className="text-xs text-destructive">Pick the event date.</p>

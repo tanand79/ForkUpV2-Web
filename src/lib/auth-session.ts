@@ -52,6 +52,7 @@ function mapNonprofitToState(np: NonprofitProfile): NonprofitProfileState {
     causeCategory: np.causeCategory ?? undefined,
     verificationStatus: np.verificationStatus,
     claimStatus: np.claimStatus,
+    accessRequestStatus: np.accessRequestStatus ?? null,
   };
 }
 
@@ -68,6 +69,7 @@ function mapBusinessToState(biz: BusinessProfile): BusinessProfileState | null {
     capabilities: biz.capabilities,
     claimStatus: biz.claimStatus,
     businessStatus: biz.businessStatus,
+    accessRequestStatus: biz.accessRequestStatus ?? null,
   };
 }
 
@@ -258,7 +260,11 @@ export function sessionMatchesState(
     membershipsMatch &&
     session.activeRole === current.accountIntent &&
     session.nonprofitProfile?.id === current.nonprofitProfile?.id &&
-    session.businessProfile?.id === current.businessProfile?.id
+    session.nonprofitProfile?.verificationStatus === current.nonprofitProfile?.verificationStatus &&
+    session.nonprofitProfile?.accessRequestStatus === current.nonprofitProfile?.accessRequestStatus &&
+    session.businessProfile?.id === current.businessProfile?.id &&
+    session.businessProfile?.claimStatus === current.businessProfile?.claimStatus &&
+    session.businessProfile?.accessRequestStatus === current.businessProfile?.accessRequestStatus
   );
 }
 

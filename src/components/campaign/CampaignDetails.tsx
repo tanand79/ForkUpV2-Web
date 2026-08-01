@@ -9,6 +9,7 @@ import {
 } from "@/lib/story-validation";
 import { ActionBar } from "./ChooseBusinesses";
 import { useLovableFlowRedirect } from "./useLovableFlowRedirect";
+import { UsDateInput } from "@/components/campaign/UsDateInput";
 
 
 const GIVEBACK = [10, 15, 20];
@@ -192,21 +193,19 @@ export function CampaignDetails() {
           <div className="grid gap-5 sm:grid-cols-2">
             <div className="space-y-2">
               <label className={label}>Campaign Start Date <span className="text-primary">*</span></label>
-              <input
-                type="date"
+              <UsDateInput
                 className={field}
                 value={state.startDate}
-                onChange={(e) => update({ startDate: e.target.value })}
+                onChange={(iso) => update({ startDate: iso })}
               />
             </div>
             <div className="space-y-2">
               <label className={label}>Campaign End Date <span className="text-primary">*</span></label>
-              <input
-                type="date"
+              <UsDateInput
                 className={field}
                 value={state.endDate}
                 min={state.startDate || undefined}
-                onChange={(e) => update({ endDate: e.target.value })}
+                onChange={(iso) => update({ endDate: iso })}
               />
             </div>
           </div>
@@ -247,25 +246,23 @@ export function CampaignDetails() {
                         )}
                       </div>
                       <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                        <input
-                          type="date"
+                        <UsDateInput
                           aria-label={`${METHOD_LABELS[m]} start date`}
                           className={field}
                           value={timing?.startDate ?? ""}
                           min={state.startDate || undefined}
                           max={state.endDate || undefined}
-                          placeholder={state.startDate}
-                          onChange={(e) => setMethodTiming(m, { startDate: e.target.value })}
+                          placeholder={state.startDate ? undefined : "MM/DD/YYYY"}
+                          onChange={(iso) => setMethodTiming(m, { startDate: iso })}
                         />
-                        <input
-                          type="date"
+                        <UsDateInput
                           aria-label={`${METHOD_LABELS[m]} end date`}
                           className={field}
                           value={timing?.endDate ?? ""}
                           min={timing?.startDate || state.startDate || undefined}
                           max={state.endDate || undefined}
-                          placeholder={state.endDate}
-                          onChange={(e) => setMethodTiming(m, { endDate: e.target.value })}
+                          placeholder={state.endDate ? undefined : "MM/DD/YYYY"}
+                          onChange={(iso) => setMethodTiming(m, { endDate: iso })}
                         />
                       </div>
                     </div>

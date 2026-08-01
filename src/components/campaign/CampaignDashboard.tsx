@@ -21,17 +21,13 @@ import {
 import { useCampaign, CAMPAIGN_STAGE_META, type CampaignStage } from "@/lib/campaign-context";
 import type { BusinessInviteStatus } from "@/lib/campaign-context";
 import { fetchCampaignDashboard, type CampaignDashboardData } from "@/lib/api";
-import { toDateOnlyString } from "@/lib/date-only";
+import { toDateOnlyString, formatDateUs } from "@/lib/date-only";
 import { ApiAcceptanceStatusBadge } from "@/components/campaign/BusinessStatusBadge";
 import { SuccessEngineActionList } from "./SuccessEngineActionList";
 
 function formatDate(d: string) {
   if (!d) return "—";
-  return new Date(d + "T00:00:00").toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatDateUs(d);
 }
 
 function daysRemaining(endDate: string): number | null {

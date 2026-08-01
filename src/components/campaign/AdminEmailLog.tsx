@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Mail, Lock, Loader2, RefreshCw } from "lucide-react";
 
 import { fetchEmailLog, type EmailLogEntry } from "@/lib/api";
+import { formatDateTimeUs } from "@/lib/date-only";
 
 const STATUS_STYLE: Record<string, string> = {
   sent: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300",
@@ -16,14 +17,7 @@ const STATUS_OPTIONS = ["", "sent", "skipped", "failed", "queued"];
 const ROLE_OPTIONS = ["", "nonprofit", "business", "ambassador", "supporter", "admin"];
 
 function formatWhen(value: string): string {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatDateTimeUs(value);
 }
 
 export function AdminEmailLog() {

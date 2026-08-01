@@ -449,6 +449,8 @@ export interface NonprofitProfileState {
   causeCategory?: string;
   verificationStatus?: string;
   claimStatus?: string;
+  /** Latest access-request status from auth context (pending / approved / denied). */
+  accessRequestStatus?: "pending" | "approved" | "denied" | null;
 }
 
 export interface BusinessProfileState {
@@ -466,6 +468,8 @@ export interface BusinessProfileState {
   };
   claimStatus?: string;
   businessStatus?: string;
+  /** Latest access-request status from auth context (pending / approved / denied). */
+  accessRequestStatus?: "pending" | "approved" | "denied" | null;
 }
 
 export type OrganizerMode = "guided" | "advanced";
@@ -1129,7 +1133,11 @@ export function CampaignProvider({
         const patch = buildSessionPatch(cached);
         if (
           prev.nonprofitProfile?.id === patch.nonprofitProfile?.id &&
+          prev.nonprofitProfile?.verificationStatus === patch.nonprofitProfile?.verificationStatus &&
+          prev.nonprofitProfile?.accessRequestStatus === patch.nonprofitProfile?.accessRequestStatus &&
           prev.businessProfile?.id === patch.businessProfile?.id &&
+          prev.businessProfile?.claimStatus === patch.businessProfile?.claimStatus &&
+          prev.businessProfile?.accessRequestStatus === patch.businessProfile?.accessRequestStatus &&
           prev.nonprofitMemberships.length === patch.nonprofitMemberships.length &&
           prev.businessMemberships.length === patch.businessMemberships.length
         ) {
@@ -1515,7 +1523,9 @@ export function CampaignProvider({
     setState((prev) => {
       if (
         prev.nonprofitProfile?.id === profile?.id &&
-        prev.nonprofitProfile?.organizationName === profile?.organizationName
+        prev.nonprofitProfile?.organizationName === profile?.organizationName &&
+        prev.nonprofitProfile?.verificationStatus === profile?.verificationStatus &&
+        prev.nonprofitProfile?.accessRequestStatus === profile?.accessRequestStatus
       ) {
         return prev;
       }
@@ -1542,7 +1552,9 @@ export function CampaignProvider({
     setState((prev) => {
       if (
         prev.businessProfile?.id === profile?.id &&
-        prev.businessProfile?.businessName === profile?.businessName
+        prev.businessProfile?.businessName === profile?.businessName &&
+        prev.businessProfile?.claimStatus === profile?.claimStatus &&
+        prev.businessProfile?.accessRequestStatus === profile?.accessRequestStatus
       ) {
         return prev;
       }

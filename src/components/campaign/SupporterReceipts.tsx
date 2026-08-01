@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Receipt, Loader2, Clock, CheckCircle2, XCircle, Plus } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchMyReceipts, type MyReceipt } from "@/lib/api";
+import { formatDateTimeUs, formatDateUs, looksLikeIsoDateTime } from "@/lib/date-only";
 
 const REVIEW_STYLE: Record<string, string> = {
   pending: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
@@ -19,16 +20,14 @@ function ReviewBadge({ status }: { status: string }) {
         REVIEW_STYLE[status] ?? REVIEW_STYLE.pending
       }`}
     >
-      <Icon className="size-3.5" />
+      <Icon className="size-3" />
       {status}
     </span>
   );
 }
 
 function formatWhen(value: string): string {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return looksLikeIsoDateTime(value) ? formatDateTimeUs(value) : formatDateUs(value);
 }
 
 export function SupporterReceipts() {

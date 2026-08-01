@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft,
   Check,
+  Eye,
   Loader2,
   Lock,
   Mail,
@@ -24,6 +25,7 @@ import {
 import { useSearchParams } from "next/navigation";
 import { setAuthToken, getAuthToken } from "@/lib/auth-storage";
 import { useCampaign } from "@/lib/campaign-context";
+import { formatDateTimeUs, formatDateUs, looksLikeIsoDateTime } from "@/lib/date-only";
 import {
   approveSuperAdminAccessRequest,
   changeSuperAdminPassword,
@@ -32,6 +34,7 @@ import {
   fetchSuperAdminAiSettings,
   fetchSuperAdminCharges,
   fetchSuperAdminMe,
+  fetchSuperAdminOrganizationDetails,
   fetchSuperAdminSmtp,
   saveSuperAdminAiSettings,
   saveSuperAdminCharges,
@@ -42,10 +45,12 @@ import {
   testSuperAdminSmtp,
   updateSuperAdminProfile,
   type AccessRequest,
+  type SuperAdminOrganizationDetails,
   type SuperAdminUser,
 } from "@/lib/api";
 
 type Tab = "verification" | "profile" | "ai" | "charges" | "smtp";
+type VerificationFilter = "pending" | "approved" | "denied";
 
 const fieldClass =
   "mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20";
@@ -54,6 +59,8 @@ const btnPrimary =
   "inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40";
 const btnGhost =
   "inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground";
+const btnSecondary =
+  "inline-flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-secondary disabled:opacity-40";
 
 function formatCost(n: number) {
   return n < 0.01 ? "< $0.01" : `~$${n.toFixed(n < 0.1 ? 3 : 2)}`;
@@ -371,23 +378,38 @@ export function SuperAdminDashboard() {
 }
 
 function VerificationTab() {
+  const [filter, setFilter] = useState<VerificationFilter>("pending");
+  const [counts, setCounts] = useState({ pending: 0, approved: 0, denied: 0 });
   const [rows, setRows] = useState<AccessRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState<number | null>(null);
+  const [detailRequest, setDetailRequest] = useState<AccessRequest | null>(null);
+
+  const loadCounts = useCallback(async () => {
+    const [p, a, d] = await Promise.all([
+      fetchSuperAdminAccessRequests("pending"),
+      fetchSuperAdminAccessRequests("approved"),
+      fetchSuperAdminAccessRequests("denied"),
+    ]);
+    setCounts({ pending: p.length, approved: a.length, denied: d.length });
+    return { pending: p, approved: a, denied: d };
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setRows(await fetchSuperAdminAccessRequests("pending"));
+      const all = await loadCounts();
+      setRows(all[filter]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
       setRows([]);
+      setCounts({ pending: 0, approved: 0, denied: 0 });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filter, loadCounts]);
 
   useEffect(() => {
     void load();
@@ -398,6 +420,7 @@ function VerificationTab() {
     try {
       if (action === "approve") await approveSuperAdminAccessRequest(id);
       else await denySuperAdminAccessRequest(id);
+      setDetailRequest(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to ${action}`);
@@ -406,59 +429,355 @@ function VerificationTab() {
     }
   };
 
+  if (detailRequest) {
+    return (
+      <OrganizationDetailsView
+        request={detailRequest}
+        acting={acting}
+        onBack={() => setDetailRequest(null)}
+        onAct={act}
+      />
+    );
+  }
+
+  const filters: { id: VerificationFilter; label: string }[] = [
+    { id: "pending", label: "Pending" },
+    { id: "approved", label: "Approved" },
+    { id: "denied", label: "Denied" },
+  ];
+
   return (
     <section className="rounded-2xl border border-border bg-card p-5">
       <h2 className="text-lg font-bold">Organization verification queue</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Approve pending claims so organizers can complete settlement and payouts.
+        Filter by status, then open any card for full organization details.
       </p>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {filters.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setFilter(f.id)}
+            className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
+              filter === f.id
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {f.label}
+            <span className="ml-1.5 opacity-80">{counts[f.id]}</span>
+          </button>
+        ))}
+      </div>
+
       {loading && (
         <div className="flex justify-center py-10">
           <Loader2 className="size-5 animate-spin text-primary" />
         </div>
       )}
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+
       {!loading && rows.length === 0 && (
         <p className="mt-6 rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          No pending verification requests.
+          No {filter} verification requests.
         </p>
       )}
-      <ul className="mt-4 space-y-3">
-        {rows.map((r) => (
-          <li key={r.id} className="rounded-xl border border-border bg-background p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold">{r.organizationName ?? "Unknown org"}</p>
-                <p className="text-xs text-muted-foreground">
-                  {r.organizationType} · {r.requestType} · risk {r.riskLevel}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {r.requesterName} · {r.requesterEmail}
-                </p>
-                {r.riskReason && <p className="mt-2 text-sm">{r.riskReason}</p>}
-              </div>
-              <div className="flex gap-2">
+
+      {!loading && rows.length > 0 && (
+        <ul className="mt-4 space-y-3">
+          {rows.map((r) => (
+            <li key={r.id} className="rounded-xl border border-border bg-background p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <button
                   type="button"
-                  disabled={acting === r.id}
-                  onClick={() => void act(r.id, "approve")}
-                  className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
+                  onClick={() => setDetailRequest(r)}
+                  className="min-w-0 flex-1 text-left"
                 >
-                  <Check className="size-3.5" /> Approve
+                  <p className="font-semibold hover:text-primary">{r.organizationName ?? "Unknown org"}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {r.organizationType} · {r.requestType} · risk {r.riskLevel}
+                    {r.status !== "pending" ? ` · ${r.status}` : ""}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {r.requesterName} · {r.requesterEmail}
+                  </p>
+                  {r.riskReason && <p className="mt-2 text-sm">{r.riskReason}</p>}
+                  {r.reviewedAt && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Reviewed {formatDateTimeUs(r.reviewedAt)}
+                    </p>
+                  )}
                 </button>
-                <button
-                  type="button"
-                  disabled={acting === r.id}
-                  onClick={() => void act(r.id, "deny")}
-                  className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-semibold"
-                >
-                  <X className="size-3.5" /> Deny
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDetailRequest(r)}
+                    className={btnSecondary}
+                  >
+                    <Eye className="size-3.5" /> View details
+                  </button>
+                  {filter === "pending" && (
+                    <>
+                      <button
+                        type="button"
+                        disabled={acting === r.id}
+                        onClick={() => void act(r.id, "approve")}
+                        className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                      >
+                        <Check className="size-3.5" /> Approve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={acting === r.id}
+                        onClick={() => void act(r.id, "deny")}
+                        className={btnSecondary}
+                      >
+                        <X className="size-3.5" /> Deny
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * DetailField — one labeled value row for organization details.
+ * Inputs: label + value. Outputs: compact read-only row (ISO datetimes → US format).
+ */
+function DetailField({ label, value }: { label: string; value: unknown }) {
+  let text = "—";
+  if (value == null || value === "") {
+    text = "—";
+  } else if (typeof value === "boolean") {
+    text = value ? "Yes" : "No";
+  } else if (typeof value === "string" && looksLikeIsoDateTime(value)) {
+    text = formatDateTimeUs(value);
+  } else if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    text = formatDateUs(value);
+  } else if (value instanceof Date) {
+    text = formatDateTimeUs(value);
+  } else {
+    text = String(value);
+  }
+  return (
+    <div className="min-w-0 overflow-hidden rounded-xl bg-secondary/40 px-3 py-2.5">
+      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+      <p className="mt-0.5 break-all text-sm font-medium">{text}</p>
+    </div>
+  );
+}
+
+/**
+ * OrganizationDetailsView — full org + request detail for superadmin.
+ * Inputs: access request, approve/deny handlers, back.
+ * Outputs: details UI matching platform console cards.
+ */
+function OrganizationDetailsView({
+  request,
+  acting,
+  onBack,
+  onAct,
+}: {
+  request: AccessRequest;
+  acting: number | null;
+  onBack: () => void;
+  onAct: (id: number, action: "approve" | "deny") => void;
+}) {
+  const [details, setDetails] = useState<SuperAdminOrganizationDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (request.organizationId == null) {
+      setError("This request has no organization id.");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    void fetchSuperAdminOrganizationDetails(
+      request.organizationType,
+      request.organizationId,
+      request.id,
+    )
+      .then(setDetails)
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to load organization");
+        setDetails(null);
+      })
+      .finally(() => setLoading(false));
+  }, [request]);
+
+  const org = details?.organization ?? null;
+  const isNonprofit = details?.organizationType === "nonprofit";
+
+  return (
+    <section className="space-y-4">
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <button type="button" onClick={onBack} className={btnGhost}>
+          <ArrowLeft className="size-4" /> Back to queue
+        </button>
+        <h2 className="mt-3 text-lg font-bold">
+          {request.organizationName ?? "Organization details"}
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {request.organizationType} · {request.requestType} · {request.status}
+        </p>
+
+        {request.status === "pending" && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={acting === request.id}
+              onClick={() => void onAct(request.id, "approve")}
+              className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40"
+            >
+              <Check className="size-3.5" /> Approve
+            </button>
+            <button
+              type="button"
+              disabled={acting === request.id}
+              onClick={() => void onAct(request.id, "deny")}
+              className={btnSecondary}
+            >
+              <X className="size-3.5" /> Deny
+            </button>
+          </div>
+        )}
+      </div>
+
+      {loading && (
+        <div className="flex justify-center py-10">
+          <Loader2 className="size-5 animate-spin text-primary" />
+        </div>
+      )}
+      {error && (
+        <p className="rounded-2xl border border-border bg-card p-5 text-sm text-destructive">{error}</p>
+      )}
+
+      {!loading && details && (
+        <>
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <h3 className="text-sm font-bold tracking-tight">Verification request</h3>
+            <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+              <DetailField label="Requester" value={request.requesterName} />
+              <DetailField label="Requester email" value={request.requesterEmail} />
+              <DetailField label="Risk level" value={request.riskLevel} />
+              <DetailField label="Relationship" value={request.relationship} />
+              <DetailField label="Risk reason" value={request.riskReason} />
+              <DetailField label="Review notes" value={request.reviewNotes} />
+              <DetailField
+                label="Submitted"
+                value={request.createdAt}
+              />
+              <DetailField
+                label="Reviewed"
+                value={request.reviewedAt}
+              />
             </div>
-          </li>
-        ))}
-      </ul>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <h3 className="text-sm font-bold tracking-tight">
+              {isNonprofit ? "Nonprofit profile" : "Business profile"}
+            </h3>
+            {org && (
+              <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                {isNonprofit ? (
+                  <>
+                    <DetailField label="Organization name" value={org.organizationName} />
+                    <DetailField label="Slug" value={org.slug} />
+                    <DetailField label="EIN" value={org.ein} />
+                    <DetailField label="Cause category" value={org.causeCategory} />
+                    <DetailField label="Contact name" value={org.contactName} />
+                    <DetailField label="Contact email" value={org.contactEmail} />
+                    <DetailField label="Contact phone" value={org.contactPhone} />
+                    <DetailField label="Website" value={org.website} />
+                    <DetailField label="City" value={org.city} />
+                    <DetailField label="State" value={org.state} />
+                    <DetailField label="ZIP" value={org.zip} />
+                    <DetailField label="Verification status" value={org.verificationStatus} />
+                    <DetailField label="Claim status" value={org.claimStatus} />
+                    <DetailField label="Profile status" value={org.profileStatus} />
+                    <DetailField label="Facebook" value={org.facebookUrl} />
+                    <DetailField label="Instagram" value={org.instagramUrl} />
+                    <DetailField label="LinkedIn" value={org.linkedinUrl} />
+                    <DetailField label="TikTok" value={org.tiktokUrl} />
+                    <DetailField label="YouTube" value={org.youtubeUrl} />
+                    <DetailField label="Mission" value={org.mission} />
+                    <DetailField label="Description" value={org.description} />
+                    <DetailField label="Logo URL" value={org.logoUrl} />
+                    <DetailField label="Claim date" value={org.claimDate} />
+                    <DetailField label="Verification date" value={org.verificationDate} />
+                    <DetailField label="Created" value={org.createdAt} />
+                    <DetailField label="Updated" value={org.updatedAt} />
+                  </>
+                ) : (
+                  <>
+                    <DetailField label="Business name" value={org.businessName} />
+                    <DetailField label="Slug" value={org.slug} />
+                    <DetailField label="Business type" value={org.businessType} />
+                    <DetailField label="Contact name" value={org.contactName} />
+                    <DetailField label="Contact email" value={org.contactEmail} />
+                    <DetailField label="Contact phone" value={org.contactPhone} />
+                    <DetailField label="Website" value={org.website} />
+                    <DetailField label="Claim status" value={org.claimStatus} />
+                    <DetailField label="Business status" value={org.businessStatus} />
+                    <DetailField label="Profile status" value={org.profileStatus} />
+                    <DetailField label="Default giveback %" value={org.defaultGivebackPercentage} />
+                    <DetailField label="Dine & donate" value={org.supportsDineAndDonate} />
+                    <DetailField label="Shop & donate" value={org.supportsShopAndDonate} />
+                    <DetailField label="Service giveback" value={org.supportsServiceGiveback} />
+                    <DetailField label="Guest bartending" value={org.supportsGuestBartending} />
+                    <DetailField label="Facebook" value={org.facebookUrl} />
+                    <DetailField label="Instagram" value={org.instagramUrl} />
+                    <DetailField label="LinkedIn" value={org.linkedinUrl} />
+                    <DetailField label="TikTok" value={org.tiktokUrl} />
+                    <DetailField label="Description" value={org.description} />
+                    <DetailField label="Logo URL" value={org.logoUrl} />
+                    <DetailField label="Claim date" value={org.claimDate} />
+                    <DetailField label="Verification date" value={org.verificationDate} />
+                    <DetailField label="Created" value={org.createdAt} />
+                    <DetailField label="Updated" value={org.updatedAt} />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          {!isNonprofit && details.locations && details.locations.length > 0 && (
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <h3 className="text-sm font-bold tracking-tight">Locations</h3>
+              <ul className="mt-3 space-y-3">
+                {details.locations.map((loc) => (
+                  <li
+                    key={String(loc.id)}
+                    className="rounded-xl border border-border bg-background p-4"
+                  >
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                      <DetailField label="Location name" value={loc.locationName} />
+                      <DetailField label="Phone" value={loc.phone} />
+                      <DetailField label="Address" value={loc.address} />
+                      <DetailField label="City" value={loc.city} />
+                      <DetailField label="State" value={loc.state} />
+                      <DetailField label="ZIP" value={loc.zip} />
+                      <DetailField label="Website" value={loc.websiteUrl} />
+                      <DetailField label="Active" value={loc.activeStatus} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
     </section>
   );
 }
@@ -621,7 +940,7 @@ function AiTab() {
         ? "Live from AWS (partial)"
         : "Cached estimate";
   const fetchedLabel = pricingFetchedAt
-    ? ` · updated ${new Date(pricingFetchedAt).toLocaleString()}`
+    ? ` · updated ${formatDateTimeUs(pricingFetchedAt)}`
     : "";
 
   return (

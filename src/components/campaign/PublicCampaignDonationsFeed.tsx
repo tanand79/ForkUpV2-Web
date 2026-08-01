@@ -12,6 +12,7 @@ import { Loader2 } from "lucide-react";
 import { formatCurrency } from "@/data/campaigns";
 import { fetchCampaignDonations } from "@/lib/api";
 import type { CampaignDonationsResponse } from "@/lib/campaign-types";
+import { formatDateUs } from "@/lib/date-only";
 
 function donorInitials(name: string): string {
   if (name === "Anonymous") return "?";
@@ -31,7 +32,7 @@ function relativeTime(iso: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatDateUs(iso);
 }
 
 function toneFromName(name: string): { bg: string; fg: string } {

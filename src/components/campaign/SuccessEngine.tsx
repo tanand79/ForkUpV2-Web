@@ -5,25 +5,16 @@ import { CalendarClock, Mail, Sparkles, Send, Loader2, Zap, Clock } from "lucide
 import { toast } from "sonner";
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchCampaignAutomation, runDueSuccessEngineActions, type CampaignAutomation } from "@/lib/api";
+import { formatDateTimeUs, formatDateUs, looksLikeIsoDateTime } from "@/lib/date-only";
 import { SuccessEngineActionList } from "./SuccessEngineActionList";
 
 function formatDay(d: string | null): string {
   if (!d) return "Anytime";
-  const raw = d.includes("T") ? d : `${d}T00:00:00`;
-  return new Date(raw).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return looksLikeIsoDateTime(d) ? formatDateTimeUs(d) : formatDateUs(d);
 }
 
 function formatDateTime(d: string): string {
-  return new Date(d).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatDateTimeUs(d);
 }
 
 export function SuccessEngine() {

@@ -31,6 +31,7 @@ import {
 import { useCampaign } from "@/lib/campaign-context";
 import { campaignPublicPath, campaignPublicUrl } from "@/lib/campaign-paths";
 import { campaignGivebackLabel } from "@/lib/giveback-terminology";
+import { formatDateUs } from "@/lib/date-only";
 import {
   Dialog,
   DialogContent,
@@ -73,13 +74,11 @@ export function CampaignCreated() {
           ? `${businessNames[0]} and ${businessNames[1]}`
           : `${businessNames.slice(0, -1).join(", ")}, and ${businessNames[businessNames.length - 1]}`;
 
-  const fmtDate = (d: string) =>
-    d
-      ? new Date(d + "T00:00:00").toLocaleDateString("en-US", {
-          month: "long",
-          day: "numeric",
-        })
-      : "";
+  const fmtDate = (d: string) => {
+    if (!d) return "";
+    const label = formatDateUs(d);
+    return label === "—" ? "" : label;
+  };
   const startLabel = fmtDate(state.startDate);
   const endLabel = fmtDate(state.endDate);
   const dateLine =

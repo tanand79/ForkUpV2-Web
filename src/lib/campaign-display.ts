@@ -1,5 +1,6 @@
 import type { CampaignState } from "@/lib/campaign-context";
 import { assetSrc } from "@/lib/utils";
+import { formatDateUs } from "@/lib/date-only";
 import {
   type Business,
   type BusinessCapabilities,
@@ -61,13 +62,8 @@ export function getCoverImage(state: CampaignState): string | null {
 
 function formatDate(iso: string): string | null {
   if (!iso) return null;
-  const d = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+  const label = formatDateUs(iso);
+  return label === "—" ? null : label;
 }
 
 /** Human-readable campaign date label, or empty when dates are not set. */

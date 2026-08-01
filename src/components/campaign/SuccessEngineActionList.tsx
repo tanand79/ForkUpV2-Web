@@ -37,8 +37,7 @@ import {
   type SuccessEngineAction,
 
 } from "@/lib/api";
-
-
+import { formatDateUs, formatDateTimeUs, looksLikeIsoDateTime } from "@/lib/date-only";
 
 const CHANNEL_ICON: Record<string, LucideIcon> = {
 
@@ -111,21 +110,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 
 function formatActionDate(d: string | null): string {
-
   if (!d) return "Anytime";
-
-  const raw = d.includes("T") ? d : `${d}T00:00:00`;
-
-  return new Date(raw).toLocaleDateString(undefined, {
-
-    month: "short",
-
-    day: "numeric",
-
-    year: "numeric",
-
-  });
-
+  return looksLikeIsoDateTime(d) ? formatDateTimeUs(d) : formatDateUs(d);
 }
 
 

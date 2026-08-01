@@ -14,6 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { AuthLogin } from "@/components/campaign/AuthLogin";
+import { UsDateInput } from "@/components/campaign/UsDateInput";
 import { campaignPublicPath } from "@/lib/campaign-paths";
 import { useCampaign } from "@/lib/campaign-context";
 import {
@@ -428,10 +429,9 @@ export function BusinessAcceptance() {
           <form onSubmit={submitChanges} className="mt-5 space-y-4">
             <label className="block text-left text-sm font-medium text-foreground">
               Preferred start date
-              <input
-                type="date"
+              <UsDateInput
                 value={reqDate}
-                onChange={(e) => setReqDate(e.target.value)}
+                onChange={setReqDate}
                 className="mt-1.5 h-12 w-full rounded-xl border border-border px-4 text-sm"
               />
             </label>

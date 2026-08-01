@@ -38,6 +38,62 @@ export function formatDateOnlyLabel(
   return d.toLocaleDateString(undefined, options);
 }
 
+/** Format YYYY-MM-DD as US numeric MM/DD/YYYY for date inputs. */
+export function formatMmDdYyyy(value: string | Date | null | undefined): string {
+  const iso = toDateOnlyString(value);
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${m}/${d}/${y}`;
+}
+
+/**
+ * Format a calendar date in US standard with weekday.
+ * Example: Saturday, August 1, 2026
+ * Inputs: ISO date string, Date, or nullish. Outputs: display string or "—".
+ */
+export function formatDateUs(value: string | Date | null | undefined): string {
+  if (value == null || value === "") return "—";
+  const iso = typeof value === "string" ? toDateOnlyString(value) : toDateOnlyString(value);
+  const d =
+    iso.length === 10
+      ? new Date(`${iso}T00:00:00`)
+      : value instanceof Date
+        ? value
+        : new Date(String(value));
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+/**
+ * Format a date-time in US standard with weekday and 12-hour AM/PM.
+ * Example: Saturday, August 1, 2026, 2:25 AM
+ * Inputs: ISO datetime string, Date, or nullish. Outputs: display string or "—".
+ */
+export function formatDateTimeUs(value: string | Date | null | undefined): string {
+  if (value == null || value === "") return "—";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+/** True when a string looks like an ISO date-time (has a T time component). */
+export function looksLikeIsoDateTime(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T/.test(value.trim());
+}
+
 /**
  * Parse human-entered dates (ISO, "June 15", "june15", "6/15/2026") to YYYY-MM-DD.
  */

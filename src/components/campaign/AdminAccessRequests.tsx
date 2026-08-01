@@ -10,6 +10,7 @@ import {
   denyAccessRequest,
   type AccessRequest,
 } from "@/lib/api";
+import { formatDateTimeUs } from "@/lib/date-only";
 
 const STATUS_STYLE: Record<string, string> = {
   pending: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
@@ -28,15 +29,7 @@ const RISK_OPTIONS = ["", "low", "medium", "high"];
 const ORG_TYPE_OPTIONS = ["", "nonprofit", "business"];
 
 function formatWhen(value: string | null): string {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatDateTimeUs(value);
 }
 
 export function AdminAccessRequests() {

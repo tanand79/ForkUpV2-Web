@@ -12,6 +12,7 @@ import {
   type PayoutMethod,
   type SettlementReport,
 } from "@/lib/api";
+import { formatDateTimeUs, formatDateUs, looksLikeIsoDateTime } from "@/lib/date-only";
 
 const TYPE_LABEL: Record<PayoutType, string> = {
   business_to_forkup: "Business → ForkUp",
@@ -39,10 +40,7 @@ const inputClass =
 
 function formatWhen(value: string | null): string {
   if (!value) return "—";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime())
-    ? value
-    : d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return looksLikeIsoDateTime(value) ? formatDateTimeUs(value) : formatDateUs(value);
 }
 
 export function PayoutsPanel({

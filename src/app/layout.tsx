@@ -31,7 +31,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en-US">
       <body className={`${inter.variable} ${playfair.variable} ${dmSerif.variable} antialiased`}>
         {/* Production only — Next.js injects beforeInteractive scripts into document head */}
         {process.env.NODE_ENV === "production" ? (

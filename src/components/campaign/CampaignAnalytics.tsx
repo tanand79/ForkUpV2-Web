@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchCampaignAnalytics, type CampaignAnalytics as Analytics } from "@/lib/api";
+import { formatDateUs } from "@/lib/date-only";
 
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -35,9 +36,7 @@ function fmtCurrency(value: number): string {
 }
 
 function fmtDate(iso: string): string {
-  const d = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatDateUs(iso);
 }
 
 interface KpiCardProps {

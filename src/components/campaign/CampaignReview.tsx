@@ -22,6 +22,8 @@ import {
 import { useCampaign, SUPPORT_METHOD_META, type SupportMethod } from "@/lib/campaign-context";
 import { uploadImage } from "@/lib/api";
 import { CampaignGalleryPicker } from "@/components/campaign/CampaignGalleryPicker";
+import { UsDateInput } from "@/components/campaign/UsDateInput";
+import { formatDateUs, formatDateTimeUs, looksLikeIsoDateTime } from "@/lib/date-only";
 
 const METHOD_LABELS = SUPPORT_METHOD_META;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -38,10 +40,14 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 function ReadField({ label, value }: { label: string; value: string }) {
+  const raw = value.trim();
+  let display = raw || "—";
+  if (raw && looksLikeIsoDateTime(raw)) display = formatDateTimeUs(raw);
+  else if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)) display = formatDateUs(raw);
   return (
-    <div className="rounded-xl bg-secondary/40 px-3 py-2.5">
+    <div className="min-w-0 overflow-hidden rounded-xl bg-secondary/40 px-3 py-2.5">
       <p className="text-xs font-semibold text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-sm font-medium">{value.trim() || "—"}</p>
+      <p className="mt-0.5 break-all text-sm font-medium">{display}</p>
     </div>
   );
 }
@@ -232,11 +238,10 @@ export function CampaignReview() {
                         <label className="text-xs font-semibold text-muted-foreground">
                           Start date
                         </label>
-                        <input
+                        <UsDateInput
                           ref={startDateRef}
-                          type="date"
                           value={state.startDate}
-                          onChange={(e) => update({ startDate: e.target.value })}
+                          onChange={(iso) => update({ startDate: iso })}
                           className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
                         />
                       </div>
@@ -244,11 +249,10 @@ export function CampaignReview() {
                         <label className="text-xs font-semibold text-muted-foreground">
                           End date
                         </label>
-                        <input
-                          type="date"
+                        <UsDateInput
                           value={state.endDate}
                           min={state.startDate || undefined}
-                          onChange={(e) => update({ endDate: e.target.value })}
+                          onChange={(iso) => update({ endDate: iso })}
                           className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
                         />
                       </div>

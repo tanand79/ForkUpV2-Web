@@ -165,6 +165,8 @@ export interface NonprofitProfile {
   verified: boolean;
   /** Additive: org logo when stored on the ForkUp nonprofit row. */
   logoUrl?: string | null;
+  /** Latest access-request status for this org (pending / approved / denied). */
+  accessRequestStatus?: "pending" | "approved" | "denied" | null;
 }
 
 export type ReadinessState = "complete" | "needs_review" | "preloaded_unclaimed" | "not_found";
@@ -480,6 +482,8 @@ export interface BusinessProfile {
     state: string;
     address: string | null;
   }[];
+  /** Latest access-request status for this business (pending / approved / denied). */
+  accessRequestStatus?: "pending" | "approved" | "denied" | null;
 }
 
 export type BusinessReadinessState =
@@ -1760,4 +1764,30 @@ export function denySuperAdminAccessRequest(id: number) {
     headers: { "Content-Type": "application/json" },
     body: "{}",
   });
+}
+
+/** Super-admin organization detail payload (nonprofit or business). */
+export interface SuperAdminOrganizationDetails {
+  organizationType: "nonprofit" | "business";
+  organization: Record<string, unknown>;
+  locations?: Array<Record<string, unknown>>;
+  accessRequest: AccessRequest | null;
+}
+
+/**
+ * GET /api/superadmin/organizations/:type/:id
+ * Inputs: organization type + id, optional requestId.
+ * Outputs: full organization profile (+ locations for business) and optional access request.
+ */
+export function fetchSuperAdminOrganizationDetails(
+  type: "nonprofit" | "business",
+  id: number,
+  requestId?: number | null,
+) {
+  const qs = new URLSearchParams();
+  if (requestId != null && Number.isFinite(requestId)) qs.set("requestId", String(requestId));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return fetchJson<SuperAdminOrganizationDetails>(
+    `/api/superadmin/organizations/${type}/${id}${suffix}`,
+  );
 }

@@ -7,6 +7,7 @@ import type { BusinessChangeRequest } from "@/lib/campaign-context";
 import { parseFlexibleDateInput, toDateOnlyString } from "@/lib/date-only";
 import { displayChangeRequestFields } from "@/lib/invite-change-request";
 import { usePartnerInvitation } from "@/hooks/use-partner-invitation";
+import { UsDateInput } from "@/components/campaign/UsDateInput";
 import {
   Dialog,
   DialogContent,
@@ -226,11 +227,10 @@ export function EditBusinessInvite() {
 
         <div className="space-y-2">
           <label className="text-sm font-semibold">Campaign Start Date</label>
-          <input
+          <UsDateInput
             className={field}
-            type="date"
             value={eventDate}
-            onChange={(e) => setEventDate(e.target.value)}
+            onChange={setEventDate}
           />
         </div>
 
