@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -15,8 +15,9 @@ import {
   Wand2,
 } from "lucide-react";
 import { useCampaign, type SupportMethod, type SupportMethods } from "@/lib/campaign-context";
-import { fetchManageCampaigns, generateCampaignDraft } from "@/lib/api";
+import { fetchManageCampaigns, generateCampaignDraft, suggestCampaignGoal } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-storage";
+import { suggestCampaignDates } from "@/lib/campaign-timing";
 
 /**
  * Lovable “Build Your Campaign” — guided substeps:
@@ -27,6 +28,10 @@ import { getAuthToken } from "@/lib/auth-storage";
  *
  * Goal screen also offers memory fundraising: if this nonprofit has a prior
  * campaign with funds raised, prompt to reuse that amount as the new goal.
+ * When the amount is empty on the goal screen, AI pre-fills a suggestedGoal
+ * (editable). Empty dates are pre-filled from L2 timing-safe defaults
+ * (start ≈ today+35, end ≈ start+30). Prepare My Draft may still fill
+ * suggestedGoal if left blank.
  */
 
 const METHOD_OPTIONS: {
@@ -190,6 +195,20 @@ export function QuickStart() {
   /** Prior fundraising amount for the “repeat?” prompt on the goal screen. */
   const [priorFunds, setPriorFunds] = useState<PriorFunds | null>(null);
   const [priorPromptDismissed, setPriorPromptDismissed] = useState(false);
+  /** True while AI is suggesting a goal on the Build goal screen. */
+  const [goalSuggesting, setGoalSuggesting] = useState(false);
+  /** True when the current goal value came from AI (cleared on manual/memory edit). */
+  const [goalFromAi, setGoalFromAi] = useState(!!state.goalAiSuggested && !!state.goal);
+  const goalSuggestAttempted = useRef(false);
+  /** Once the organizer types or picks memory, AI must not overwrite. */
+  const goalLockedByUser = useRef(!!(state.goal ?? "").trim());
+  /** Once the organizer edits dates, timing suggestion must not overwrite. */
+  const datesLockedByUser = useRef(
+    !!(state.startDate ?? "").trim() || !!(state.endDate ?? "").trim(),
+  );
+  const datesSuggestAttempted = useRef(false);
+  /** True when start/end came from L2 timing suggestion (cleared on edit). */
+  const [datesFromSuggestion, setDatesFromSuggestion] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<{
     title: string;
     story: string;
@@ -197,6 +216,8 @@ export function QuickStart() {
     facebookUrl?: string;
     instagramHandle?: string;
     websiteUrl?: string;
+    /** AI-suggested whole-dollar goal when organizer left amount blank. */
+    suggestedGoal?: number;
     fromAi: boolean;
   } | null>(null);
 
@@ -214,6 +235,7 @@ export function QuickStart() {
     facebookUrl?: string;
     instagramHandle?: string;
     websiteUrl?: string;
+    suggestedGoal?: number;
     fromAi: boolean;
   }) => {
     const fallbackTitle =
@@ -230,10 +252,19 @@ export function QuickStart() {
             source: "library" as const,
           }
         : null;
+    const userGoal = goal.trim();
+    const aiGoalFormatted =
+      !userGoal &&
+      draft.suggestedGoal != null &&
+      Number(draft.suggestedGoal) > 0
+        ? formatRaisedAmount(Number(draft.suggestedGoal))
+        : "";
+    const resolvedGoal = userGoal || aiGoalFormatted || state.goal;
     update({
       title: fallbackTitle,
       description: draft.story.trim() || purpose.trim(),
-      goal: goal ? String(goal) : state.goal,
+      goal: resolvedGoal,
+      goalAiSuggested: goalFromAi || (!userGoal && !!aiGoalFormatted),
       startDate: startDate || state.startDate,
       endDate: endDate || state.endDate,
       methods,
@@ -296,6 +327,7 @@ export function QuickStart() {
         facebookUrl: draft.facebookUrl,
         instagramHandle: draft.instagramHandle,
         websiteUrl: draft.websiteUrl,
+        suggestedGoal: draft.suggestedGoal,
         fromAi: true,
       });
     } catch {
@@ -331,6 +363,62 @@ export function QuickStart() {
       cancelled = true;
     };
   }, [org?.id, org?.organizationName]);
+
+  // AI goal suggestion: pre-fill the Build goal screen when amount is empty.
+  useEffect(() => {
+    if (sub !== "goal") return;
+    if (goalSuggestAttempted.current) return;
+    if (goal.trim()) return;
+    if (!purposeValid) return;
+
+    goalSuggestAttempted.current = true;
+    let cancelled = false;
+    setGoalSuggesting(true);
+    void suggestCampaignGoal({
+      purpose: purpose.trim(),
+      organizationName: org?.organizationName,
+      mission: org?.mission,
+      causeCategory: org?.causeCategory,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+    })
+      .then((res) => {
+        if (cancelled || goalLockedByUser.current) return;
+        if (res.suggestedGoal > 0) {
+          setGoal(formatRaisedAmount(res.suggestedGoal));
+          setGoalFromAi(true);
+        }
+      })
+      .catch(() => {
+        /* leave blank — Prepare My Draft can still suggest later */
+      })
+      .finally(() => {
+        if (!cancelled) setGoalSuggesting(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally run once when entering goal with empty amount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sub, purposeValid]);
+
+  // L2 timing dates: pre-fill start/end when empty (editable; avoids ForkUp review floor).
+  useEffect(() => {
+    if (sub !== "goal") return;
+    if (datesSuggestAttempted.current) return;
+    if (datesLockedByUser.current) return;
+    if (startDate.trim() || endDate.trim()) return;
+
+    datesSuggestAttempted.current = true;
+    const suggested = suggestCampaignDates();
+    if (!suggested.startDate || !suggested.endDate) return;
+    setStartDate(suggested.startDate);
+    setEndDate(suggested.endDate);
+    setDatesFromSuggestion(true);
+    // Intentionally run once when entering goal with empty dates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sub]);
 
   /** Persist typed goal into local memory so the prompt can return next time. */
   const rememberGoalIfAny = () => {
@@ -518,7 +606,7 @@ export function QuickStart() {
           {Eyebrow}
           <h1 className={`mt-4 ${headlineClass}`}>Do you have a goal or campaign dates?</h1>
           <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-            Add what you know now. You can come back to this before launch.
+            We&apos;ll suggest a fundraising goal for you. Edit anytime before launch.
           </p>
           <div className="mt-6">
             <label className="text-xs font-semibold text-muted-foreground">
@@ -526,10 +614,22 @@ export function QuickStart() {
             </label>
             <input
               value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-              placeholder="$10,000"
-              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none sm:max-w-xs"
+              onChange={(e) => {
+                goalLockedByUser.current = true;
+                setGoal(e.target.value);
+                setGoalFromAi(false);
+              }}
+              placeholder={goalSuggesting ? "Suggesting…" : "$10,000"}
+              disabled={goalSuggesting}
+              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none sm:max-w-xs disabled:opacity-70"
             />
+            {goalSuggesting ? (
+              <p className="mt-1.5 text-xs text-muted-foreground">Suggesting a goal…</p>
+            ) : goalFromAi && goal.trim() ? (
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Suggested for you — edit anytime.
+              </p>
+            ) : null}
             {/* Memory fundraising auto-detection — prior raised / goal prompt. */}
             {priorFunds && !priorPromptDismissed && (
               <div className="mt-3 rounded-2xl border border-primary/25 bg-accent/40 p-3.5 sm:max-w-md">
@@ -571,7 +671,9 @@ export function QuickStart() {
                     type="button"
                     onClick={() => {
                       const formatted = formatRaisedAmount(priorFunds.amount);
+                      goalLockedByUser.current = true;
                       setGoal(formatted);
+                      setGoalFromAi(false);
                       writeFundraisingMemory(
                         orgMemoryKey(org),
                         priorFunds.amount,
@@ -600,7 +702,11 @@ export function QuickStart() {
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => {
+                  datesLockedByUser.current = true;
+                  setDatesFromSuggestion(false);
+                  setStartDate(e.target.value);
+                }}
                 className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none"
               />
             </div>
@@ -610,14 +716,24 @@ export function QuickStart() {
                 type="date"
                 value={endDate}
                 min={startDate || undefined}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => {
+                  datesLockedByUser.current = true;
+                  setDatesFromSuggestion(false);
+                  setEndDate(e.target.value);
+                }}
                 className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none"
               />
             </div>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Goal and dates are optional for now, but dates must be confirmed before launch.
-          </p>
+          {datesFromSuggestion && startDate && endDate ? (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Suggested to avoid ForkUp review and leave room for partners — edit anytime.
+            </p>
+          ) : (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Goal and dates are optional for now, but dates must be confirmed before launch.
+            </p>
+          )}
         </main>
         <StickyFooter
           onBack={() => setSub("purpose")}

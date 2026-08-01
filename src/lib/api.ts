@@ -388,12 +388,18 @@ export interface CampaignDraftResult {
   facebookUrl?: string;
   instagramHandle?: string;
   websiteUrl?: string;
+  /**
+   * Whole-dollar USD goal suggested by AI when the organizer left goal blank.
+   * Organizer can edit on Review — never auto-published.
+   */
+  suggestedGoal?: number;
 }
 
 /**
  * GoFundMe-style quick-start: send the organizer's short answers and receive an
- * AI-prepared title / story / purpose (and optional social/website links) to
- * review and edit. Text only — no image generation.
+ * AI-prepared title / story / purpose (and optional social/website links and
+ * suggestedGoal when goal was blank) to review and edit. Text only — no image
+ * generation.
  */
 export function generateCampaignDraft(body: {
   purpose: string;
@@ -413,6 +419,30 @@ export function generateCampaignDraft(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Lightweight AI goal suggestion for the Build goal screen (before full draft).
+ * method: POST /api/suggest-campaign-goal
+ * request: { purpose, organizationName?, mission?, causeCategory?, startDate?, endDate? }
+ * response: { suggestedGoal: number, provider: string }
+ */
+export function suggestCampaignGoal(body: {
+  purpose: string;
+  organizationName?: string;
+  mission?: string;
+  causeCategory?: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  return fetchJson<{ suggestedGoal: number; provider: string }>(
+    "/api/suggest-campaign-goal",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 /** Lovable-style org draft from a website URL (review before save — never auto-claims). */
@@ -667,6 +697,10 @@ export interface BusinessCollaboration {
   id: number;
   token: string | null;
   acceptanceStatus: string;
+  inviteStatus?: string;
+  respondByDate?: string | null;
+  setupStatus?: string;
+  settlementReadyStatus?: string;
   givebackPercentage: number;
   participationHours: string | null;
   eligibleSalesRules: string | null;
@@ -734,6 +768,26 @@ export function requestBusinessInvitationChanges(token: string, message: string)
 
 // ─── Campaign dashboard (manage) ─────────────────────────────────────────────
 
+/** Nick V2 Layer 6 — dashboard visibility projection. */
+export type CampaignVisibility = {
+  tracks: {
+    id: string;
+    label: string;
+    status: string;
+    display: string;
+  }[];
+  ready: string[];
+  pending: string[];
+  needsForkupReview: string[];
+  needsBusinessAction: string[];
+  nextSuccessEngineAction: {
+    id: number;
+    title: string;
+    scheduledDate: string | null;
+    actionType: string;
+  } | null;
+};
+
 export interface CampaignDashboardData {
   slug: string;
   name: string;
@@ -746,7 +800,10 @@ export interface CampaignDashboardData {
   verifiedVisits: number;
   startDate: string | null;
   endDate: string | null;
+  eventDate?: string | null;
   invitationDeadline: string | null;
+  businessTimingStatus?: string;
+  forkupReviewStatus?: string;
   methods: { id: number; methodType: string; methodName: string; methodStatus: string }[];
   invitations: {
     id: number;
@@ -756,6 +813,12 @@ export interface CampaignDashboardData {
     methodType: string;
     methodName: string;
     acceptanceStatus: string;
+    inviteStatus?: string;
+    respondByDate?: string | null;
+    openedAt?: string | null;
+    setupStatus?: string;
+    marketingReadyStatus?: string;
+    settlementReadyStatus?: string;
     givebackPercentage: number;
     invitedAt?: string | null;
     changeRequestMessage?: string | null;
@@ -764,6 +827,7 @@ export interface CampaignDashboardData {
     acceptPath: string | null;
   }[];
   virtualDonations: { count: number; total: number };
+  visibility?: CampaignVisibility;
 }
 
 export function fetchCampaignDashboard(slug: string) {
@@ -796,9 +860,12 @@ export interface ManageCampaignSummary {
   verifiedVisits: number;
   startDate: string | null;
   endDate: string | null;
+  businessTimingStatus?: string;
+  forkupReviewStatus?: string;
   partnersInvited?: number;
   partnersPending?: number;
   partnersChangesRequested?: number;
+  partnersNeedsInfo?: number;
 }
 
 export function fetchManageCampaigns(nonprofitId?: number) {
@@ -920,6 +987,30 @@ export function runDueSuccessEngineActions() {
   return fetchJson<RunDueSuccessEngineResult>(`/api/manage/success-engine/run-due`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+  });
+}
+
+/** Nick V2 Layer 5 — business lifecycle emails 2/5/6/7 (manual send). */
+export type BusinessLifecycleEmailKey =
+  | "invite_reminder"
+  | "missing_info"
+  | "launch_kit"
+  | "starting_soon";
+
+export function postCampaignBusinessEmails(
+  slug: string,
+  body: { templateKey: BusinessLifecycleEmailKey; invitationId?: number },
+) {
+  return fetchJson<{
+    success: boolean;
+    templateKey: BusinessLifecycleEmailKey;
+    sent: number;
+    skipped: number;
+    targeted: number;
+  }>(`/api/manage/campaigns/${encodeURIComponent(slug)}/business-emails`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 
@@ -1756,6 +1847,152 @@ export function approveSuperAdminAccessRequest(id: number) {
 
 export function denySuperAdminAccessRequest(id: number) {
   return fetchJson<{ success: boolean }>(`/api/superadmin/access-requests/${id}/deny`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
+/** Nick V2 Layer 6 — campaigns needing ForkUp timing review. */
+export type ForkupReviewQueueItem = {
+  slug: string;
+  name: string;
+  nonprofit: string;
+  status: string;
+  businessTimingStatus: string;
+  forkupReviewStatus: string;
+  startDate: string | null;
+  eventDate: string | null;
+};
+
+export function fetchSuperAdminForkupReviewQueue() {
+  return fetchJson<ForkupReviewQueueItem[]>("/api/superadmin/forkup-review-queue");
+}
+
+/** Approve short-timeline ForkUp review for a campaign (superadmin). */
+export function approveSuperAdminForkupReview(slug: string) {
+  return fetchJson<{
+    success: boolean;
+    slug: string;
+    forkupReviewStatus: string;
+    businessTimingStatus: string;
+  }>(`/api/superadmin/forkup-review/${encodeURIComponent(slug)}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
+/** Deny short-timeline ForkUp review for a campaign (superadmin). */
+export function denySuperAdminForkupReview(slug: string) {
+  return fetchJson<{
+    success: boolean;
+    slug: string;
+    forkupReviewStatus: string;
+    businessTimingStatus: string;
+  }>(`/api/superadmin/forkup-review/${encodeURIComponent(slug)}/deny`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
+/** Nick V2 Layer 4 — campaign AI guidance (rules first, AI polish optional). */
+export type CampaignAiTimingGuidance = {
+  timing: {
+    status: string;
+    message: string | null;
+    daysUntilAnchor: number | null;
+    anchorKind: string | null;
+  };
+  summary: string;
+  aiExplanation: string | null;
+  provider: string;
+};
+
+export type CampaignAiInviteReadiness = {
+  score: number;
+  summary: string;
+  factors: { label: string; points: number; note: string }[];
+  aiExplanation: string | null;
+  provider: string;
+};
+
+export type CampaignAiMethodMix = {
+  recommended: string[];
+  summary: string;
+  aiExplanation: string | null;
+  provider: string;
+};
+
+export type CampaignAiHealth = {
+  summary: string;
+  nudges: { severity: "info" | "warn" | "critical"; message: string }[];
+  provider: string;
+};
+
+export function postCampaignAiTimingGuidance(body: Record<string, unknown>) {
+  return fetchJson<CampaignAiTimingGuidance>("/api/campaign-ai/timing-guidance", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function postCampaignAiMethodMix(body: Record<string, unknown>) {
+  return fetchJson<CampaignAiMethodMix>("/api/campaign-ai/method-mix", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function postCampaignAiInviteReadiness(body: Record<string, unknown>) {
+  return fetchJson<CampaignAiInviteReadiness>("/api/campaign-ai/invite-readiness", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function postCampaignAiGenerateCalendar(slug: string) {
+  return fetchJson<{
+    success: boolean;
+    created: number;
+    totalDrafts: number;
+    message: string;
+    provider: string;
+  }>("/api/campaign-ai/generate-calendar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slug }),
+  });
+}
+
+export function fetchCampaignAiHealth(slug: string) {
+  return fetchJson<CampaignAiHealth>(
+    `/api/campaign-ai/${encodeURIComponent(slug)}/health`,
+  );
+}
+
+export function postCampaignAiAdminReviewSummary(slug: string) {
+  return fetchJson<{
+    summary: string;
+    recommendation: string;
+    provider: string;
+  }>(`/api/campaign-ai/${encodeURIComponent(slug)}/admin-review-summary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
+export function postCampaignAiSettlementNarrative(slug: string) {
+  return fetchJson<{
+    summary: string;
+    totals: Record<string, number>;
+    provider: string;
+  }>(`/api/campaign-ai/${encodeURIComponent(slug)}/settlement-narrative`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",

@@ -15,7 +15,12 @@ import {
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { campaignPublicPath } from "@/lib/campaign-paths";
-import { fetchBusinessCollaborations, fetchCurrentUser, type BusinessCollaboration } from "@/lib/api";
+import {
+  fetchBusinessCollaborations,
+  fetchCurrentUser,
+  type BusinessCollaboration,
+} from "@/lib/api";
+import { formatRespondByLabel } from "@/lib/business-status";
 
 type CollabTab = "pending" | "active" | "completed";
 
@@ -46,7 +51,11 @@ function collabTab(c: BusinessCollaboration): CollabTab {
   ) {
     return "pending";
   }
-  if (["invited", "pending", "changes_requested"].includes(c.acceptanceStatus)) {
+  if (
+    ["invited", "pending", "opened", "changes_requested", "needs_info"].includes(
+      c.acceptanceStatus,
+    )
+  ) {
     return "pending";
   }
   if (
@@ -63,7 +72,11 @@ function statusLabel(c: BusinessCollaboration): string {
   if (c.direction === "outgoing" && c.nonprofitInviteStatus === "pending") {
     return "Awaiting nonprofit";
   }
-  if (c.acceptanceStatus === "changes_requested") return "Changes requested";
+  if (c.acceptanceStatus === "changes_requested" || c.acceptanceStatus === "needs_info") {
+    return "Needs info";
+  }
+  if (c.acceptanceStatus === "opened") return "Opened — respond soon";
+  if (c.acceptanceStatus === "expired") return "Expired";
   if (["invited", "pending"].includes(c.acceptanceStatus)) return "Action needed";
   if (c.campaign.status === "live") return "Live";
   if (c.campaign.status === "ready_to_launch") return "Scheduled";
@@ -131,6 +144,24 @@ export function BusinessDashboard() {
       else active.push(c);
     }
     return { pending, active, completed };
+  }, [collaborations]);
+
+  /** Nick V2 Layer 6 — items that need business action (respond / finish setup). */
+  const needsBusinessAction = useMemo(() => {
+    return collaborations.filter((c) => {
+      if (
+        ["invited", "pending", "opened", "changes_requested", "needs_info"].includes(
+          c.acceptanceStatus,
+        )
+      ) {
+        return true;
+      }
+      return (
+        c.setupStatus === "needs_info" ||
+        c.settlementReadyStatus === "needs_info" ||
+        c.inviteStatus === "needs_info"
+      );
+    });
   }, [collaborations]);
 
   const summary = useMemo(
@@ -249,6 +280,46 @@ export function BusinessDashboard() {
         </div>
       </section>
 
+      {needsBusinessAction.length > 0 && (
+        <section className="animate-rise mt-8 rounded-3xl border border-amber-300/60 bg-amber-50/70 p-5 dark:border-amber-900 dark:bg-amber-950/30">
+          <h2 className="flex items-center gap-2 text-base font-bold text-amber-950 dark:text-amber-100">
+            <Clock className="size-4" />
+            Needs your action
+          </h2>
+          <p className="mt-1 text-sm text-amber-900/90 dark:text-amber-100/80">
+            Respond to invitations or finish setup so your business can appear as a participating
+            partner.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {needsBusinessAction.slice(0, 5).map((c) => (
+              <li
+                key={`action-${c.id}-${c.campaign.slug}`}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200/70 bg-card px-3 py-2 text-sm dark:border-amber-900"
+              >
+                <span>
+                  <span className="font-semibold">{c.campaign.name}</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {statusLabel(c)}
+                    {c.respondByDate
+                      ? ` · respond by ${formatRespondByLabel(c.respondByDate)}`
+                      : ""}
+                  </span>
+                </span>
+                {c.reviewPath && (
+                  <a
+                    href={c.reviewPath}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-primary"
+                  >
+                    Review <ArrowRight className="size-3.5" />
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="animate-rise mt-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-2xl font-extrabold tracking-tight">
@@ -294,7 +365,9 @@ export function BusinessDashboard() {
               const needsReview =
                 tab === "pending" &&
                 c.reviewPath &&
-                ["invited", "pending", "changes_requested"].includes(c.acceptanceStatus);
+                ["invited", "pending", "opened", "changes_requested", "needs_info"].includes(
+                  c.acceptanceStatus,
+                );
               return (
                 <div
                   key={`${c.id}-${c.campaign.slug}`}

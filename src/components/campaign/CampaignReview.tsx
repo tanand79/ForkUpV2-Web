@@ -22,6 +22,7 @@ import {
 import { useCampaign, SUPPORT_METHOD_META, type SupportMethod } from "@/lib/campaign-context";
 import { uploadImage } from "@/lib/api";
 import { CampaignGalleryPicker } from "@/components/campaign/CampaignGalleryPicker";
+import { dateFieldRequirements } from "@/lib/campaign-timing";
 
 const METHOD_LABELS = SUPPORT_METHOD_META;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -77,6 +78,7 @@ export function CampaignReview() {
   const imageRef = useRef<HTMLInputElement>(null);
   const basicsRef = useRef<HTMLDivElement>(null);
   const startDateRef = useRef<HTMLInputElement>(null);
+  const eventDateRef = useRef<HTMLInputElement>(null);
 
   const orgName =
     state.nonprofitProfile?.organizationName?.trim() || "Your organization";
@@ -88,6 +90,7 @@ export function CampaignReview() {
   const purpose = state.fundsSupport[0]?.trim() || "";
   const featuredImage = state.cover;
   const businessRequired = state.methods.giveback || state.methods.guestBartending;
+  const dateReqs = dateFieldRequirements(state.methods);
 
   const attention: { label: string; action: string; onClick: () => void }[] = [];
   if (!state.title.trim()) {
@@ -97,15 +100,42 @@ export function CampaignReview() {
       onClick: () => setEditBasics(true),
     });
   }
-  if (!state.startDate || !state.endDate) {
+  if (dateReqs.requireStartDate && !state.startDate) {
     attention.push({
-      label: "Campaign dates are missing",
+      label: "Campaign start date is missing",
       action: "Add Dates",
       onClick: () => {
         setEditBasics(true);
         setTimeout(() => {
           basicsRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
           startDateRef.current?.focus();
+        }, 80);
+      },
+    });
+  }
+  if (dateReqs.requireEndDate && !state.endDate) {
+    attention.push({
+      label: "Campaign end date is missing",
+      action: "Add Dates",
+      onClick: () => {
+        setEditBasics(true);
+        setTimeout(() => {
+          basicsRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+          startDateRef.current?.focus();
+        }, 80);
+      },
+    });
+  }
+  // Nick V2 Layer 2 — Guest Bartending requires a single event date (wired into Lovable Review).
+  if (dateReqs.requireEventDate && !state.eventDate) {
+    attention.push({
+      label: "Guest Bartending event date is missing",
+      action: "Add Event Date",
+      onClick: () => {
+        setEditBasics(true);
+        setTimeout(() => {
+          basicsRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+          eventDateRef.current?.focus();
         }, 80);
       },
     });
@@ -228,30 +258,71 @@ export function CampaignReview() {
                       />
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="text-xs font-semibold text-muted-foreground">
-                          Start date
-                        </label>
-                        <input
-                          ref={startDateRef}
-                          type="date"
-                          value={state.startDate}
-                          onChange={(e) => update({ startDate: e.target.value })}
-                          className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-semibold text-muted-foreground">
-                          End date
-                        </label>
-                        <input
-                          type="date"
-                          value={state.endDate}
-                          min={state.startDate || undefined}
-                          onChange={(e) => update({ endDate: e.target.value })}
-                          className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
-                        />
-                      </div>
+                      {(dateReqs.requireStartDate || dateReqs.startOptional) && (
+                        <div>
+                          <label className="text-xs font-semibold text-muted-foreground">
+                            Start date
+                            {dateReqs.startOptional ? " (optional)" : ""}
+                          </label>
+                          <input
+                            ref={startDateRef}
+                            type="date"
+                            value={state.startDate}
+                            onChange={(e) =>
+                              update({
+                                startDate: e.target.value,
+                                submitForForkupReview: false,
+                                continueWithoutBusinessMethods: false,
+                              })
+                            }
+                            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
+                          />
+                        </div>
+                      )}
+                      {dateReqs.requireEndDate && (
+                        <div>
+                          <label className="text-xs font-semibold text-muted-foreground">
+                            End date
+                          </label>
+                          <input
+                            type="date"
+                            value={state.endDate}
+                            min={state.startDate || undefined}
+                            onChange={(e) =>
+                              update({
+                                endDate: e.target.value,
+                                submitForForkupReview: false,
+                                continueWithoutBusinessMethods: false,
+                              })
+                            }
+                            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
+                          />
+                        </div>
+                      )}
+                      {dateReqs.requireEventDate && (
+                        <div className="sm:col-span-2">
+                          <label className="text-xs font-semibold text-muted-foreground">
+                            Guest Bartending event date
+                          </label>
+                          <input
+                            ref={eventDateRef}
+                            type="date"
+                            value={state.eventDate}
+                            onChange={(e) =>
+                              update({
+                                eventDate: e.target.value,
+                                submitForForkupReview: false,
+                                continueWithoutBusinessMethods: false,
+                              })
+                            }
+                            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
+                          />
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Required for Guest Bartending. Giveback methods still use the campaign
+                            start/end dates above when selected.
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-muted-foreground">
@@ -259,18 +330,34 @@ export function CampaignReview() {
                       </label>
                       <input
                         value={state.goal}
-                        onChange={(e) => update({ goal: e.target.value })}
+                        onChange={(e) =>
+                          update({ goal: e.target.value, goalAiSuggested: false })
+                        }
                         className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
                         placeholder="e.g. $5,000"
                       />
+                      {state.goalAiSuggested && state.goal.trim() ? (
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                          Suggested for you — edit anytime.
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 ) : (
                   <div className="grid gap-2.5 sm:grid-cols-2">
                     <ReadField label="Campaign title" value={state.title} />
                     <ReadField label="Campaign purpose" value={purpose} />
-                    <ReadField label="Start date" value={state.startDate} />
-                    <ReadField label="End date" value={state.endDate} />
+                    {(dateReqs.requireStartDate ||
+                      dateReqs.startOptional ||
+                      !!state.startDate) && (
+                      <ReadField label="Start date" value={state.startDate} />
+                    )}
+                    {(dateReqs.requireEndDate || !!state.endDate) && (
+                      <ReadField label="End date" value={state.endDate} />
+                    )}
+                    {(dateReqs.requireEventDate || !!state.eventDate) && (
+                      <ReadField label="Guest Bartending event date" value={state.eventDate} />
+                    )}
                     {state.goal.trim() && (
                       <ReadField label="Fundraising goal" value={state.goal} />
                     )}

@@ -19,6 +19,10 @@ import {
 import { useCampaign, SUPPORT_METHOD_META, type SupportMethod } from "@/lib/campaign-context";
 import { createCampaign, updateCampaign, putCampaignImages } from "@/lib/api";
 import { buildCreateCampaignPayload, buildCampaignGalleryPayload, durableCoverImageUrl } from "@/lib/builder-submit";
+import {
+  deriveCampaignReadiness,
+  readinessTrackRows,
+} from "@/lib/campaign-readiness";
 
 function formatDate(d: string) {
   if (!d) return "";
@@ -53,6 +57,7 @@ export function ReviewLaunch() {
   const invitedBusinesses = selectedBusinesses;
   const hasStory = !!state.description;
   const hasDates = !!state.startDate && !!state.endDate;
+  const hasEventDate = !!state.eventDate;
   const hasLogo = !!state.logo;
   const hasCover = !!state.cover;
   // Lovable: featured image is required for launch readiness; logo is optional.
@@ -65,6 +70,10 @@ export function ReviewLaunch() {
   // Informational only — never gates launch.
   const verificationPending =
     state.nonprofitProfile?.verificationStatus === "needs_review";
+
+  // Multi-track readiness (Nick V2 Layer 1) — business pending does not block online/ambassador.
+  const readinessTracks = deriveCampaignReadiness(state);
+  const readinessRows = readinessTrackRows(readinessTracks);
 
   // ── Launch preparation animation ──────────────────────────────────────────
   const [launching, setLaunching] = useState(false);
@@ -345,6 +354,39 @@ export function ReviewLaunch() {
               </div>
             </div>
 
+            {/* Multi-track readiness — online/ambassador can be Ready while business waits */}
+            {readinessRows.length > 0 && (
+              <div>
+                <p className="mb-1 flex items-center gap-2 text-sm font-semibold">
+                  <CheckCircle2 className="size-4 text-primary" />
+                  Campaign readiness
+                </p>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Each fundraising method has its own readiness. Online donations and ambassador
+                  sharing can move forward while business participation is still pending.
+                </p>
+                <ul className="space-y-2">
+                  {readinessRows.map((row) => (
+                    <li
+                      key={row.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm"
+                    >
+                      <span className="font-medium">{row.label}</span>
+                      <span
+                        className={
+                          row.status === "ready"
+                            ? "text-xs font-semibold text-[oklch(0.45_0.1_150)]"
+                            : "text-xs font-semibold text-amber-700 dark:text-amber-300"
+                        }
+                      >
+                        {row.display}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Dates + Giveback */}
             <div className="grid gap-4 sm:grid-cols-2">
               <SummaryRow icon={<Calendar className="size-4" />} label="Campaign Dates" complete={hasDates}>
@@ -354,6 +396,24 @@ export function ReviewLaunch() {
                   <MissingItem lines={["Campaign dates needed before launch."]} action="Add Dates" onClick={() => goTo("campaign-review")} compact />
                 )}
               </SummaryRow>
+              {state.methods.guestBartending && (
+                <SummaryRow
+                  icon={<Calendar className="size-4" />}
+                  label="Guest Bartending Event"
+                  complete={hasEventDate}
+                >
+                  {hasEventDate ? (
+                    formatDate(state.eventDate)
+                  ) : (
+                    <MissingItem
+                      lines={["Event date required for Guest Bartending before launch."]}
+                      action="Add Event Date"
+                      onClick={() => goTo("campaign-review")}
+                      compact
+                    />
+                  )}
+                </SummaryRow>
+              )}
               {state.methods.giveback && (
                 <SummaryRow icon={<Percent className="size-4" />} label="Giveback" complete>
                   {state.giveback}%

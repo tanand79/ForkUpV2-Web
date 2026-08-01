@@ -23,6 +23,9 @@ import type { BusinessInviteStatus } from "@/lib/campaign-context";
 import { fetchCampaignDashboard, type CampaignDashboardData } from "@/lib/api";
 import { toDateOnlyString } from "@/lib/date-only";
 import { ApiAcceptanceStatusBadge } from "@/components/campaign/BusinessStatusBadge";
+import { formatRespondByLabel, SETUP_STATUS_LABEL, type SetupStatus } from "@/lib/business-status";
+import { BusinessEmailActions } from "./BusinessEmailActions";
+import { CampaignVisibilityPanel } from "./CampaignVisibilityPanel";
 import { SuccessEngineActionList } from "./SuccessEngineActionList";
 
 function formatDate(d: string) {
@@ -306,7 +309,9 @@ export function CampaignDashboard() {
     allStatuses.filter((s) => s === "accepted").length;
   const pending =
     apiDashboard?.invitations.filter((i) =>
-      ["invited", "pending", "changes_requested"].includes(i.acceptanceStatus),
+      ["invited", "pending", "opened", "changes_requested", "needs_info"].includes(
+        i.acceptanceStatus,
+      ) || i.inviteStatus === "needs_info",
     ).length ?? allStatuses.filter((s) => s === "pending").length;
   const declined =
     apiDashboard?.invitations.filter((i) => i.acceptanceStatus === "declined").length ??
@@ -481,6 +486,16 @@ export function CampaignDashboard() {
         </div>
       )}
 
+      {/* Nick V2 Layer 6 — ready / pending / review / business action / SE next */}
+      {apiDashboard?.visibility && (
+        <div className="animate-rise mb-8">
+          <CampaignVisibilityPanel
+            visibility={apiDashboard.visibility}
+            onOpenSuccessEngine={() => goTo("success-engine")}
+          />
+        </div>
+      )}
+
       {/* SECTION 1 — Campaign Performance (live onward) */}
       {showPerformance && (
         <section className="animate-rise mb-8">
@@ -532,8 +547,29 @@ export function CampaignDashboard() {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">{inv.businessName}</p>
-                    <ApiAcceptanceStatusBadge status={inv.acceptanceStatus} />
-                    {inv.acceptanceStatus === "changes_requested" && inv.changeRequestMessage && (
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <ApiAcceptanceStatusBadge
+                        status={inv.acceptanceStatus}
+                        inviteStatus={inv.inviteStatus}
+                      />
+                      {inv.respondByDate &&
+                        ["invited", "pending", "opened"].includes(inv.acceptanceStatus) && (
+                          <span className="text-xs text-muted-foreground">
+                            Respond by {formatRespondByLabel(inv.respondByDate)}
+                          </span>
+                        )}
+                      {inv.setupStatus &&
+                        inv.acceptanceStatus === "accepted" &&
+                        inv.setupStatus !== "pending" && (
+                          <span className="text-xs text-muted-foreground">
+                            {SETUP_STATUS_LABEL[inv.setupStatus as SetupStatus] ??
+                              inv.setupStatus}
+                          </span>
+                        )}
+                    </div>
+                    {(inv.acceptanceStatus === "changes_requested" ||
+                      inv.inviteStatus === "needs_info") &&
+                      inv.changeRequestMessage && (
                       <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
                         {inv.changeRequestMessage}
                       </p>
@@ -610,6 +646,12 @@ export function CampaignDashboard() {
             Track Business Partners <ArrowRight className="size-4" />
           </button>
         </section>
+      )}
+
+      {(state.campaignSlug || apiDashboard?.slug) && (
+        <div className="animate-rise mb-8 [animation-delay:80ms]">
+          <BusinessEmailActions slug={state.campaignSlug || apiDashboard?.slug || ""} />
+        </div>
       )}
 
       {/* SUCCESS ENGINE — scheduled promotion plan (ready + live) */}

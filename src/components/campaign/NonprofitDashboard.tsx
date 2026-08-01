@@ -323,7 +323,7 @@ export function NonprofitDashboard() {
   const awaitingPartners = useMemo(
     () =>
       partnerUpdates.filter((p) =>
-        ["invited", "pending"].includes(p.acceptanceStatus),
+        ["invited", "pending", "opened"].includes(p.acceptanceStatus),
       ),
     [partnerUpdates],
   );
@@ -472,8 +472,29 @@ export function NonprofitDashboard() {
             {(c.partnersChangesRequested ?? 0) > 0
               ? ` · ${c.partnersChangesRequested} requested changes`
               : ""}
+            {(c.partnersNeedsInfo ?? 0) > 0
+              ? ` · ${c.partnersNeedsInfo} need setup info`
+              : ""}
           </p>
         )}
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {c.businessTimingStatus === "needs_forkup_review" ||
+          c.forkupReviewStatus === "pending" ? (
+            <span className="rounded-full border border-amber-300/70 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Needs ForkUp Review
+            </span>
+          ) : null}
+          {(c.partnersPending ?? 0) > 0 && (
+            <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              Business action pending
+            </span>
+          )}
+          {(c.partnersNeedsInfo ?? 0) > 0 && (
+            <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              Setup info needed
+            </span>
+          )}
+        </div>
         <p className="mt-3 text-sm">
           <span className="text-muted-foreground">Raised: </span>
           <span className="font-extrabold text-primary">${Number(c.raised).toLocaleString()}</span>
