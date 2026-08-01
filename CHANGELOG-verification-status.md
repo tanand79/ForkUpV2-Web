@@ -11,3 +11,7 @@
   - Date: `Saturday, August 1, 2026`
   - Date-time: `Saturday, August 1, 2026, 2:25 AM`
 - Wired across Super Admin details, admin logs, dashboards, success engine, receipts, analytics, and public donation feed.
+
+## Added (superadmin View Details — campaign activity)
+- `GET /api/superadmin/organizations/:type/:id` now also returns `activitySummary` + `campaigns[]` (raised/goal, online gifts, giveback pool, supporters, receipts, partners, ambassadors, settlement) — additive fields only.
+- Super Admin **View Details** panel shows Activity overview + per-campaign KPI cards (creator-parity), then existing verification/profile/locations sections unchanged.

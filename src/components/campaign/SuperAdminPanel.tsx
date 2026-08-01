@@ -49,6 +49,8 @@ import {
   updateSuperAdminProfile,
   type AccessRequest,
   type ForkupReviewQueueItem,
+  type SuperAdminCampaignActivity,
+  type SuperAdminOrganizationDetails,
   type SuperAdminUser,
 } from "@/lib/api";
 
@@ -684,10 +686,162 @@ function DetailField({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+const moneyFmt = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+/** Format USD for superadmin activity KPIs. */
+function fmtMoney(n: number | undefined | null): string {
+  return moneyFmt.format(Number(n ?? 0));
+}
+
+/**
+ * ActivityKpi — compact metric tile for superadmin org activity overview.
+ * Inputs: label + value (+ optional hint). Outputs: KPI card UI.
+ */
+function ActivityKpi({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-background px-3 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-lg font-extrabold tracking-tight">{value}</p>
+      {hint ? <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * CampaignActivityCard — one campaign's creator-parity KPIs for superadmin.
+ * Inputs: SuperAdminCampaignActivity. Outputs: campaign summary card.
+ */
+function CampaignActivityCard({ campaign }: { campaign: SuperAdminCampaignActivity }) {
+  const goalPct =
+    campaign.goal > 0
+      ? Math.min(100, Math.round((campaign.raised / campaign.goal) * 100))
+      : null;
+  const dateLabel = campaign.eventDate
+    ? `Event ${formatDateUs(campaign.eventDate)}`
+    : [campaign.startDate, campaign.endDate]
+        .filter(Boolean)
+        .map((d) => formatDateUs(String(d)))
+        .join(" – ") || "Dates TBD";
+  const methodLabels = campaign.methods
+    .map((m) => m.methodType.replace(/_/g, " "))
+    .filter(Boolean);
+
+  return (
+    <li className="rounded-xl border border-border bg-background p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-bold leading-snug">{campaign.name}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {campaign.slug} · {campaign.status.replace(/_/g, " ")} · {dateLabel}
+          </p>
+          {campaign.nonprofit ? (
+            <p className="mt-0.5 text-xs text-muted-foreground">{campaign.nonprofit}</p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {campaign.forkupReviewStatus === "pending" ||
+          campaign.businessTimingStatus === "needs_forkup_review" ? (
+            <span className="rounded-full border border-amber-300/70 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Needs ForkUp Review
+            </span>
+          ) : null}
+          {campaign.businessTimingStatus === "limited_promotion_window" ? (
+            <span className="rounded-full border border-border bg-secondary/60 px-2 py-0.5 text-[11px] font-semibold">
+              Limited promotion
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      {methodLabels.length > 0 ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Methods: {methodLabels.join(", ")}
+        </p>
+      ) : null}
+
+      <p className="mt-3 text-sm">
+        <span className="text-muted-foreground">Raised: </span>
+        <span className="font-extrabold text-primary">{fmtMoney(campaign.raised)}</span>
+        {campaign.goal > 0 ? (
+          <span className="text-muted-foreground"> / {fmtMoney(campaign.goal)} goal</span>
+        ) : null}
+        {goalPct != null ? (
+          <span className="text-muted-foreground"> ({goalPct}%)</span>
+        ) : null}
+      </p>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <ActivityKpi
+          label="Supporters"
+          value={String(campaign.receiptSupporters)}
+          hint={`${campaign.supportersGoing} going · ${campaign.verifiedVisits} visits`}
+        />
+        <ActivityKpi
+          label="Online gifts"
+          value={fmtMoney(campaign.onlineDonationTotal)}
+          hint={`${campaign.onlineDonationCount} donation${campaign.onlineDonationCount === 1 ? "" : "s"}`}
+        />
+        <ActivityKpi
+          label="Giveback pool"
+          value={fmtMoney(campaign.givebackPool)}
+          hint={`from ${fmtMoney(campaign.eligibleSales)} eligible sales`}
+        />
+        <ActivityKpi
+          label="Receipts"
+          value={String(campaign.receiptsApproved)}
+          hint={`${campaign.receiptsUploaded} uploaded · ${campaign.receiptsPending} pending · ${campaign.receiptsRejected} rejected`}
+        />
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <ActivityKpi
+          label="Partners"
+          value={`${campaign.partnersAccepted}/${campaign.partnersInvited}`}
+          hint={`${campaign.partnersPending} pending · ${campaign.partnersNeedsInfo} need info`}
+        />
+        <ActivityKpi
+          label="Ambassadors"
+          value={String(campaign.ambassadorCount)}
+          hint={`${campaign.participantCount} participants total`}
+        />
+        <ActivityKpi
+          label="Settlement fee"
+          value={fmtMoney(campaign.settlementForkupFee)}
+          hint={`pool ${fmtMoney(campaign.settlementDonationPool)}`}
+        />
+        <ActivityKpi
+          label="Net to nonprofit"
+          value={fmtMoney(campaign.settlementNetNonprofit)}
+          hint={
+            campaign.expectedGuests > 0
+              ? `${campaign.expectedGuests} expected guests`
+              : undefined
+          }
+        />
+      </div>
+    </li>
+  );
+}
+
 /**
  * OrganizationDetailsView — full org + request detail for superadmin.
  * Inputs: access request, approve/deny handlers, back.
- * Outputs: details UI matching platform console cards.
+ * Outputs: details UI matching platform console cards + campaign activity KPIs.
  */
 function OrganizationDetailsView({
   request,
@@ -723,10 +877,12 @@ function OrganizationDetailsView({
         setDetails(null);
       })
       .finally(() => setLoading(false));
-  }, [request]);
+  }, [request.id, request.organizationId, request.organizationType]);
 
   const org = details?.organization ?? null;
   const isNonprofit = details?.organizationType === "nonprofit";
+  const summary = details?.activitySummary;
+  const campaigns = details?.campaigns ?? [];
 
   return (
     <section className="space-y-4">
@@ -774,6 +930,79 @@ function OrganizationDetailsView({
 
       {!loading && details && (
         <>
+          {summary ? (
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <h3 className="text-sm font-bold tracking-tight">Activity overview</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Same money, supporter, and partner signals a creator sees on their campaign
+                dashboard and analytics — rolled up for this organization.
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <ActivityKpi
+                  label="Campaigns"
+                  value={String(summary.campaignCount)}
+                  hint={`${summary.liveCount} live · ${summary.draftCount} draft/scheduled`}
+                />
+                <ActivityKpi
+                  label="Total raised"
+                  value={fmtMoney(summary.totalRaised)}
+                  hint={
+                    summary.totalGoal > 0 ? `of ${fmtMoney(summary.totalGoal)} goal` : undefined
+                  }
+                />
+                <ActivityKpi
+                  label="Online gifts"
+                  value={fmtMoney(summary.onlineDonationTotal)}
+                  hint={`${summary.onlineDonationCount} donation${summary.onlineDonationCount === 1 ? "" : "s"}`}
+                />
+                <ActivityKpi
+                  label="Giveback pool"
+                  value={fmtMoney(summary.givebackPool)}
+                  hint={`from ${fmtMoney(summary.eligibleSales)} eligible sales`}
+                />
+                <ActivityKpi
+                  label="Supporters"
+                  value={String(summary.supporters)}
+                  hint={`${summary.supportersGoing} marked going`}
+                />
+                <ActivityKpi
+                  label="Receipts"
+                  value={String(summary.receiptsApproved)}
+                  hint={`${summary.receiptsUploaded} uploaded`}
+                />
+                <ActivityKpi
+                  label="Partners"
+                  value={`${summary.partnersAccepted}/${summary.partnersInvited}`}
+                  hint={`${summary.ambassadorCount} ambassadors`}
+                />
+                <ActivityKpi
+                  label="Settlement"
+                  value={fmtMoney(summary.settlementNetNonprofit)}
+                  hint={`fee ${fmtMoney(summary.settlementForkupFee)}`}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <h3 className="text-sm font-bold tracking-tight">Campaigns</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Per-campaign raised, supporters, receipts, partners, and settlement — matching
+              creator analytics.
+            </p>
+            {campaigns.length === 0 ? (
+              <p className="mt-3 rounded-xl border border-dashed border-border bg-background p-4 text-sm text-muted-foreground">
+                No campaigns linked to this organization yet.
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-3">
+                {campaigns.map((c) => (
+                  <CampaignActivityCard key={c.id} campaign={c} />
+                ))}
+              </ul>
+            )}
+          </div>
+
           <div className="rounded-2xl border border-border bg-card p-5">
             <h3 className="text-sm font-bold tracking-tight">Verification request</h3>
             <div className="mt-3 grid gap-2.5 sm:grid-cols-2">

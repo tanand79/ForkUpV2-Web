@@ -18,6 +18,7 @@ import { ActionBar } from "./ChooseBusinesses";
 import { CampaignAiGuidance } from "./CampaignAiGuidance";
 import { useLovableFlowRedirect } from "./useLovableFlowRedirect";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
+import { RequestAgainButton } from "@/components/campaign/RequestAgainButton";
 
 
 const GIVEBACK = [10, 15, 20];
@@ -317,6 +318,28 @@ export function CampaignDetails() {
               {ambassadorCoach}
             </p>
           )}
+
+          {state.forkupReviewStatus === "denied" && state.campaignSlug ? (
+            <div className="space-y-3 rounded-2xl border border-rose-300/60 bg-rose-50/80 p-4 dark:border-rose-800 dark:bg-rose-950/40">
+              <p className="text-sm font-semibold text-rose-900 dark:text-rose-200">
+                ForkUp review denied
+              </p>
+              <p className="text-sm text-rose-900/90 dark:text-rose-100/90">
+                You can request review again after updating dates or campaign details.
+              </p>
+              <RequestAgainButton
+                kind="campaign"
+                campaignSlug={state.campaignSlug}
+                onSuccess={() => {
+                  update({
+                    forkupReviewStatus: "pending",
+                    submitForForkupReview: true,
+                    businessTimingStatus: "needs_forkup_review",
+                  });
+                }}
+              />
+            </div>
+          ) : null}
 
           {timingEval.status === "needs_forkup_review" && timingEval.message && (
             <div className="space-y-3 rounded-2xl border border-amber-300/60 bg-amber-50/80 p-4 dark:border-amber-800 dark:bg-amber-950/40">

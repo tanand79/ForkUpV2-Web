@@ -16,12 +16,16 @@ import {
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { campaignPublicPath } from "@/lib/campaign-paths";
+import { syncAuthSession } from "@/lib/auth-session";
+import { getAuthToken } from "@/lib/auth-storage";
+import { formatDateUs, formatDateTimeUs, looksLikeIsoDateTime } from "@/lib/date-only";
 import {
   fetchBusinessCollaborations,
   fetchCurrentUser,
   type BusinessCollaboration,
 } from "@/lib/api";
 import { formatRespondByLabel } from "@/lib/business-status";
+import { RequestAgainButton } from "@/components/campaign/RequestAgainButton";
 
 type CollabTab = "pending" | "active" | "completed";
 
@@ -217,10 +221,21 @@ export function BusinessDashboard() {
               Verified business
             </span>
           ) : biz.accessRequestStatus === "denied" ? (
-            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-              <XCircle className="size-3.5" />
-              Verification denied
-            </span>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                <XCircle className="size-3.5" />
+                Verification denied
+              </span>
+              <RequestAgainButton
+                kind="organization"
+                organizationType="business"
+                organizationId={biz.id}
+                onSuccess={async () => {
+                  const session = await syncAuthSession(undefined, { force: true });
+                  if (session?.businessProfile) setBusinessProfile(session.businessProfile);
+                }}
+              />
+            </div>
           ) : biz.claimStatus === "needs_review" || biz.accessRequestStatus === "pending" ? (
             <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
               <Clock className="size-3.5" />
