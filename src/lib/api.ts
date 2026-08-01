@@ -883,6 +883,7 @@ export interface ManageCampaignSummary {
   endDate: string | null;
   businessTimingStatus?: string;
   forkupReviewStatus?: string;
+  forkupReviewReason?: string | null;
   partnersInvited?: number;
   partnersPending?: number;
   partnersChangesRequested?: number;
@@ -1896,7 +1897,7 @@ export function denySuperAdminAccessRequest(id: number) {
   });
 }
 
-/** Super-admin organization detail payload (nonprofit or business). */
+/** Super-admin per-campaign KPI row (creator-parity). */
 export type SuperAdminCampaignActivity = {
   id: number;
   slug: string;
@@ -1955,16 +1956,71 @@ export type SuperAdminActivitySummary = {
   settlementNetNonprofit: number;
 };
 
-export interface SuperAdminOrganizationDetails {
+/**
+ * Superadmin organization detail payload from
+ * GET /api/superadmin/organizations/:type/:id
+ */
+export type SuperAdminOrgProfile = {
+  id: number;
+  slug?: string | null;
+  organizationName?: string | null;
+  businessName?: string | null;
+  logoUrl?: string | null;
+  mission?: string | null;
+  description?: string | null;
+  website?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  causeCategory?: string | null;
+  ein?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  businessType?: string | null;
+  verificationStatus?: string | null;
+  claimStatus?: string | null;
+  profileStatus?: string | null;
+  businessStatus?: string | null;
+  defaultGivebackPercentage?: number | null;
+  supportsDineAndDonate?: boolean;
+  supportsShopAndDonate?: boolean;
+  supportsServiceGiveback?: boolean;
+  supportsGuestBartending?: boolean;
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  linkedinUrl?: string | null;
+  tiktokUrl?: string | null;
+  youtubeUrl?: string | null;
+  claimedByUserId?: number | null;
+  claimDate?: string | null;
+  verificationDate?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type SuperAdminOrganizationDetails = {
   organizationType: "nonprofit" | "business";
-  organization: Record<string, unknown>;
-  locations?: Array<Record<string, unknown>>;
+  organization: SuperAdminOrgProfile;
+  locations?: {
+    id: number;
+    locationName: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    zip: string | null;
+    phone: string | null;
+    websiteUrl: string | null;
+    reservationUrl?: string | null;
+    bookingUrl?: string | null;
+    activeStatus?: boolean;
+  }[];
   accessRequest: AccessRequest | null;
   /** Creator-parity totals across this org's campaigns. */
   activitySummary?: SuperAdminActivitySummary;
   /** Per-campaign KPIs (raised, supporters, receipts, partners, settlement). */
   campaigns?: SuperAdminCampaignActivity[];
-}
+};
 
 /**
  * GET /api/superadmin/organizations/:type/:id
@@ -1973,15 +2029,19 @@ export interface SuperAdminOrganizationDetails {
  *          and campaign activity KPIs for superadmin visibility.
  */
 export function fetchSuperAdminOrganizationDetails(
-  type: "nonprofit" | "business",
-  id: number,
+  organizationType: "nonprofit" | "business",
+  organizationId: number,
   requestId?: number | null,
 ) {
   const qs = new URLSearchParams();
-  if (requestId != null && Number.isFinite(requestId)) qs.set("requestId", String(requestId));
-  const suffix = qs.toString() ? `?${qs}` : "";
+  if (requestId != null && Number.isFinite(requestId) && requestId > 0) {
+    qs.set("requestId", String(requestId));
+  }
+  const q = qs.toString();
   return fetchJson<SuperAdminOrganizationDetails>(
-    `/api/superadmin/organizations/${type}/${id}${suffix}`,
+    `/api/superadmin/organizations/${encodeURIComponent(organizationType)}/${organizationId}${
+      q ? `?${q}` : ""
+    }`,
   );
 }
 
@@ -1999,6 +2059,40 @@ export type ForkupReviewQueueItem = {
 
 export function fetchSuperAdminForkupReviewQueue() {
   return fetchJson<ForkupReviewQueueItem[]>("/api/superadmin/forkup-review-queue");
+}
+
+/**
+ * Full campaign detail for ForkUp review View details.
+ * Method: GET /api/superadmin/forkup-review/:slug
+ */
+export type SuperAdminForkupReviewDetail = {
+  slug: string;
+  name: string;
+  nonprofit: string;
+  nonprofitContactName: string | null;
+  nonprofitContactEmail: string | null;
+  status: string;
+  goal: number;
+  story: string | null;
+  coverImageUrl: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  eventDate: string | null;
+  businessTimingStatus: string;
+  forkupReviewStatus: string;
+  forkupReviewReason: string | null;
+  methods: {
+    methodType: string;
+    methodName: string;
+    methodStatus: string;
+    timingStatus: string;
+  }[];
+};
+
+export function fetchSuperAdminForkupReviewDetail(slug: string) {
+  return fetchJson<SuperAdminForkupReviewDetail>(
+    `/api/superadmin/forkup-review/${encodeURIComponent(slug)}`,
+  );
 }
 
 /** Approve short-timeline ForkUp review for a campaign (superadmin). */
@@ -2026,6 +2120,26 @@ export function denySuperAdminForkupReview(slug: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",
+  });
+}
+
+/**
+ * Request changes on a campaign in ForkUp review (superadmin).
+ * Method: POST /api/superadmin/forkup-review/:slug/request-changes
+ * Body: { notes?: string }
+ * Response: { success, slug, forkupReviewStatus, campaignStatus }
+ */
+export function requestChangesSuperAdminForkupReview(slug: string, notes?: string) {
+  return fetchJson<{
+    success: boolean;
+    slug: string;
+    forkupReviewStatus: string;
+    businessTimingStatus: string;
+    campaignStatus: string;
+  }>(`/api/superadmin/forkup-review/${encodeURIComponent(slug)}/request-changes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ notes: notes?.trim() || undefined }),
   });
 }
 

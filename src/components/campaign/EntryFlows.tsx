@@ -5,6 +5,7 @@ import {
   Store,
   Send,
   CheckCircle2,
+  Copy,
   Loader2,
   ArrowLeft,
   ArrowRight,
@@ -1173,7 +1174,12 @@ export function BusinessInvitesNonprofit() {
         givebackPercentage: giveback,
         message: message.trim() || undefined,
       });
-      setSentLink(result.acceptPath);
+      // Absolute URL so the nonprofit can open the invite when shared outside the app.
+      setSentLink(
+        typeof window !== "undefined"
+          ? `${window.location.origin}${result.acceptPath}`
+          : result.acceptPath
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send invitation");
     } finally {
@@ -1201,7 +1207,18 @@ export function BusinessInvitesNonprofit() {
           Share this link with {selectedNp?.organizationName} to accept the campaign draft:
         </p>
         <p className="mt-4 break-all rounded-xl bg-secondary p-3 text-sm font-medium">{sentLink}</p>
-        <button type="button" onClick={() => goTo("website-landing")} className="mt-6 text-sm font-medium text-primary">
+        <button
+          type="button"
+          onClick={() => {
+            if (!sentLink) return;
+            void navigator.clipboard.writeText(sentLink);
+          }}
+          className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-semibold"
+        >
+          <Copy className="size-3.5" />
+          Copy invite link
+        </button>
+        <button type="button" onClick={() => goTo("website-landing")} className="mt-6 block text-sm font-medium text-primary">
           Back to home
         </button>
       </main>

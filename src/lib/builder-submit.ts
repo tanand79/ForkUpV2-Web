@@ -67,6 +67,8 @@ export interface CreateCampaignResult {
   campaignStatus: string;
   campaignName: string;
   message: string;
+  businessTimingStatus?: string;
+  forkupReviewStatus?: string;
   invitationLinks?: {
     businessName: string;
     locationName: string;

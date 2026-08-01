@@ -18,6 +18,7 @@ import { useCampaign, type SupportMethod, type SupportMethods } from "@/lib/camp
 import { fetchManageCampaigns, generateCampaignDraft, suggestCampaignGoal } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-storage";
 import { suggestCampaignDates } from "@/lib/campaign-timing";
+import { UsDateInput } from "@/components/campaign/UsDateInput";
 
 /**
  * Lovable “Build Your Campaign” — guided substeps:
