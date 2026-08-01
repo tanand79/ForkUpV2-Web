@@ -38,8 +38,9 @@ export interface CreateCampaignPayload {
   campaignName: string;
   campaignStory: string;
   campaignGoal: number;
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
+  eventDate?: string;
   coverImage: string;
   methods: ApiMethodType[];
   invitations?: {
@@ -57,6 +58,8 @@ export interface CreateCampaignPayload {
   launch: boolean;
   /** When set, update this campaign instead of creating a new one. */
   existingSlug?: string;
+  submitForForkupReview?: boolean;
+  continueWithoutBusinessMethods?: boolean;
 }
 
 export interface CreateCampaignResult {
@@ -89,6 +92,10 @@ function selectedMethods(state: CampaignState): ApiMethodType[] {
   (Object.keys(state.methods) as SupportMethod[]).forEach((key) => {
     if (state.methods[key]) methods.add(SUPPORT_TO_API[key]);
   });
+  // Guest Bartending always includes Ambassador Sharing (Nick V2 Layer 1).
+  if (state.methods.guestBartending) {
+    methods.add("ambassador_fundraising");
+  }
   return [...methods];
 }
 
@@ -249,8 +256,9 @@ export function buildCreateCampaignPayload(
     campaignName: state.title.trim(),
     campaignStory: state.description.trim(),
     campaignGoal: Number.parseInt(state.goal.replace(/\D/g, ""), 10) || 0,
-    startDate: state.startDate,
-    endDate: state.endDate,
+    startDate: state.startDate || undefined,
+    endDate: state.endDate || undefined,
+    eventDate: state.eventDate || undefined,
     coverImage: durableCoverImageUrl(state),
     methods,
     invitations,
@@ -258,6 +266,8 @@ export function buildCreateCampaignPayload(
     termsAccepted: state.termsAccepted,
     launch: options.launch,
     existingSlug: state.campaignSlug ?? undefined,
+    submitForForkupReview: state.submitForForkupReview || undefined,
+    continueWithoutBusinessMethods: state.continueWithoutBusinessMethods || undefined,
   };
 }
 

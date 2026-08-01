@@ -7,7 +7,15 @@ import {
   storyRequirementMet,
   storyWordCount,
 } from "@/lib/story-validation";
+import {
+  ambassadorTimingCoachMessage,
+  dateFieldRequirements,
+  evaluateBusinessMethodTiming,
+  timingCtaLabel,
+  type TimingCta,
+} from "@/lib/campaign-timing";
 import { ActionBar } from "./ChooseBusinesses";
+import { CampaignAiGuidance } from "./CampaignAiGuidance";
 import { useLovableFlowRedirect } from "./useLovableFlowRedirect";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
 
@@ -37,6 +45,45 @@ export function CampaignDetails() {
   const enabledMethods = (Object.keys(METHOD_LABELS) as SupportMethod[]).filter(
     (m) => state.methods[m],
   );
+  const dateReqs = dateFieldRequirements(state.methods);
+  const timingEval = evaluateBusinessMethodTiming(state);
+  const ambassadorCoach = state.methods.ambassador
+    ? ambassadorTimingCoachMessage(state.endDate)
+    : null;
+
+  const handleTimingCta = (cta: TimingCta) => {
+    if (cta === "change_date") {
+      // Focus stays on date fields — clear short-timeline CTA flags.
+      update({
+        submitForForkupReview: false,
+        continueWithoutBusinessMethods: false,
+      });
+      return;
+    }
+    if (cta === "continue_without_business_method") {
+      update({
+        methods: {
+          ...state.methods,
+          giveback: false,
+          guestBartending: false,
+          donations: true,
+          ambassador: true,
+        },
+        continueWithoutBusinessMethods: true,
+        submitForForkupReview: false,
+        businessTimingStatus: "ok",
+      });
+      return;
+    }
+    if (cta === "submit_for_forkup_review") {
+      update({
+        submitForForkupReview: true,
+        continueWithoutBusinessMethods: false,
+        forkupReviewStatus: "pending",
+        businessTimingStatus: "needs_forkup_review",
+      });
+    }
+  };
 
   const titleEdited = useRef(false);
   useEffect(() => {
@@ -191,28 +238,115 @@ export function CampaignDetails() {
 
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label className={label}>Campaign Start Date <span className="text-primary">*</span></label>
-              <UsDateInput
-                className={field}
-                value={state.startDate}
-                onChange={(iso) => update({ startDate: iso })}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className={label}>Campaign End Date <span className="text-primary">*</span></label>
-              <UsDateInput
-                className={field}
-                value={state.endDate}
-                min={state.startDate || undefined}
-                onChange={(iso) => update({ endDate: iso })}
-              />
-            </div>
+            {(dateReqs.requireStartDate || dateReqs.startOptional) && (
+              <div className="space-y-2">
+                <label className={label}>
+                  Campaign Start Date{" "}
+                  {dateReqs.requireStartDate ? (
+                    <span className="text-primary">*</span>
+                  ) : (
+                    <span className="text-muted-foreground font-normal">(optional)</span>
+                  )}
+                </label>
+                <input
+                  type="date"
+                  className={field}
+                  value={state.startDate}
+                  onChange={(e) =>
+                    update({
+                      startDate: e.target.value,
+                      submitForForkupReview: false,
+                      continueWithoutBusinessMethods: false,
+                    })
+                  }
+                />
+              </div>
+            )}
+            {dateReqs.requireEndDate && (
+              <div className="space-y-2">
+                <label className={label}>
+                  Campaign End Date <span className="text-primary">*</span>
+                </label>
+                <input
+                  type="date"
+                  className={field}
+                  value={state.endDate}
+                  min={state.startDate || undefined}
+                  onChange={(e) =>
+                    update({
+                      endDate: e.target.value,
+                      submitForForkupReview: false,
+                      continueWithoutBusinessMethods: false,
+                    })
+                  }
+                />
+              </div>
+            )}
+            {dateReqs.requireEventDate && (
+              <div className="space-y-2 sm:col-span-2">
+                <label className={label}>
+                  Guest Bartending Event Date <span className="text-primary">*</span>
+                </label>
+                <input
+                  type="date"
+                  className={field}
+                  value={state.eventDate}
+                  onChange={(e) =>
+                    update({
+                      eventDate: e.target.value,
+                      submitForForkupReview: false,
+                      continueWithoutBusinessMethods: false,
+                    })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Guest Bartending is a single-day event. Business giveback methods still use the
+                  campaign start and end dates above when selected.
+                </p>
+              </div>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
-            This is the parent window for your whole campaign. Each fundraising method below can
-            optionally run on its own schedule within this window.
+            {dateReqs.startOptional
+              ? "Online donations and ambassador sharing mainly need an end date. A start date is optional."
+              : "Date requirements follow your selected fundraising methods. Business-based methods need at least 30 days of lead time for a normal launch."}
           </p>
+
+          {ambassadorCoach && (
+            <p className="rounded-xl border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
+              {ambassadorCoach}
+            </p>
+          )}
+
+          {timingEval.status === "needs_forkup_review" && timingEval.message && (
+            <div className="space-y-3 rounded-2xl border border-amber-300/60 bg-amber-50/80 p-4 dark:border-amber-800 dark:bg-amber-950/40">
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                Needs ForkUp Review
+              </p>
+              <p className="text-sm text-amber-900/90 dark:text-amber-100/90">
+                {timingEval.message}
+              </p>
+              {state.submitForForkupReview ? (
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+                  Submitted for ForkUp review. Online donations and ambassador sharing can still
+                  move forward. Business invitations stay paused until approved.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  {timingEval.ctas.map((cta) => (
+                    <button
+                      key={cta}
+                      type="button"
+                      onClick={() => handleTimingCta(cta)}
+                      className="rounded-full border border-amber-400/70 bg-card px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-secondary"
+                    >
+                      {timingCtaLabel(cta, state.methods)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {enabledMethods.length > 0 && (state.startDate || state.endDate) && (
             <div className="space-y-3 rounded-2xl border border-border bg-card/50 p-4">
@@ -449,8 +583,7 @@ export function CampaignDetails() {
             </div>
           )}
 
-
-
+          <CampaignAiGuidance compact />
 
         </div>
       </main>

@@ -3,6 +3,7 @@ import {
   businessStatusTone,
   type CampaignBusinessStatus,
   fromApiAcceptanceStatus,
+  fromInviteStatuses,
   fromLegacyInviteStatus,
   type LegacyBusinessInviteStatus,
 } from "@/lib/business-status";
@@ -55,17 +56,23 @@ export function LegacyInviteStatusBadge({
   );
 }
 
-/** Convenience for API acceptance_status strings. */
+/** Convenience for API acceptance_status / invite_status strings. */
 export function ApiAcceptanceStatusBadge({
   status,
+  inviteStatus,
   className,
 }: {
   status: string;
+  inviteStatus?: string | null;
   className?: string;
 }) {
   return (
     <BusinessStatusBadge
-      status={fromApiAcceptanceStatus(status)}
+      status={
+        inviteStatus
+          ? fromInviteStatuses(status, inviteStatus)
+          : fromApiAcceptanceStatus(status)
+      }
       className={className}
     />
   );

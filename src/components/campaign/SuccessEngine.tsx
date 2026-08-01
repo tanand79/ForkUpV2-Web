@@ -4,9 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarClock, Mail, Sparkles, Send, Loader2, Zap, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { useCampaign } from "@/lib/campaign-context";
-import { fetchCampaignAutomation, runDueSuccessEngineActions, type CampaignAutomation } from "@/lib/api";
-import { formatDateTimeUs, formatDateUs, looksLikeIsoDateTime } from "@/lib/date-only";
+import {
+  fetchCampaignAutomation,
+  postCampaignAiGenerateCalendar,
+  runDueSuccessEngineActions,
+  type CampaignAutomation,
+} from "@/lib/api";
 import { SuccessEngineActionList } from "./SuccessEngineActionList";
+import { CampaignAiGuidance } from "./CampaignAiGuidance";
 
 function formatDay(d: string | null): string {
   if (!d) return "Anytime";
@@ -21,6 +26,7 @@ export function SuccessEngine() {
   const { state, goTo } = useCampaign();
   const slug = state.campaignSlug;
   const [runningDue, setRunningDue] = useState(false);
+  const [generatingCalendar, setGeneratingCalendar] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [automation, setAutomation] = useState<CampaignAutomation | null>(null);
 
@@ -58,6 +64,24 @@ export function SuccessEngine() {
     }
   };
 
+  /** Nick V2 Layer 4 — rule-based 60→0 calendar; skips business promo until accepted. */
+  const generateAiCalendar = async () => {
+    if (!slug) return;
+    setGeneratingCalendar(true);
+    try {
+      const result = await postCampaignAiGenerateCalendar(slug);
+      toast.success(
+        result.message ||
+          `Created ${result.created} new Success Engine action${result.created === 1 ? "" : "s"}.`,
+      );
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate calendar");
+    } finally {
+      setGeneratingCalendar(false);
+    }
+  };
+
   if (!slug) {
     return (
       <main className="mx-auto max-w-2xl px-5 py-12 text-center">
@@ -88,6 +112,10 @@ export function SuccessEngine() {
         set. Preview, copy, and mark each action complete when you send it.
       </p>
 
+      <div className="mt-8">
+        <CampaignAiGuidance />
+      </div>
+
       <section className="mt-8 rounded-3xl border border-border bg-card p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -99,16 +127,32 @@ export function SuccessEngine() {
               Loaded from your campaign&apos;s Success Engine plan.
             </p>
           </div>
-          <button
-            type="button"
-            disabled={runningDue}
-            onClick={() => void runDue()}
-            title="Send every email action that is marked ready and scheduled for today or earlier (across all campaigns)."
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-border bg-card px-4 text-xs font-semibold transition-colors hover:bg-secondary disabled:opacity-60"
-          >
-            {runningDue ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-            {runningDue ? "Running…" : "Run due actions now"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={generatingCalendar}
+              onClick={() => void generateAiCalendar()}
+              title="Build a rule-based Success Engine calendar from campaign dates. Business promo steps wait until a partner accepts."
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-border bg-card px-4 text-xs font-semibold transition-colors hover:bg-secondary disabled:opacity-60"
+            >
+              {generatingCalendar ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="size-3.5" />
+              )}
+              {generatingCalendar ? "Generating…" : "Generate AI calendar"}
+            </button>
+            <button
+              type="button"
+              disabled={runningDue}
+              onClick={() => void runDue()}
+              title="Send every email action that is marked ready and scheduled for today or earlier (across all campaigns)."
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-border bg-card px-4 text-xs font-semibold transition-colors hover:bg-secondary disabled:opacity-60"
+            >
+              {runningDue ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+              {runningDue ? "Running…" : "Run due actions now"}
+            </button>
+          </div>
         </div>
         <div className="mt-4">
           <SuccessEngineActionList key={refreshKey} slug={slug} />

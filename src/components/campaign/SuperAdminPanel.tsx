@@ -3,7 +3,7 @@
 /**
  * Platform Super Admin UI
  * — Login / Forgot / Reset password
- * — Dashboard tabs: Verification, Profile, AI Engine, Charges, SMTP
+ * — Dashboard tabs: Verification, ForkUp Review, Profile, AI Engine, Charges, SMTP
  *
  * Inputs: campaign goTo / URL token for reset.
  * Outputs: superadmin session + settings updates via /api/superadmin/*.
@@ -28,11 +28,14 @@ import { useCampaign } from "@/lib/campaign-context";
 import { formatDateTimeUs, formatDateUs, looksLikeIsoDateTime } from "@/lib/date-only";
 import {
   approveSuperAdminAccessRequest,
+  approveSuperAdminForkupReview,
   changeSuperAdminPassword,
   denySuperAdminAccessRequest,
+  denySuperAdminForkupReview,
   fetchSuperAdminAccessRequests,
   fetchSuperAdminAiSettings,
   fetchSuperAdminCharges,
+  fetchSuperAdminForkupReviewQueue,
   fetchSuperAdminMe,
   fetchSuperAdminOrganizationDetails,
   fetchSuperAdminSmtp,
@@ -45,12 +48,11 @@ import {
   testSuperAdminSmtp,
   updateSuperAdminProfile,
   type AccessRequest,
-  type SuperAdminOrganizationDetails,
+  type ForkupReviewQueueItem,
   type SuperAdminUser,
 } from "@/lib/api";
 
-type Tab = "verification" | "profile" | "ai" | "charges" | "smtp";
-type VerificationFilter = "pending" | "approved" | "denied";
+type Tab = "verification" | "forkup-review" | "profile" | "ai" | "charges" | "smtp";
 
 const fieldClass =
   "mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20";
@@ -314,6 +316,7 @@ export function SuperAdminDashboard() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "verification", label: "Verification" },
+    { id: "forkup-review", label: "ForkUp Review" },
     { id: "profile", label: "Profile" },
     { id: "ai", label: "AI Engine" },
     { id: "charges", label: "Charges" },
@@ -368,12 +371,119 @@ export function SuperAdminDashboard() {
 
       <div className="mt-6">
         {tab === "verification" && <VerificationTab />}
+        {tab === "forkup-review" && <ForkupReviewTab />}
         {tab === "profile" && <ProfileTab user={user} onUpdated={setUser} />}
         {tab === "ai" && <AiTab />}
         {tab === "charges" && <ChargesTab />}
         {tab === "smtp" && <SmtpTab />}
       </div>
     </main>
+  );
+}
+
+/**
+ * Nick V2 Layer 6 — campaigns with needs_forkup_review / pending forkup review.
+ */
+function ForkupReviewTab() {
+  const [rows, setRows] = useState<ForkupReviewQueueItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [acting, setActing] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setRows(await fetchSuperAdminForkupReviewQueue());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const act = async (slug: string, action: "approve" | "deny") => {
+    setActing(slug);
+    setError(null);
+    try {
+      if (action === "approve") await approveSuperAdminForkupReview(slug);
+      else await denySuperAdminForkupReview(slug);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to ${action}`);
+    } finally {
+      setActing(null);
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5">
+      <h2 className="text-lg font-bold">ForkUp timing review queue</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Campaigns with short business-method timelines waiting for human ForkUp review. Final
+        approval stays with an admin.
+      </p>
+      {loading && (
+        <div className="mt-8 flex justify-center">
+          <Loader2 className="size-6 animate-spin text-primary" />
+        </div>
+      )}
+      {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
+      {!loading && rows.length === 0 && (
+        <p className="mt-6 text-sm text-muted-foreground">No campaigns in ForkUp review right now.</p>
+      )}
+      <ul className="mt-4 space-y-2">
+        {rows.map((r) => (
+          <li
+            key={r.slug}
+            className="rounded-2xl border border-border bg-background px-4 py-3 text-sm"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{r.name}</p>
+                <p className="text-muted-foreground">{r.nonprofit}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Timing: {r.businessTimingStatus} · Review: {r.forkupReviewStatus}
+                  {r.startDate ? ` · start ${r.startDate}` : ""}
+                  {r.eventDate ? ` · event ${r.eventDate}` : ""}
+                </p>
+                <p className="mt-1 text-xs font-medium">/{r.slug}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={acting === r.slug}
+                  onClick={() => void act(r.slug, "approve")}
+                  className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                >
+                  <Check className="size-3.5" /> Approve
+                </button>
+                <button
+                  type="button"
+                  disabled={acting === r.slug}
+                  onClick={() => void act(r.slug, "deny")}
+                  className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+                >
+                  <X className="size-3.5" /> Deny
+                </button>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={() => void load()}
+        className="mt-4 text-xs font-semibold text-primary underline-offset-2 hover:underline"
+      >
+        Refresh
+      </button>
+    </section>
   );
 }
 

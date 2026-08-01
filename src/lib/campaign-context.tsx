@@ -178,6 +178,7 @@ function loadDraft(): CampaignDraft | null {
         promotion: { ...initialState.promotion, ...savedState.promotion },
         storyAccepted: !!savedState.storyAccepted,
         aiDrafted: !!savedState.aiDrafted,
+        goalAiSuggested: !!savedState.goalAiSuggested,
         organizerMode: savedState.organizerMode ?? null,
         accountIntent: savedState.accountIntent ?? null,
         nonprofitMemberships: Array.isArray(savedState.nonprofitMemberships)
@@ -191,6 +192,11 @@ function loadDraft(): CampaignDraft | null {
             ? [savedState.businessProfile]
             : [],
         campaignOrigin: savedState.campaignOrigin ?? "nonprofit",
+        eventDate: savedState.eventDate ?? "",
+        businessTimingStatus: savedState.businessTimingStatus ?? "ok",
+        forkupReviewStatus: savedState.forkupReviewStatus ?? "none",
+        submitForForkupReview: !!savedState.submitForForkupReview,
+        continueWithoutBusinessMethods: !!savedState.continueWithoutBusinessMethods,
         lockedBusinessPartners: Array.isArray(savedState.lockedBusinessPartners)
           ? savedState.lockedBusinessPartners
           : [],
@@ -508,6 +514,16 @@ export interface CampaignState {
   title: string;
   startDate: string;
   endDate: string;
+  /** Guest Bartending single event date (Nick V2 Layer 2). */
+  eventDate: string;
+  /** Business-method timing gate stamped by server / derived in UI. */
+  businessTimingStatus: "ok" | "needs_forkup_review" | "limited_promotion_window";
+  /** Short-timeline ForkUp review workflow. */
+  forkupReviewStatus: "none" | "pending" | "approved" | "denied";
+  /** Builder CTA: submit short business timeline for ForkUp review. */
+  submitForForkupReview: boolean;
+  /** Builder CTA: drop business methods and continue online/ambassador only. */
+  continueWithoutBusinessMethods: boolean;
   /**
    * Deadline for businesses to accept their invitation. Once this date passes
    * the participating business list is finalized and the campaign moves from
@@ -561,6 +577,11 @@ export interface CampaignState {
   // True when the title/story were pre-filled from the AI/library quick-start
   // draft and haven't been reviewed yet. Purely informational.
   aiDrafted?: boolean;
+  /**
+   * True when `goal` was filled from AI `suggestedGoal` (organizer left it blank).
+   * Purely informational — organizer can edit; cleared on manual edit.
+   */
+  goalAiSuggested?: boolean;
   // True once the organizer has reviewed and accepted launch terms.
   termsAccepted: boolean;
 }
@@ -602,6 +623,11 @@ const initialState: CampaignState = {
   title: "",
   startDate: "",
   endDate: "",
+  eventDate: "",
+  businessTimingStatus: "ok",
+  forkupReviewStatus: "none",
+  submitForForkupReview: false,
+  continueWithoutBusinessMethods: false,
   invitationCloseDate: "",
   invitationsClosed: false,
   methodTiming: {},
@@ -611,7 +637,7 @@ const initialState: CampaignState = {
   giveback: 15,
   goal: "",
   fundsSupport: [],
-  methods: { giveback: true, donations: true, guestBartending: false, ambassador: false },
+  methods: { giveback: true, donations: true, guestBartending: false, ambassador: true },
   selectedBusinessIds: [],
   businessCatalog: [],
   businessStatuses: {},
@@ -627,6 +653,7 @@ const initialState: CampaignState = {
   promotion: { facebookUrl: "", instagramHandle: "", websiteUrl: "", newsletter: "" },
   storyAccepted: false,
   aiDrafted: false,
+  goalAiSuggested: false,
   termsAccepted: false,
 };
 
@@ -711,6 +738,30 @@ function givebackValid(state: CampaignState): boolean {
   return !state.methods.giveback || (state.giveback >= 5 && state.giveback <= 50);
 }
 
+/**
+ * Date completeness by selected methods (Nick V2 Layer 2).
+ * Giveback → start+end; Guest Bartending → event date; Online/Ambassador → end date.
+ */
+function datesCompleteForMethods(state: CampaignState): boolean {
+  if (state.methods.giveback && (!state.startDate || !state.endDate)) return false;
+  if (state.methods.guestBartending && !state.eventDate) return false;
+  if (
+    (state.methods.donations || state.methods.ambassador || state.methods.giveback) &&
+    !state.endDate
+  ) {
+    return false;
+  }
+  if (
+    state.methods.guestBartending &&
+    !state.methods.giveback &&
+    !state.methods.donations &&
+    !state.methods.ambassador
+  ) {
+    return !!state.eventDate;
+  }
+  return true;
+}
+
 export function computeChecklist(state: CampaignState): ChecklistItem[] {
   const order = builderFlowForState(state);
 
@@ -734,17 +785,19 @@ export function computeChecklist(state: CampaignState): ChecklistItem[] {
         };
       }
       case "campaign-review": {
+        const datesOk = datesCompleteForMethods(state);
         const started =
           !!state.title.trim() ||
           !!state.startDate ||
           !!state.endDate ||
+          !!state.eventDate ||
           !!state.description.trim() ||
           !!state.cover;
         // Lovable Review attention: title, dates, featured image. Logo optional.
+        // Dates required depend on selected methods (Nick V2 Layer 2).
         const complete =
           !!state.title.trim() &&
-          !!state.startDate &&
-          !!state.endDate &&
+          datesOk &&
           !!state.description.trim() &&
           !!state.cover &&
           givebackValid(state);
@@ -768,13 +821,17 @@ export function computeChecklist(state: CampaignState): ChecklistItem[] {
         };
       }
       case "details": {
+        const datesOk = datesCompleteForMethods(state);
         const started =
-          !!state.title.trim() || !!state.startDate || !!state.endDate || !!state.description.trim();
+          !!state.title.trim() ||
+          !!state.startDate ||
+          !!state.endDate ||
+          !!state.eventDate ||
+          !!state.description.trim();
         const storyOk = storyRequirementMet(state.description);
         const complete =
           !!state.title.trim() &&
-          !!state.startDate &&
-          !!state.endDate &&
+          datesOk &&
           storyOk &&
           givebackValid(state);
         const message = !storyOk
@@ -1648,10 +1705,19 @@ export function CampaignProvider({
 
 
   const toggleMethod = (m: SupportMethod) =>
-    setState((prev) => ({
-      ...prev,
-      methods: { ...prev.methods, [m]: !prev.methods[m] },
-    }));
+    setState((prev) => {
+      const turningOn = !prev.methods[m];
+      const methods = { ...prev.methods, [m]: turningOn };
+      // Guest Bartending always includes Ambassador Sharing (Nick V2 Layer 1).
+      if (m === "guestBartending" && turningOn) {
+        methods.ambassador = true;
+      }
+      // Cannot turn Ambassador off while Guest Bartending remains selected.
+      if (m === "ambassador" && !turningOn && prev.methods.guestBartending) {
+        methods.ambassador = true;
+      }
+      return { ...prev, methods };
+    });
 
   const toggleBusiness = (id: string) =>
     setState((prev) => {

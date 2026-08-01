@@ -1,9 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Banknote, Download, Loader2, Lock } from "lucide-react";
+import { ArrowLeft, Banknote, Download, Loader2, Lock, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 import { useCampaign } from "@/lib/campaign-context";
-import { fetchSettlementReport, lockCampaignSettlement, type SettlementReport } from "@/lib/api";
+import {
+  fetchSettlementReport,
+  lockCampaignSettlement,
+  postCampaignAiSettlementNarrative,
+  type SettlementReport,
+} from "@/lib/api";
 import { PayoutsPanel } from "@/components/campaign/PayoutsPanel";
 
 /** Wrap a value as a CSV field, escaping quotes and commas per RFC 4180. */
@@ -79,6 +85,8 @@ export function ReportingSettlement() {
   const [loading, setLoading] = useState(!!slug);
   const [error, setError] = useState<string | null>(null);
   const [locking, setLocking] = useState(false);
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
+  const [narrative, setNarrative] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!slug) return;
@@ -124,6 +132,20 @@ export function ReportingSettlement() {
     }
   };
 
+  /** Nick V2 Layer 4 — draft stakeholder settlement language from totals. */
+  const handleSettlementNarrative = async () => {
+    if (!slug) return;
+    setNarrativeLoading(true);
+    try {
+      const res = await postCampaignAiSettlementNarrative(slug);
+      setNarrative(res.summary);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to draft settlement narrative");
+    } finally {
+      setNarrativeLoading(false);
+    }
+  };
+
   if (!slug) {
     return (
       <main className="mx-auto max-w-2xl px-5 py-12 text-center">
@@ -160,7 +182,20 @@ export function ReportingSettlement() {
 
       {report && !loading && (
         <div className="mt-8 space-y-6">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              disabled={narrativeLoading}
+              onClick={() => void handleSettlementNarrative()}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-4 py-2 text-xs font-semibold transition-colors hover:bg-secondary disabled:opacity-60"
+            >
+              {narrativeLoading ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="size-3.5" />
+              )}
+              Draft AI settlement narrative
+            </button>
             <button
               type="button"
               onClick={handleDownloadCsv}
@@ -170,6 +205,16 @@ export function ReportingSettlement() {
               Download CSV
             </button>
           </div>
+
+          {narrative && (
+            <section className="rounded-2xl border border-border bg-card p-5 text-sm">
+              <h2 className="flex items-center gap-2 font-bold">
+                <Sparkles className="size-4 text-primary" />
+                Settlement narrative
+              </h2>
+              <p className="mt-2 whitespace-pre-wrap text-muted-foreground">{narrative}</p>
+            </section>
+          )}
 
           <section className="rounded-2xl border border-border bg-card p-6">
             <h2 className="font-bold">{report.campaign.name}</h2>
