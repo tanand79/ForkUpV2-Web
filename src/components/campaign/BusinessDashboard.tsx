@@ -16,6 +16,9 @@ import {
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { campaignPublicPath } from "@/lib/campaign-paths";
+import { syncAuthSession } from "@/lib/auth-session";
+import { getAuthToken } from "@/lib/auth-storage";
+import { formatDateUs, formatDateTimeUs, looksLikeIsoDateTime } from "@/lib/date-only";
 import {
   fetchBusinessCollaborations,
   fetchCurrentUser,
@@ -152,22 +155,17 @@ export function BusinessDashboard() {
     return { pending, active, completed };
   }, [collaborations]);
 
-  /** Nick V2 Layer 6 — items that need business action (respond / finish setup). */
+  /**
+   * Nick V2 Layer 6 — invitations that still need a business response.
+   * Do not include already-accepted rows with setup/invite needs_info: Review only
+   * opens the acceptance confirmation ("You're in"), so they would stay stuck here.
+   */
   const needsBusinessAction = useMemo(() => {
-    return collaborations.filter((c) => {
-      if (
-        ["invited", "pending", "opened", "changes_requested", "needs_info"].includes(
-          c.acceptanceStatus,
-        )
-      ) {
-        return true;
-      }
-      return (
-        c.setupStatus === "needs_info" ||
-        c.settlementReadyStatus === "needs_info" ||
-        c.inviteStatus === "needs_info"
-      );
-    });
+    return collaborations.filter((c) =>
+      ["invited", "pending", "opened", "changes_requested", "needs_info"].includes(
+        c.acceptanceStatus,
+      ),
+    );
   }, [collaborations]);
 
   const summary = useMemo(
@@ -298,8 +296,7 @@ export function BusinessDashboard() {
             Needs your action
           </h2>
           <p className="mt-1 text-sm text-amber-900/90 dark:text-amber-100/80">
-            Respond to invitations or finish setup so your business can appear as a participating
-            partner.
+            Respond to invitations so your business can appear as a participating partner.
           </p>
           <ul className="mt-3 space-y-2">
             {needsBusinessAction.slice(0, 5).map((c) => (

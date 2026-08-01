@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Clock,
   XCircle,
+  Hourglass,
   type LucideIcon,
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
@@ -43,12 +44,13 @@ import {
   writeNonprofitDashboardCache,
 } from "@/lib/nonprofit-dashboard-cache";
 
-type StatusTone = "live" | "draft" | "completed";
+type StatusTone = "live" | "draft" | "completed" | "review";
 
 const STATUS_TONE: Record<StatusTone, string> = {
   live: "bg-primary/15 text-primary",
   draft: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
   completed: "bg-secondary text-secondary-foreground",
+  review: "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200",
 };
 
 function formatDateRange(start: string | null, end: string | null): string | undefined {
@@ -61,6 +63,7 @@ function formatDateRange(start: string | null, end: string | null): string | und
 
 function statusTone(status: string): StatusTone {
   if (status === "live") return "live";
+  if (status === "in_review") return "review";
   if (status === "closed" || status === "settlement") return "completed";
   if (status === "ready_to_launch" || status === "invitation_phase") return "live";
   return "draft";
@@ -78,6 +81,7 @@ function statusLabel(status: string, startDate?: string | null): string {
   const labels: Record<string, string> = {
     live: "Live",
     draft: "Draft",
+    in_review: "In Review",
     invitation_phase: "Inviting businesses",
     ready_to_launch: "Scheduled",
     closed: "Completed",
@@ -178,7 +182,14 @@ export function NonprofitDashboard() {
 
   const deleteCampaign = useCallback(
     async (campaign: ManageCampaignSummary) => {
-      const tabLabel = tab === "active" ? "active" : tab === "completed" ? "completed" : "draft";
+      const tabLabel =
+        tab === "active"
+          ? "active"
+          : tab === "completed"
+            ? "completed"
+            : tab === "in_review"
+              ? "in review"
+              : "draft";
       const liveWarning =
         campaign.status === "live" || campaign.status === "invitation_phase"
           ? " This campaign is live or in progress."
@@ -311,7 +322,7 @@ export function NonprofitDashboard() {
     [update, goTo, resumeCampaignBuilder],
   );
 
-  const { grouped, draftItems, draftCount } = useMemo(
+  const { grouped, draftItems, draftCount, inReviewCount } = useMemo(
     () => resolveDashboardDrafts(campaigns),
     [campaigns],
   );
@@ -320,8 +331,9 @@ export function NonprofitDashboard() {
     if (loading) return;
     if (tab !== "active") return;
     if (grouped.active.length > 0) return;
-    if (draftCount > 0) setTab("drafts");
-  }, [loading, tab, grouped.active.length, draftCount]);
+    if (inReviewCount > 0) setTab("in_review");
+    else if (draftCount > 0) setTab("drafts");
+  }, [loading, tab, grouped.active.length, draftCount, inReviewCount]);
 
   const changesRequested = useMemo(
     () => partnerUpdates.filter((p) => p.acceptanceStatus === "changes_requested"),
@@ -339,6 +351,7 @@ export function NonprofitDashboard() {
   const summary = useMemo(
     () => [
       { label: "Active Campaigns", value: String(grouped.active.length), icon: PlayCircle },
+      { label: "In Review", value: String(inReviewCount), icon: Hourglass },
       { label: "Draft Campaigns", value: String(draftCount), icon: ClipboardList },
       {
         label: "Pending Invites",
@@ -346,7 +359,7 @@ export function NonprofitDashboard() {
         icon: Store,
       },
     ],
-    [grouped.active.length, draftCount, pendingInvites.length],
+    [grouped.active.length, inReviewCount, draftCount, pendingInvites.length, partnerUpdates.length],
   );
 
   const nextSteps = useMemo(() => {
@@ -359,7 +372,26 @@ export function NonprofitDashboard() {
       action: () => void;
     }[] = [];
 
+    // ForkUp platform review messages (superadmin requested changes).
+    const forkupChanges = campaigns.filter(
+      (c) => c.forkupReviewStatus === "changes_requested",
+    );
+    for (const c of forkupChanges.slice(0, 2)) {
+      const note = c.forkupReviewReason?.trim();
+      items.push({
+        id: `forkup-changes-${c.slug}`,
+        icon: Megaphone,
+        campaign: c.name,
+        label: note
+          ? `ForkUp requested changes: ${note}`
+          : "ForkUp requested changes to your campaign before it can go live",
+        cta: "Edit campaign",
+        action: () => openCampaign(c.slug, "builder"),
+      });
+    }
+
     for (const inv of pendingInvites.slice(0, 2)) {
+      if (items.length >= 3) break;
       items.push({
         id: `pending-invite-${inv.token}`,
         icon: Store,
@@ -427,6 +459,7 @@ export function NonprofitDashboard() {
 
     for (const draft of draftItems) {
       if (items.length >= 3) break;
+      if (draft.campaign.forkupReviewStatus === "changes_requested") continue;
       items.push({
         id: `draft-${draft.campaign.slug}`,
         icon: ClipboardList,
@@ -438,7 +471,18 @@ export function NonprofitDashboard() {
     }
 
     return items.slice(0, 3);
-  }, [pendingInvites, partnerUpdates, changesRequested, awaitingPartners, draftItems, grouped.active, openCampaign, publishNow, update, goTo]);
+  }, [
+    campaigns,
+    pendingInvites,
+    partnerUpdates,
+    changesRequested,
+    awaitingPartners,
+    draftItems,
+    grouped.active,
+    openCampaign,
+    publishNow,
+    goTo,
+  ]);
 
   const renderCampaignCard = (
     c: ManageCampaignSummary,
@@ -486,8 +530,12 @@ export function NonprofitDashboard() {
           </p>
         )}
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {c.businessTimingStatus === "needs_forkup_review" ||
-          c.forkupReviewStatus === "pending" ? (
+          {c.forkupReviewStatus === "changes_requested" ? (
+            <span className="rounded-full border border-amber-400/70 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              ForkUp changes requested
+            </span>
+          ) : c.businessTimingStatus === "needs_forkup_review" ||
+            c.forkupReviewStatus === "pending" ? (
             <span className="rounded-full border border-amber-300/70 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               Needs ForkUp Review
             </span>
@@ -503,6 +551,12 @@ export function NonprofitDashboard() {
             </span>
           )}
         </div>
+        {c.forkupReviewStatus === "changes_requested" && c.forkupReviewReason?.trim() ? (
+          <p className="mt-2 rounded-xl border border-amber-300/60 bg-amber-50/80 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+            <span className="font-semibold">ForkUp message: </span>
+            {c.forkupReviewReason.trim()}
+          </p>
+        ) : null}
         <p className="mt-3 text-sm">
           <span className="text-muted-foreground">Raised: </span>
           <span className="font-extrabold text-primary">${Number(c.raised).toLocaleString()}</span>
@@ -517,6 +571,16 @@ export function NonprofitDashboard() {
           <p className="mt-2 text-xs text-muted-foreground">
             Setup is complete. Your campaign will appear in the public directory on the start date,
             or you can publish it now.
+          </p>
+        )}
+        {c.status === "in_review" && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Waiting for ForkUp approval. You&apos;ll get an email when your campaign goes live.
+          </p>
+        )}
+        {c.forkupReviewStatus === "changes_requested" && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Update your campaign, then launch again to resubmit for ForkUp review.
           </p>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
@@ -541,7 +605,11 @@ export function NonprofitDashboard() {
             onClick={() =>
               openCampaign(
                 c.slug,
-                options.isDraftTab ? "builder" : options.isCompleted ? "reporting" : "dashboard",
+                options.isDraftTab || c.status === "in_review"
+                  ? "builder"
+                  : options.isCompleted
+                    ? "reporting"
+                    : "dashboard",
               )
             }
             className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-full px-5 text-sm font-semibold transition-all active:scale-95 ${
@@ -550,8 +618,10 @@ export function NonprofitDashboard() {
                 : "bg-primary text-primary-foreground hover:bg-primary-dark"
             }`}
           >
-            {options.isDraftTab
-              ? "Continue setup"
+            {options.isDraftTab || c.status === "in_review"
+              ? c.status === "in_review"
+                ? "View campaign"
+                : "Continue setup"
               : options.isCompleted
                 ? "View results"
                 : "View dashboard"}{" "}
@@ -691,6 +761,50 @@ export function NonprofitDashboard() {
             </section>
           )}
 
+          {campaigns.some((c) => c.forkupReviewStatus === "changes_requested") && (
+            <section className="animate-rise mt-8 rounded-3xl border border-amber-500/30 bg-amber-500/5 p-6">
+              <h2 className="font-display text-lg font-bold tracking-tight">
+                Messages from ForkUp
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Your campaign needs updates before it can be approved and go live.
+              </p>
+              <ul className="mt-4 space-y-3">
+                {campaigns
+                  .filter((c) => c.forkupReviewStatus === "changes_requested")
+                  .map((c) => (
+                    <li
+                      key={`forkup-msg-${c.slug}`}
+                      className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold">{c.name}</p>
+                        {c.forkupReviewReason?.trim() ? (
+                          <p className="mt-2 text-sm text-amber-800 dark:text-amber-300">
+                            &ldquo;{c.forkupReviewReason.trim()}&rdquo;
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            ForkUp requested changes. Open the campaign to update and resubmit.
+                          </p>
+                        )}
+                        <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Changes requested
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openCampaign(c.slug, "builder")}
+                        className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
+                      >
+                        Edit campaign <ArrowRight className="size-3.5" />
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </section>
+          )}
+
           {partnerUpdates.length > 0 && (
             <section className="animate-rise mt-8 rounded-3xl border border-amber-500/30 bg-amber-500/5 p-6">
               <h2 className="font-display text-lg font-bold tracking-tight">
@@ -789,6 +903,10 @@ export function NonprofitDashboard() {
                 {(
                   [
                     { id: "active" as const, label: "Active" },
+                    {
+                      id: "in_review" as const,
+                      label: inReviewCount > 0 ? `In Review (${inReviewCount})` : "In Review",
+                    },
                     {
                       id: "drafts" as const,
                       label: draftCount > 0 ? `Drafts (${draftCount})` : "Drafts",

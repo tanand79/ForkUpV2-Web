@@ -23,6 +23,14 @@ import {
   deriveCampaignReadiness,
   readinessTrackRows,
 } from "@/lib/campaign-readiness";
+import { formatDateUs } from "@/lib/date-only";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 function formatDate(d: string) {
   if (!d) return "";
@@ -80,6 +88,15 @@ export function ReviewLaunch() {
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
   const [launchError, setLaunchError] = useState<string | null>(null);
+  /** Shown after Launch when campaign entered ForkUp review (short timeline only). */
+  const [reviewSentOpen, setReviewSentOpen] = useState(false);
+
+  const handleReviewPopupClose = (open: boolean) => {
+    setReviewSentOpen(open);
+    if (!open) {
+      goTo("nonprofit-dashboard");
+    }
+  };
 
   const handleLaunch = async () => {
     if (!canLaunch) return;
@@ -126,9 +143,18 @@ export function ReviewLaunch() {
         invited: state.invited.map((b) => ({ ...b, persisted: true })),
       });
       discardLocalDraft({ force: true });
+      const sentForReview =
+        result.campaignStatus === "in_review" ||
+        result.forkupReviewStatus === "pending";
       timers.current.push(
         setTimeout(() => {
-          launchCampaign();
+          setLaunching(false);
+          setPrepDone(0);
+          if (sentForReview) {
+            setReviewSentOpen(true);
+          } else {
+            launchCampaign();
+          }
         }, 700 * (PREP_STEPS.length + 1)),
       );
     } catch (err) {
@@ -149,7 +175,7 @@ export function ReviewLaunch() {
         </div>
         <h1 className="mt-6 text-2xl font-bold tracking-tight">Preparing your campaign&hellip;</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Hang tight — ForkUp is getting everything ready to go live.
+          Hang tight — ForkUp is getting everything ready.
         </p>
         <ul className="mt-8 w-full space-y-3 text-left">
           {PREP_STEPS.map((label, i) => {
@@ -174,6 +200,34 @@ export function ReviewLaunch() {
             );
           })}
         </ul>
+      </main>
+    );
+  }
+
+  /**
+   * Success popup after Launch — campaign is in_review until superadmin approves.
+   */
+  if (reviewSentOpen) {
+    return (
+      <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col items-center justify-center px-5 py-12">
+        <Dialog open={reviewSentOpen} onOpenChange={handleReviewPopupClose}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Campaign sent for review</DialogTitle>
+              <DialogDescription>
+                Your campaign has been submitted to ForkUp for review. When a superadmin
+                approves it, your campaign will go live and you&apos;ll get an email confirmation.
+              </DialogDescription>
+            </DialogHeader>
+            <button
+              type="button"
+              onClick={() => handleReviewPopupClose(false)}
+              className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
+            >
+              Go to dashboard
+            </button>
+          </DialogContent>
+        </Dialog>
       </main>
     );
   }

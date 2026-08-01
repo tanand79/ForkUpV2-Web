@@ -233,7 +233,11 @@ export function BusinessAcceptance() {
         tone: "text-primary",
         ring: "bg-primary/10",
         title: "You're in.",
-        body: "Your business will now appear on the campaign page once the campaign goes live.",
+        // Use campaign.status so live campaigns do not say "once the campaign goes live".
+        body:
+          apiInvite?.campaign.status === "live"
+            ? "Your business will now appear on the campaign page."
+            : "Your business will now appear on the campaign page once the campaign goes live.",
       },
       declined: {
         icon: XCircle,

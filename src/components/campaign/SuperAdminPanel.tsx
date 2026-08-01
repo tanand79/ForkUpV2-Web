@@ -17,6 +17,7 @@ import {
   Loader2,
   Lock,
   Mail,
+  Pencil,
   Save,
   Shield,
   Sparkles,
@@ -35,10 +36,12 @@ import {
   fetchSuperAdminAccessRequests,
   fetchSuperAdminAiSettings,
   fetchSuperAdminCharges,
+  fetchSuperAdminForkupReviewDetail,
   fetchSuperAdminForkupReviewQueue,
   fetchSuperAdminMe,
   fetchSuperAdminOrganizationDetails,
   fetchSuperAdminSmtp,
+  requestChangesSuperAdminForkupReview,
   saveSuperAdminAiSettings,
   saveSuperAdminCharges,
   saveSuperAdminSmtp,
@@ -49,8 +52,17 @@ import {
   updateSuperAdminProfile,
   type AccessRequest,
   type ForkupReviewQueueItem,
+  type SuperAdminForkupReviewDetail,
+  type SuperAdminOrganizationDetails,
   type SuperAdminUser,
 } from "@/lib/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Tab = "verification" | "forkup-review" | "profile" | "ai" | "charges" | "smtp";
 
@@ -383,12 +395,16 @@ export function SuperAdminDashboard() {
 
 /**
  * Nick V2 Layer 6 — campaigns with needs_forkup_review / pending forkup review.
+ * Includes View details panel + Request Changes modal (not browser prompt).
  */
 function ForkupReviewTab() {
   const [rows, setRows] = useState<ForkupReviewQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
+  const [detailSlug, setDetailSlug] = useState<string | null>(null);
+  const [requestChangesSlug, setRequestChangesSlug] = useState<string | null>(null);
+  const [requestNotes, setRequestNotes] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -413,6 +429,7 @@ function ForkupReviewTab() {
     try {
       if (action === "approve") await approveSuperAdminForkupReview(slug);
       else await denySuperAdminForkupReview(slug);
+      setDetailSlug(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to ${action}`);
@@ -421,12 +438,102 @@ function ForkupReviewTab() {
     }
   };
 
+  const submitRequestChanges = async () => {
+    if (!requestChangesSlug) return;
+    setActing(requestChangesSlug);
+    setError(null);
+    try {
+      await requestChangesSuperAdminForkupReview(
+        requestChangesSlug,
+        requestNotes.trim() || undefined,
+      );
+      setRequestChangesSlug(null);
+      setRequestNotes("");
+      setDetailSlug(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to request changes");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  if (detailSlug) {
+    return (
+      <>
+        <ForkupReviewDetailsView
+          slug={detailSlug}
+          acting={acting}
+          onBack={() => setDetailSlug(null)}
+          onApprove={() => void act(detailSlug, "approve")}
+          onDeny={() => void act(detailSlug, "deny")}
+          onRequestChanges={() => {
+            setRequestNotes("");
+            setRequestChangesSlug(detailSlug);
+          }}
+        />
+        <Dialog
+          open={requestChangesSlug != null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setRequestChangesSlug(null);
+              setRequestNotes("");
+            }
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Request changes</DialogTitle>
+              <DialogDescription>
+                Tell the organizer what to fix. The campaign returns to draft so they can
+                edit and resubmit for review.
+              </DialogDescription>
+            </DialogHeader>
+            <label className={labelClass}>Notes for the organizer</label>
+            <textarea
+              value={requestNotes}
+              onChange={(e) => setRequestNotes(e.target.value)}
+              rows={5}
+              placeholder="e.g. Please update the campaign dates and featured image…"
+              className={`${fieldClass} mt-1.5 resize-y`}
+            />
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className={btnSecondary}
+                onClick={() => {
+                  setRequestChangesSlug(null);
+                  setRequestNotes("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={acting === requestChangesSlug}
+                onClick={() => void submitRequestChanges()}
+                className="inline-flex items-center gap-1 rounded-full bg-amber-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40"
+              >
+                {acting === requestChangesSlug ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Pencil className="size-3.5" />
+                )}
+                Send request
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  }
+
   return (
     <section className="rounded-2xl border border-border bg-card p-5">
       <h2 className="text-lg font-bold">ForkUp timing review queue</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Campaigns with short business-method timelines waiting for human ForkUp review. Final
-        approval stays with an admin.
+        Campaigns waiting for human ForkUp review. Open any card for full details, then
+        approve, deny, or request changes.
       </p>
       {loading && (
         <div className="mt-8 flex justify-center">
@@ -454,7 +561,15 @@ function ForkupReviewTab() {
                 </p>
                 <p className="mt-1 text-xs font-medium">/{r.slug}</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={acting === r.slug}
+                  onClick={() => setDetailSlug(r.slug)}
+                  className={btnSecondary}
+                >
+                  <Eye className="size-3.5" /> View details
+                </button>
                 <button
                   type="button"
                   disabled={acting === r.slug}
@@ -462,6 +577,17 @@ function ForkupReviewTab() {
                   className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
                 >
                   <Check className="size-3.5" /> Approve
+                </button>
+                <button
+                  type="button"
+                  disabled={acting === r.slug}
+                  onClick={() => {
+                    setRequestNotes("");
+                    setRequestChangesSlug(r.slug);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full border border-amber-400/70 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 disabled:opacity-40 dark:bg-amber-950/40 dark:text-amber-200"
+                >
+                  <Pencil className="size-3.5" /> Request Changes
                 </button>
                 <button
                   type="button"
@@ -483,6 +609,203 @@ function ForkupReviewTab() {
       >
         Refresh
       </button>
+
+      <Dialog
+        open={requestChangesSlug != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRequestChangesSlug(null);
+            setRequestNotes("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request changes</DialogTitle>
+            <DialogDescription>
+              Tell the organizer what to fix. The campaign returns to draft so they can
+              edit and resubmit for review.
+            </DialogDescription>
+          </DialogHeader>
+          <label className={labelClass}>Notes for the organizer</label>
+          <textarea
+            value={requestNotes}
+            onChange={(e) => setRequestNotes(e.target.value)}
+            rows={5}
+            placeholder="e.g. Please update the campaign dates and featured image…"
+            className={`${fieldClass} mt-1.5 resize-y`}
+          />
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className={btnSecondary}
+              onClick={() => {
+                setRequestChangesSlug(null);
+                setRequestNotes("");
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={acting === requestChangesSlug}
+              onClick={() => void submitRequestChanges()}
+              className="inline-flex items-center gap-1 rounded-full bg-amber-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40"
+            >
+              {acting === requestChangesSlug ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Pencil className="size-3.5" />
+              )}
+              Send request
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}
+
+/**
+ * ForkUp review campaign detail panel (View details).
+ * Inputs: campaign slug + approve/deny/request-changes handlers.
+ * Outputs: full campaign summary for superadmin review.
+ */
+function ForkupReviewDetailsView({
+  slug,
+  acting,
+  onBack,
+  onApprove,
+  onDeny,
+  onRequestChanges,
+}: {
+  slug: string;
+  acting: string | null;
+  onBack: () => void;
+  onApprove: () => void;
+  onDeny: () => void;
+  onRequestChanges: () => void;
+}) {
+  const [details, setDetails] = useState<SuperAdminForkupReviewDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    void fetchSuperAdminForkupReviewDetail(slug)
+      .then(setDetails)
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to load campaign");
+        setDetails(null);
+      })
+      .finally(() => setLoading(false));
+  }, [slug]);
+
+  return (
+    <section className="space-y-4">
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <button type="button" onClick={onBack} className={btnGhost}>
+          <ArrowLeft className="size-4" /> Back to queue
+        </button>
+        <h2 className="mt-3 text-lg font-bold">
+          {details?.name ?? "Campaign details"}
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {details
+            ? `${details.nonprofit} · ${details.status} · review ${details.forkupReviewStatus}`
+            : `/${slug}`}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={acting === slug}
+            onClick={onApprove}
+            className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40"
+          >
+            <Check className="size-3.5" /> Approve
+          </button>
+          <button
+            type="button"
+            disabled={acting === slug}
+            onClick={onRequestChanges}
+            className="inline-flex items-center gap-1 rounded-full border border-amber-400/70 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900 disabled:opacity-40 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            <Pencil className="size-3.5" /> Request Changes
+          </button>
+          <button
+            type="button"
+            disabled={acting === slug}
+            onClick={onDeny}
+            className={btnSecondary}
+          >
+            <X className="size-3.5" /> Deny
+          </button>
+        </div>
+      </div>
+
+      {loading && (
+        <div className="flex justify-center py-10">
+          <Loader2 className="size-5 animate-spin text-primary" />
+        </div>
+      )}
+      {error && (
+        <p className="rounded-2xl border border-border bg-card p-5 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+
+      {!loading && details && (
+        <>
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <h3 className="text-sm font-bold tracking-tight">Campaign</h3>
+            <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+              <DetailField label="Name" value={details.name} />
+              <DetailField label="Slug" value={details.slug} />
+              <DetailField label="Status" value={details.status} />
+              <DetailField label="Goal" value={`$${Number(details.goal).toLocaleString()}`} />
+              <DetailField label="Start date" value={details.startDate} />
+              <DetailField label="End date" value={details.endDate} />
+              <DetailField label="Event date" value={details.eventDate} />
+              <DetailField label="Timing status" value={details.businessTimingStatus} />
+              <DetailField label="ForkUp review" value={details.forkupReviewStatus} />
+              <DetailField label="Review notes" value={details.forkupReviewReason} />
+              <DetailField label="Story" value={details.story} />
+              <DetailField label="Cover image" value={details.coverImageUrl} />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <h3 className="text-sm font-bold tracking-tight">Nonprofit</h3>
+            <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+              <DetailField label="Organization" value={details.nonprofit} />
+              <DetailField label="Contact name" value={details.nonprofitContactName} />
+              <DetailField label="Contact email" value={details.nonprofitContactEmail} />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <h3 className="text-sm font-bold tracking-tight">Methods</h3>
+            {details.methods.length === 0 ? (
+              <p className="mt-2 text-sm text-muted-foreground">No methods listed.</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {details.methods.map((m) => (
+                  <li
+                    key={m.methodType}
+                    className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                  >
+                    <p className="font-semibold">{m.methodName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {m.methodType} · {m.methodStatus} · timing {m.timingStatus}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
     </section>
   );
 }
