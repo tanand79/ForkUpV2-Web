@@ -724,10 +724,10 @@ export function QuickStart() {
               <UsDateInput
                 value={startDate}
                 max={endDate || undefined}
-                onChange={(e) => {
+                onChange={(iso) => {
                   datesLockedByUser.current = true;
                   setDatesFromSuggestion(false);
-                  setStartDate(e.target.value);
+                  setStartDate(iso);
                 }}
                 className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none"
               />

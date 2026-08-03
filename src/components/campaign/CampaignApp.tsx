@@ -115,7 +115,9 @@ function AuthLoginScreen() {
           const linkedId = await ensureGuestNonprofitLinked({
             nonprofitId: pendingNonprofitId,
             campaignSlug: pendingCampaignSlug,
-            alreadyLinkedIds: session?.nonprofitMemberships.map((m) => m.id) ?? [],
+            alreadyLinkedIds: (session?.nonprofitMemberships ?? [])
+              .map((m) => m.id)
+              .filter((id): id is number => typeof id === "number"),
           });
           if (linkedId) {
             session = await syncAuthSession(role, { force: true });
