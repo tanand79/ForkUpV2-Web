@@ -151,8 +151,7 @@ export function deriveCampaignReadiness(
     const businessTracksPending = [dineDonateStatus, guestBartendingStatus].some(
       (s) =>
         s === "waiting_on_business_acceptance" ||
-        s === "event_details_needed" ||
-        s === "pending_setup",
+        s === "event_details_needed",
     );
     const defaultReady =
       (onlineDonationStatus === "ready" || onlineDonationStatus === "not_selected") &&

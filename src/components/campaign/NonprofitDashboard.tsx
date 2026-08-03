@@ -38,6 +38,7 @@ import {
   resolveDashboardDrafts,
   type CampaignTab,
 } from "@/lib/nonprofit-dashboard-campaigns";
+import { RequestAgainButton } from "@/components/campaign/RequestAgainButton";
 import {
   invalidateNonprofitDashboardCache,
   readNonprofitDashboardCache,
@@ -541,7 +542,20 @@ export function NonprofitDashboard() {
           </p>
         )}
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {c.forkupReviewStatus === "changes_requested" ? (
+          {c.forkupReviewStatus === "denied" ? (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-rose-300/70 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+                ForkUp review denied
+              </span>
+              <RequestAgainButton
+                kind="campaign"
+                campaignSlug={c.slug}
+                onSuccess={() => {
+                  refreshCampaigns();
+                }}
+              />
+            </span>
+          ) : c.forkupReviewStatus === "changes_requested" ? (
             <span className="rounded-full border border-amber-400/70 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               ForkUp changes requested
             </span>
@@ -683,10 +697,23 @@ export function NonprofitDashboard() {
               Verified organization
             </span>
           ) : state.nonprofitProfile?.accessRequestStatus === "denied" ? (
-            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-              <XCircle className="size-3.5" />
-              Verification denied
-            </span>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                <XCircle className="size-3.5" />
+                Verification denied
+              </span>
+              {state.nonprofitProfile?.id ? (
+                <RequestAgainButton
+                  kind="organization"
+                  organizationType="nonprofit"
+                  organizationId={state.nonprofitProfile.id}
+                  onSuccess={async () => {
+                    const session = await syncAuthSession(undefined, { force: true });
+                    if (session?.nonprofitProfile) setNonprofitProfile(session.nonprofitProfile);
+                  }}
+                />
+              ) : null}
+            </div>
           ) : state.nonprofitProfile?.verificationStatus === "needs_review" ||
             state.nonprofitProfile?.accessRequestStatus === "pending" ? (
             <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">

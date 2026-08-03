@@ -147,6 +147,23 @@ export function updateCampaign(slug: string, payload: CreateCampaignPayload) {
   );
 }
 
+/**
+ * POST /api/builder/campaigns/:slug/resubmit-forkup-review
+ * Inputs: campaign slug (must currently be forkup_review_status = denied).
+ * Outputs: { success, slug, forkupReviewStatus: "pending" }
+ */
+export function resubmitCampaignForkupReview(slug: string) {
+  return fetchJson<{
+    success: boolean;
+    slug: string;
+    forkupReviewStatus: string;
+  }>(`/api/builder/campaigns/${encodeURIComponent(slug)}/resubmit-forkup-review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
 export interface NonprofitProfile {
   id: number;
   organizationName: string;
@@ -1161,6 +1178,28 @@ export function denyAccessRequest(
   );
 }
 
+/**
+ * POST /api/profiles/access-requests/resubmit
+ * Inputs: organizationType + organizationId (latest request must be denied).
+ * Outputs: { success, id, status: "pending", organizationType, organizationId }
+ */
+export function resubmitAccessRequest(body: {
+  organizationType: "nonprofit" | "business";
+  organizationId: number;
+}) {
+  return fetchJson<{
+    success: boolean;
+    id: number;
+    status: "pending";
+    organizationType: "nonprofit" | "business";
+    organizationId: number;
+  }>("/api/profiles/access-requests/resubmit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 // ─── Organization Library ────────────────────────────────────────────────────
 
 export type LibraryOrgType = "nonprofit" | "business";
@@ -1872,6 +1911,65 @@ export function denySuperAdminAccessRequest(id: number) {
   });
 }
 
+/** Super-admin per-campaign KPI row (creator-parity). */
+export type SuperAdminCampaignActivity = {
+  id: number;
+  slug: string;
+  name: string;
+  nonprofit: string;
+  status: string;
+  goal: number;
+  raised: number;
+  supportersGoing: number;
+  expectedGuests: number;
+  verifiedVisits: number;
+  startDate: string | null;
+  endDate: string | null;
+  eventDate: string | null;
+  businessTimingStatus: string;
+  forkupReviewStatus: string;
+  methods: { methodType: string; methodStatus: string }[];
+  partnersInvited: number;
+  partnersPending: number;
+  partnersAccepted: number;
+  partnersNeedsInfo: number;
+  participantCount: number;
+  ambassadorCount: number;
+  receiptSupporters: number;
+  receiptsUploaded: number;
+  receiptsApproved: number;
+  receiptsPending: number;
+  receiptsRejected: number;
+  eligibleSales: number;
+  givebackPool: number;
+  onlineDonationCount: number;
+  onlineDonationTotal: number;
+  settlementForkupFee: number;
+  settlementNetNonprofit: number;
+  settlementDonationPool: number;
+};
+
+export type SuperAdminActivitySummary = {
+  campaignCount: number;
+  liveCount: number;
+  draftCount: number;
+  totalRaised: number;
+  totalGoal: number;
+  onlineDonationTotal: number;
+  onlineDonationCount: number;
+  givebackPool: number;
+  eligibleSales: number;
+  supporters: number;
+  supportersGoing: number;
+  receiptsUploaded: number;
+  receiptsApproved: number;
+  partnersInvited: number;
+  partnersAccepted: number;
+  ambassadorCount: number;
+  settlementForkupFee: number;
+  settlementNetNonprofit: number;
+};
+
 /**
  * Superadmin organization detail payload from
  * GET /api/superadmin/organizations/:type/:id
@@ -1932,16 +2030,22 @@ export type SuperAdminOrganizationDetails = {
     activeStatus?: boolean;
   }[];
   accessRequest: AccessRequest | null;
+  /** Creator-parity totals across this org's campaigns. */
+  activitySummary?: SuperAdminActivitySummary;
+  /** Per-campaign KPIs (raised, supporters, receipts, partners, settlement). */
+  campaigns?: SuperAdminCampaignActivity[];
 };
 
 /**
- * Load full org profile (+ optional access request) for superadmin verification UI.
- * Method: GET /api/superadmin/organizations/:type/:id?requestId=
+ * GET /api/superadmin/organizations/:type/:id
+ * Inputs: organization type + id, optional requestId.
+ * Outputs: full organization profile (+ locations for business), optional access request,
+ *          and campaign activity KPIs for superadmin visibility.
  */
 export function fetchSuperAdminOrganizationDetails(
   organizationType: "nonprofit" | "business",
   organizationId: number,
-  requestId?: number,
+  requestId?: number | null,
 ) {
   const qs = new URLSearchParams();
   if (requestId != null && Number.isFinite(requestId) && requestId > 0) {

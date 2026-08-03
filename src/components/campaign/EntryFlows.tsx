@@ -25,6 +25,7 @@ import { stateFromBusinessInvite } from "@/lib/campaign-flow";
 import { syncAuthSession } from "@/lib/auth-session";
 import { stashAuthReturnStep, stashRoleHint } from "@/lib/campaign-auth";
 import { getAuthToken } from "@/lib/auth-storage";
+import { useClientMounted } from "@/lib/use-client-mounted";
 import {
   acceptNonprofitCampaignInvite,
   submitBusinessClaimRequest,
@@ -806,13 +807,19 @@ export function BusinessClaim() {
   const { setBusinessProfile, goTo, state, update, switchActiveRole } = useCampaign();
   const existing = state.businessProfile;
   const isEditing = Boolean(existing?.id);
+  const mounted = useClientMounted();
+  /** When signed in, Contact email is locked to the account email (not editable). */
+  const lockedAccountEmail =
+    mounted && getAuthToken() ? (loadUserSession()?.email?.trim() || null) : null;
 
   const initialDraft = (): BusinessClaimDraft => {
+    const sessionEmail = loadUserSession()?.email ?? "";
+    const loggedIn = Boolean(getAuthToken() && sessionEmail);
     if (isEditing && existing) {
       return {
         businessName: existing.businessName,
         contactName: existing.contactName ?? "",
-        contactEmail: existing.contactEmail ?? loadUserSession()?.email ?? "",
+        contactEmail: loggedIn ? sessionEmail : (existing.contactEmail ?? sessionEmail),
         website: "",
         locationName: existing.locationName ?? "Main Location",
         city: "",
@@ -824,11 +831,12 @@ export function BusinessClaim() {
       };
     }
     const saved = loadBusinessClaimDraft();
-    if (saved) return saved;
-    const session = loadUserSession();
+    if (saved) {
+      return loggedIn ? { ...saved, contactEmail: sessionEmail } : saved;
+    }
     return {
       ...defaultBusinessClaimDraft(),
-      contactEmail: session?.email ?? "",
+      contactEmail: sessionEmail,
     };
   };
 
@@ -837,9 +845,23 @@ export function BusinessClaim() {
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<BusinessClaimRequestResult | null>(null);
 
+  useEffect(() => {
+    if (!lockedAccountEmail) return;
+    setForm((prev) => {
+      if (prev.contactEmail === lockedAccountEmail) return prev;
+      const next = { ...prev, contactEmail: lockedAccountEmail };
+      saveBusinessClaimDraft(next);
+      return next;
+    });
+  }, [lockedAccountEmail]);
+
   const patchForm = (patch: Partial<BusinessClaimDraft>) => {
     setForm((prev) => {
-      const next = { ...prev, ...patch };
+      const next = {
+        ...prev,
+        ...patch,
+        ...(lockedAccountEmail ? { contactEmail: lockedAccountEmail } : null),
+      };
       saveBusinessClaimDraft(next);
       return next;
     });
@@ -867,7 +889,7 @@ export function BusinessClaim() {
       const result = await submitBusinessClaimRequest({
         businessName: businessName.trim(),
         contactName: contactName.trim() || businessName.trim(),
-        contactEmail: contactEmail.trim(),
+        contactEmail: (lockedAccountEmail ?? contactEmail).trim(),
         website: website.trim() || undefined,
         locationName: locationName.trim(),
         city: city.trim() || undefined,
@@ -1017,10 +1039,21 @@ export function BusinessClaim() {
           <input
             required
             type="email"
-            value={contactEmail}
-            onChange={(e) => patchForm({ contactEmail: e.target.value })}
-            className={field}
+            value={lockedAccountEmail ?? contactEmail}
+            onChange={(e) => {
+              if (lockedAccountEmail) return;
+              patchForm({ contactEmail: e.target.value });
+            }}
+            readOnly={Boolean(lockedAccountEmail)}
+            disabled={Boolean(lockedAccountEmail)}
+            aria-readonly={Boolean(lockedAccountEmail)}
+            className={`${field}${lockedAccountEmail ? " cursor-not-allowed bg-muted/50 text-muted-foreground" : ""}`}
           />
+          {lockedAccountEmail ? (
+            <span className="text-xs text-muted-foreground">
+              Uses your signed-in account email and can&apos;t be changed here.
+            </span>
+          ) : null}
         </label>
         <label className="block space-y-1.5">
           <span className="text-sm font-semibold">

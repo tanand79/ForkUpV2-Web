@@ -708,10 +708,10 @@ export function QuickStart() {
               <UsDateInput
                 value={endDate}
                 min={startDate || undefined}
-                onChange={(e) => {
+                onChange={(iso) => {
                   datesLockedByUser.current = true;
                   setDatesFromSuggestion(false);
-                  setEndDate(e.target.value);
+                  setEndDate(iso);
                 }}
                 className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none"
               />
