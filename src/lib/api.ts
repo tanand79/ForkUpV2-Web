@@ -118,6 +118,8 @@ export interface BuilderCampaignPartner {
 
 export interface BuilderCampaignState {
   slug: string;
+  /** Additive: nonprofit owning this campaign (for guest→signup linking). */
+  nonprofitId?: number;
   campaignName: string;
   campaignStory: string;
   campaignGoal: number;
@@ -674,9 +676,16 @@ export interface BusinessInvitationDetail {
   id: number;
   token: string;
   acceptanceStatus: string;
+  inviteStatus?: string;
   givebackPercentage: number;
   participationHours: string | null;
   eligibleSalesRules: string | null;
+  messageToBusiness?: string | null;
+  proposedTerms?: string | null;
+  respondByDate?: string | null;
+  setupStatus?: string;
+  marketingReadyStatus?: string;
+  settlementReadyStatus?: string;
   canRespond: boolean;
   campaign: {
     slug: string;
@@ -704,7 +713,10 @@ export interface BusinessCollaboration {
   inviteStatus?: string;
   respondByDate?: string | null;
   setupStatus?: string;
+  marketingReadyStatus?: string;
   settlementReadyStatus?: string;
+  messageToBusiness?: string | null;
+  proposedTerms?: string | null;
   givebackPercentage: number;
   participationHours: string | null;
   eligibleSalesRules: string | null;
@@ -823,6 +835,8 @@ export interface CampaignDashboardData {
     setupStatus?: string;
     marketingReadyStatus?: string;
     settlementReadyStatus?: string;
+    messageToBusiness?: string | null;
+    proposedTerms?: string | null;
     givebackPercentage: number;
     invitedAt?: string | null;
     changeRequestMessage?: string | null;

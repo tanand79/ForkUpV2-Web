@@ -480,6 +480,7 @@ function InviteForm({
     type: string;
     location: string;
     note: string;
+    proposedTerms?: string;
     capabilities: ReturnType<typeof inferCapabilities>;
   }) => void;
 }) {
@@ -490,6 +491,7 @@ function InviteForm({
     type: "Restaurant",
     location: "",
     note: "",
+    proposedTerms: "",
   });
   const [touched, setTouched] = useState(false);
 
@@ -508,7 +510,11 @@ function InviteForm({
       setTouched(true);
       return;
     }
-    onAdd({ ...form, capabilities });
+    onAdd({
+      ...form,
+      proposedTerms: form.proposedTerms.trim() || undefined,
+      capabilities,
+    });
   };
 
   return (
@@ -605,6 +611,18 @@ function InviteForm({
             value={form.note}
             onChange={(e) => setForm({ ...form, note: e.target.value })}
             placeholder="Add a personal message to your invitation…"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-semibold">
+            Proposed Terms <span className="font-normal text-muted-foreground">(optional)</span>
+          </label>
+          <textarea
+            className="min-h-16 w-full rounded-xl border border-border bg-card p-4 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring/30"
+            value={form.proposedTerms}
+            onChange={(e) => setForm({ ...form, proposedTerms: e.target.value })}
+            placeholder="e.g. 15% of dine-in sales between 5–9pm; exclude alcohol…"
           />
         </div>
 

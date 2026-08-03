@@ -106,6 +106,19 @@ export function WizardHeader() {
     return null;
   }
 
+  const aiFlowSteps: StepId[] = [
+    "ai-find-org",
+    "ai-campaign-ideas",
+    "ai-campaign-purpose",
+    "ai-campaign-build",
+    "ai-campaign-dates",
+    "ai-campaign-preview",
+    "ai-continue-guest",
+  ];
+  if (aiFlowSteps.includes(step)) {
+    return null;
+  }
+
   if (
     step === "super-admin-login" ||
     step === "super-admin-forgot-password" ||

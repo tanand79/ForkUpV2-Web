@@ -111,24 +111,48 @@ export function evaluateBusinessMethodTiming(state: CampaignState): MethodTiming
     };
   }
 
+  /**
+   * Evaluate each selected business method on its own date anchor.
+   * When giveback + guest bartending are both selected, both can need ForkUp
+   * review — do not prefer one method and skip the other.
+   */
+  const reviewApproved = state.forkupReviewStatus === "approved";
+  const GIVEBACK_SHORT_MSG =
+    "This campaign starts in less than 30 days. Business giveback campaigns need time for businesses to accept, prepare their team, and promote the campaign. ForkUp review is required before inviting businesses for this timeline.";
+  const GUEST_SHORT_MSG =
+    "Guest Bartending events need enough time to confirm the venue, prepare the guest bartenders, promote the event, and alert the business team. ForkUp review is required for events less than 30 days away.";
+
+  const shortMessages: string[] = [];
+  let worstDays: number | null = null;
   let anchorDate: string | null = null;
   let anchorKind: "start" | "event" | null = null;
-  let message: string | null = null;
 
+  const considerAnchor = (
+    dateStr: string | null | undefined,
+    kind: "start" | "event",
+    shortMessage: string,
+  ) => {
+    const normalized = toDateOnlyString(dateStr) || null;
+    const days = daysUntil(normalized);
+    if (days == null) return;
+    if (worstDays == null || days < worstDays) {
+      worstDays = days;
+      anchorDate = normalized;
+      anchorKind = kind;
+    }
+    if (days < BUSINESS_METHOD_MIN_LEAD_DAYS && !reviewApproved) {
+      shortMessages.push(shortMessage);
+    }
+  };
+
+  if (hasGivebackMethod(methods)) {
+    considerAnchor(state.startDate, "start", GIVEBACK_SHORT_MSG);
+  }
   if (hasGuestBartendingMethod(methods)) {
-    anchorDate = toDateOnlyString(state.eventDate) || null;
-    anchorKind = "event";
-    message =
-      "Guest Bartending events need enough time to confirm the venue, prepare the guest bartenders, promote the event, and alert the business team. ForkUp review is required for events less than 30 days away.";
-  } else {
-    anchorDate = toDateOnlyString(state.startDate) || null;
-    anchorKind = "start";
-    message =
-      "This campaign starts in less than 30 days. Business giveback campaigns need time for businesses to accept, prepare their team, and promote the campaign. ForkUp review is required before inviting businesses for this timeline.";
+    considerAnchor(state.eventDate, "event", GUEST_SHORT_MSG);
   }
 
-  const days = daysUntil(anchorDate);
-  if (days == null) {
+  if (worstDays == null) {
     return {
       status: "ok",
       message: null,
@@ -139,15 +163,12 @@ export function evaluateBusinessMethodTiming(state: CampaignState): MethodTiming
     };
   }
 
-  if (
-    days >= BUSINESS_METHOD_MIN_LEAD_DAYS ||
-    state.forkupReviewStatus === "approved"
-  ) {
+  if (shortMessages.length === 0) {
     return {
       status: "ok",
       message: null,
       ctas: [],
-      daysUntilAnchor: days,
+      daysUntilAnchor: worstDays,
       anchorDate,
       anchorKind,
     };
@@ -155,13 +176,13 @@ export function evaluateBusinessMethodTiming(state: CampaignState): MethodTiming
 
   return {
     status: "needs_forkup_review",
-    message,
+    message: shortMessages.join(" "),
     ctas: [
       "change_date",
       "continue_without_business_method",
       "submit_for_forkup_review",
     ],
-    daysUntilAnchor: days,
+    daysUntilAnchor: worstDays,
     anchorDate,
     anchorKind,
   };
@@ -196,14 +217,41 @@ export function suggestCampaignDates(fromDate?: Date): {
   return { startDate, endDate };
 }
 
+/**
+ * Suggest dates for Online Donations / Ambassador Sharing (default fundraising layer).
+ *
+ * Purpose: Pre-fill an end date only — no business lead-time start. End defaults to
+ * today + AMBASSADOR_RECOMMENDED_DAYS so ambassadors have a useful window; start stays
+ * empty (optional). No hard block if the organizer shortens the window.
+ *
+ * Inputs: optional "today" override (tests). Outputs: empty startDate + YYYY-MM-DD endDate.
+ */
+export function suggestOnlineCampaignDates(fromDate?: Date): {
+  startDate: string;
+  endDate: string;
+} {
+  const today = toDateOnlyString(fromDate ?? new Date());
+  return {
+    startDate: "",
+    endDate: subtractCalendarDays(today, -AMBASSADOR_RECOMMENDED_DAYS),
+  };
+}
+
 export const TIMING_CTA_LABELS: Record<TimingCta, string> = {
   change_date: "Change Campaign Date",
   continue_without_business_method: "Continue Without Business Giveback",
   submit_for_forkup_review: "Submit for ForkUp Review",
 };
 
-/** Guest Bartending CTA label variant. */
+/** Guest Bartending / combined business-method CTA label variants. */
 export function timingCtaLabel(cta: TimingCta, methods: CampaignState["methods"]): string {
+  if (
+    cta === "change_date" &&
+    hasGivebackMethod(methods) &&
+    hasGuestBartendingMethod(methods)
+  ) {
+    return "Change Campaign / Event Dates";
+  }
   if (cta === "change_date" && hasGuestBartendingMethod(methods)) {
     return "Change Event Date";
   }

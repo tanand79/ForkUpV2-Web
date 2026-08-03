@@ -17,20 +17,21 @@ import {
 import { useCampaign, type SupportMethod, type SupportMethods } from "@/lib/campaign-context";
 import { fetchManageCampaigns, generateCampaignDraft, suggestCampaignGoal } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-storage";
-import { suggestCampaignDates } from "@/lib/campaign-timing";
+import { suggestCampaignDates, suggestOnlineCampaignDates, hasBusinessMethod } from "@/lib/campaign-timing";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
 
 /**
  * Lovable “Build Your Campaign” — guided substeps:
  *   purpose → goal/dates → methods → Prepare My Draft → details (review/edit).
  *
- * Method defaults (Online Donations + Ambassador ON) apply ONLY here;
- * the full builder’s defaults are unchanged.
+ * Method defaults: Online Donations + Ambassador ON (giveback/guest off).
+ * Matches initial campaign-context methods for the default fundraising layer.
  *
  * Goal screen also offers memory fundraising: if this nonprofit has a prior
  * campaign with funds raised, prompt to reuse that amount as the new goal.
  * When the amount is empty on the goal screen, AI pre-fills a suggestedGoal
- * (editable). Empty dates are pre-filled from L2 timing-safe defaults
+ * (editable). Empty dates: online/ambassador defaults suggest end ≈ today+14
+ * (start optional/empty); business methods keep L2 timing-safe start/end
  * (start ≈ today+35, end ≈ start+30). Prepare My Draft may still fill
  * suggestedGoal if left blank.
  */
@@ -404,7 +405,7 @@ export function QuickStart() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sub, purposeValid]);
 
-  // L2 timing dates: pre-fill start/end when empty (editable; avoids ForkUp review floor).
+  // Default fundraising layer: end date only (≈ today+14). Business methods: L2 start/end.
   useEffect(() => {
     if (sub !== "goal") return;
     if (datesSuggestAttempted.current) return;
@@ -412,8 +413,10 @@ export function QuickStart() {
     if (startDate.trim() || endDate.trim()) return;
 
     datesSuggestAttempted.current = true;
-    const suggested = suggestCampaignDates();
-    if (!suggested.startDate || !suggested.endDate) return;
+    const suggested = hasBusinessMethod(methods)
+      ? suggestCampaignDates()
+      : suggestOnlineCampaignDates();
+    if (!suggested.endDate && !suggested.startDate) return;
     setStartDate(suggested.startDate);
     setEndDate(suggested.endDate);
     setDatesFromSuggestion(true);
@@ -699,19 +702,9 @@ export function QuickStart() {
           </div>
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="text-xs font-semibold text-muted-foreground">Start date</label>
-              <UsDateInput
-                value={startDate}
-                onChange={(e) => {
-                  datesLockedByUser.current = true;
-                  setDatesFromSuggestion(false);
-                  setStartDate(e.target.value);
-                }}
-                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground">End date</label>
+              <label className="text-xs font-semibold text-muted-foreground">
+                When should this campaign end?
+              </label>
               <UsDateInput
                 value={endDate}
                 min={startDate || undefined}
@@ -723,14 +716,32 @@ export function QuickStart() {
                 className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none"
               />
             </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">
+                Do you want to set a start date?{" "}
+                <span className="font-normal">(optional)</span>
+              </label>
+              <UsDateInput
+                value={startDate}
+                max={endDate || undefined}
+                onChange={(e) => {
+                  datesLockedByUser.current = true;
+                  setDatesFromSuggestion(false);
+                  setStartDate(e.target.value);
+                }}
+                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-3 text-base outline-none"
+              />
+            </div>
           </div>
-          {datesFromSuggestion && startDate && endDate ? (
+          {datesFromSuggestion && endDate ? (
             <p className="mt-1.5 text-xs text-muted-foreground">
-              Suggested to avoid ForkUp review and leave room for partners — edit anytime.
+              {hasBusinessMethod(methods)
+                ? "Suggested to avoid ForkUp review and leave room for partners — edit anytime."
+                : "Suggested end date gives ambassadors time to share — edit anytime. A start date is optional."}
             </p>
           ) : (
             <p className="mt-3 text-xs text-muted-foreground">
-              Goal and dates are optional for now, but dates must be confirmed before launch.
+              Goal is optional. Online donations and ambassador sharing mainly need an end date before launch.
             </p>
           )}
         </main>

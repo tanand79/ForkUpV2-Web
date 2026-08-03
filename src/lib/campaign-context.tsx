@@ -32,6 +32,8 @@ import { createCampaign, fetchBuilderCampaign, fetchManageCampaigns, updateCampa
 import { buildDraftSavePayload, buildCampaignGalleryPayload, canSaveDraftToServer } from "@/lib/builder-submit";
 import { subtractCalendarDays, toDateOnlyString } from "@/lib/date-only";
 import { invalidateNonprofitDashboardCache } from "@/lib/nonprofit-dashboard-cache";
+import { analyzeAiCampaignFlow } from "@/lib/api-ai-campaign-flow";
+import { saveAiFlowStore } from "@/lib/ai-campaign-flow-storage";
 
 function businessesFromCatalog(s: CampaignState): Business[] {
   return s.businessCatalog ?? [];
@@ -61,8 +63,19 @@ const BUILDER_FLOW_STEPS: StepId[] = [
   "invite",
 ];
 
+/** Parallel AI-first funnel — also persisted to browser for guest resume. */
+const AI_FLOW_STEPS: StepId[] = [
+  "ai-find-org",
+  "ai-campaign-ideas",
+  "ai-campaign-purpose",
+  "ai-campaign-build",
+  "ai-campaign-dates",
+  "ai-campaign-preview",
+  "ai-continue-guest",
+];
+
 function isBuilderFlowStep(step: StepId): boolean {
-  return BUILDER_FLOW_STEPS.includes(step);
+  return BUILDER_FLOW_STEPS.includes(step) || AI_FLOW_STEPS.includes(step);
 }
 
 /**
@@ -143,6 +156,13 @@ function loadDraft(): CampaignDraft | null {
       "review",
       "businesses",
       "invite",
+      "ai-find-org",
+      "ai-campaign-ideas",
+      "ai-campaign-purpose",
+      "ai-campaign-build",
+      "ai-campaign-dates",
+      "ai-campaign-preview",
+      "ai-continue-guest",
     ];
     let lastStep = resumeSteps.includes(draft.lastStep as StepId)
       ? (draft.lastStep as StepId)
@@ -236,6 +256,14 @@ export type StepId =
   | "create-fundraiser"
   // Simplified GoFundMe-style entry — asks a few questions, AI prepares a draft.
   | "quick-start"
+  // Parallel AI-first create funnel (guest allowed through preview).
+  | "ai-find-org"
+  | "ai-campaign-ideas"
+  | "ai-campaign-purpose"
+  | "ai-campaign-build"
+  | "ai-campaign-dates"
+  | "ai-campaign-preview"
+  | "ai-continue-guest"
   // Lovable Review Your Campaign (after Prepare My Draft) — not the old details/media tabs.
   | "campaign-review"
   | "methods"
@@ -362,6 +390,8 @@ export interface InvitedBusiness {
   type: string;
   location: string;
   note: string;
+  /** Optional proposed participation terms shown to the business. */
+  proposedTerms?: string;
   // Acceptance lifecycle — defaults to "pending" when first invited.
   status: BusinessInviteStatus;
   // Populated when the business submits "Request Changes".
@@ -637,7 +667,7 @@ const initialState: CampaignState = {
   giveback: 15,
   goal: "",
   fundsSupport: [],
-  methods: { giveback: true, donations: true, guestBartending: false, ambassador: true },
+  methods: { giveback: false, donations: true, guestBartending: false, ambassador: true },
   selectedBusinessIds: [],
   businessCatalog: [],
   businessStatuses: {},
@@ -1277,9 +1307,13 @@ export function CampaignProvider({
           ...prev,
           campaignSlug: result.slug,
           invited: prev.invited.map((b) => ({ ...b, persisted: true })),
+          nonprofitProfile:
+            prev.nonprofitProfile && result.nonprofitId
+              ? { ...prev.nonprofitProfile, id: result.nonprofitId }
+              : prev.nonprofitProfile,
         }));
         setHasDraft(true);
-        invalidateNonprofitDashboardCache(np.id);
+        invalidateNonprofitDashboardCache(result.nonprofitId ?? np.id);
         await refreshServerDrafts();
         return true;
       } catch {
@@ -1430,6 +1464,25 @@ export function CampaignProvider({
     persistDraftToServer,
   ]);
 
+  // Guest AI-flow: persist campaign draft in the browser (no account required).
+  useEffect(() => {
+    if (!AI_FLOW_STEPS.includes(step)) return;
+    persistDraft(state, step);
+  }, [
+    step,
+    state.title,
+    state.description,
+    state.goal,
+    state.startDate,
+    state.endDate,
+    state.methods,
+    state.cover,
+    state.images,
+    state.nonprofitProfile,
+    state.promotion,
+    state.fundsSupport,
+  ]);
+
   const saveAndExit = useCallback(() => {
     void (async () => {
       const current = stateRef.current;
@@ -1452,11 +1505,19 @@ export function CampaignProvider({
 
   const dismissResumed = () => setResumedFromDraft(false);
 
+  /**
+   * Start a new campaign from the nonprofit dashboard / start screen.
+   * Purpose: Reset draft state, run AI analyze for the current org, open idea picker.
+   * Inputs: current nonprofitProfile (+ promotion links). Outputs: navigates to ai-campaign-ideas
+   * (or ai-find-org if analyze fails / nonprofit-claim if no profile).
+   */
   const startNewCampaign = () => {
     if (!state.nonprofitProfile) {
       goTo("nonprofit-claim");
       return;
     }
+    const profile = state.nonprofitProfile;
+    const promotion = state.promotion;
     setState((prev) => ({
       ...initialState,
       nonprofitProfile: prev.nonprofitProfile,
@@ -1468,10 +1529,43 @@ export function CampaignProvider({
       title: prev.nonprofitProfile
         ? `Support ${prev.nonprofitProfile.organizationName}`
         : "",
+      promotion: prev.promotion,
     }));
     discardLocalDraft({ force: true });
     void refreshServerDrafts();
-    goTo("quick-start");
+    void (async () => {
+      try {
+        const session = await analyzeAiCampaignFlow({
+          organizationName: profile.organizationName,
+          nonprofitId: profile.id ?? null,
+          website: promotion.websiteUrl || null,
+          facebookUrl: promotion.facebookUrl || null,
+          instagramUrl: promotion.instagramHandle || null,
+          mission: profile.mission || null,
+          causeCategory: profile.causeCategory || null,
+        });
+        saveAiFlowStore({
+          sessionToken: session.sessionToken,
+          organizationName: profile.organizationName,
+          selectedIdeaId: null,
+          guestContinued: false,
+        });
+        if (session.website || session.facebookUrl || session.instagramUrl) {
+          setState((prev) => ({
+            ...prev,
+            promotion: {
+              ...prev.promotion,
+              websiteUrl: session.website || prev.promotion.websiteUrl,
+              facebookUrl: session.facebookUrl || prev.promotion.facebookUrl,
+              instagramHandle: session.instagramUrl || prev.promotion.instagramHandle,
+            },
+          }));
+        }
+        goTo("ai-campaign-ideas");
+      } catch {
+        goTo("ai-find-org");
+      }
+    })();
   };
 
 

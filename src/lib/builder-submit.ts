@@ -48,11 +48,16 @@ export interface CreateCampaignPayload {
     locationId: number;
     methodType: ApiMethodType;
     givebackPercentage?: number;
+    businessEmail?: string;
+    messageToBusiness?: string;
+    proposedTerms?: string;
   }[];
   newBusinessInvites?: {
     businessName: string;
     businessEmail: string;
     methodType: ApiMethodType;
+    messageToBusiness?: string;
+    proposedTerms?: string;
   }[];
   termsAccepted: boolean;
   launch: boolean;
@@ -64,6 +69,8 @@ export interface CreateCampaignPayload {
 
 export interface CreateCampaignResult {
   slug: string;
+  /** Additive: nonprofit owning this campaign (for guest→signup linking). */
+  nonprofitId?: number;
   campaignStatus: string;
   campaignName: string;
   message: string;
@@ -243,6 +250,8 @@ export function buildCreateCampaignPayload(
         methodType: state.methods.guestBartending
           ? "guest_bartending_event"
           : inferInviteMethodType(invite),
+        messageToBusiness: invite.note?.trim() || undefined,
+        proposedTerms: invite.proposedTerms?.trim() || undefined,
       });
     }
   }

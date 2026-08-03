@@ -11,6 +11,7 @@ import {
   ambassadorTimingCoachMessage,
   dateFieldRequirements,
   evaluateBusinessMethodTiming,
+  hasBusinessMethod,
   timingCtaLabel,
   type TimingCta,
 } from "@/lib/campaign-timing";
@@ -118,10 +119,12 @@ export function CampaignDetails() {
 
   const storyValid = storyMet;
 
+  // Date requirements follow selected methods (online/ambassador: end only; giveback: start+end).
   const remaining =
     (state.title.trim() ? 0 : 1) +
-    (state.startDate ? 0 : 1) +
-    (state.endDate ? 0 : 1) +
+    (dateReqs.requireStartDate && !state.startDate ? 1 : 0) +
+    (dateReqs.requireEndDate && !state.endDate ? 1 : 0) +
+    (dateReqs.requireEventDate && !state.eventDate ? 1 : 0) +
     (storyValid ? 0 : 1);
   const valid = remaining === 0;
   const remainingMeta =
@@ -238,62 +241,80 @@ export function CampaignDetails() {
 
 
           <div className="grid gap-5 sm:grid-cols-2">
-            {(dateReqs.requireStartDate || dateReqs.startOptional) && (
-              <div className="space-y-2">
-                <label className={label}>
-                  Campaign Start Date{" "}
-                  {dateReqs.requireStartDate ? (
+            {(() => {
+              const startFirst = hasBusinessMethod(state.methods);
+              const endBlock = dateReqs.requireEndDate ? (
+                <div key="end" className="space-y-2">
+                  <label className={label}>
+                    {dateReqs.startOptional
+                      ? "When should this campaign end?"
+                      : "Campaign End Date"}{" "}
                     <span className="text-primary">*</span>
-                  ) : (
-                    <span className="text-muted-foreground font-normal">(optional)</span>
-                  )}
-                </label>
-                <input
-                  type="date"
-                  className={field}
-                  value={state.startDate}
-                  onChange={(e) =>
-                    update({
-                      startDate: e.target.value,
-                      submitForForkupReview: false,
-                      continueWithoutBusinessMethods: false,
-                    })
-                  }
-                />
-              </div>
-            )}
-            {dateReqs.requireEndDate && (
-              <div className="space-y-2">
-                <label className={label}>
-                  Campaign End Date <span className="text-primary">*</span>
-                </label>
-                <input
-                  type="date"
-                  className={field}
-                  value={state.endDate}
-                  min={state.startDate || undefined}
-                  onChange={(e) =>
-                    update({
-                      endDate: e.target.value,
-                      submitForForkupReview: false,
-                      continueWithoutBusinessMethods: false,
-                    })
-                  }
-                />
-              </div>
-            )}
+                  </label>
+                  <UsDateInput
+                    className={field}
+                    value={state.endDate}
+                    min={state.startDate || undefined}
+                    onChange={(endDate) =>
+                      update({
+                        endDate,
+                        submitForForkupReview: false,
+                        continueWithoutBusinessMethods: false,
+                      })
+                    }
+                  />
+                </div>
+              ) : null;
+              const startBlock =
+                dateReqs.requireStartDate || dateReqs.startOptional ? (
+                  <div key="start" className="space-y-2">
+                    <label className={label}>
+                      {dateReqs.startOptional
+                        ? "Do you want to set a start date?"
+                        : "Campaign Start Date"}{" "}
+                      {dateReqs.requireStartDate ? (
+                        <span className="text-primary">*</span>
+                      ) : (
+                        <span className="text-muted-foreground font-normal">(optional)</span>
+                      )}
+                    </label>
+                    <UsDateInput
+                      className={field}
+                      value={state.startDate}
+                      max={state.endDate || undefined}
+                      onChange={(startDate) =>
+                        update({
+                          startDate,
+                          submitForForkupReview: false,
+                          continueWithoutBusinessMethods: false,
+                        })
+                      }
+                    />
+                  </div>
+                ) : null;
+              return startFirst ? (
+                <>
+                  {startBlock}
+                  {endBlock}
+                </>
+              ) : (
+                <>
+                  {endBlock}
+                  {startBlock}
+                </>
+              );
+            })()}
             {dateReqs.requireEventDate && (
               <div className="space-y-2 sm:col-span-2">
                 <label className={label}>
                   Guest Bartending Event Date <span className="text-primary">*</span>
                 </label>
-                <input
-                  type="date"
+                <UsDateInput
                   className={field}
                   value={state.eventDate}
-                  onChange={(e) =>
+                  onChange={(eventDate) =>
                     update({
-                      eventDate: e.target.value,
+                      eventDate,
                       submitForForkupReview: false,
                       continueWithoutBusinessMethods: false,
                     })

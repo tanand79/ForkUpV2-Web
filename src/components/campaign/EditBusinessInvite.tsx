@@ -72,7 +72,10 @@ export function EditBusinessInvite() {
   const [giveback, setGiveback] = useState(
     changePrefill?.preferredGiveback ?? original.giveback,
   );
-  const [note, setNote] = useState(changePrefill?.message ?? "");
+  const [note, setNote] = useState(
+    changePrefill?.message ?? invitation?.messageToBusiness ?? "",
+  );
+  const [proposedTerms, setProposedTerms] = useState(invitation?.proposedTerms ?? "");
 
   useEffect(() => {
     if (!invitation) return;
@@ -87,6 +90,8 @@ export function EditBusinessInvite() {
       setEventDate(preferred || campaignStartDate);
     }
     if (changePrefill?.message) setNote(changePrefill.message);
+    else if (invitation.messageToBusiness) setNote(invitation.messageToBusiness);
+    setProposedTerms(invitation.proposedTerms ?? "");
   }, [invitation, campaignStartDate, changePrefill, method]);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -258,6 +263,16 @@ export function EditBusinessInvite() {
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Add a personal message explaining why you'd like this business to join your campaign."
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-semibold">Proposed Terms (Optional)</label>
+          <textarea
+            className="min-h-20 w-full rounded-xl border border-border bg-card p-4 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring/30"
+            value={proposedTerms}
+            onChange={(e) => setProposedTerms(e.target.value)}
+            placeholder="e.g. Eligible sales rules, hours, or exclusions for this partnership."
           />
         </div>
 

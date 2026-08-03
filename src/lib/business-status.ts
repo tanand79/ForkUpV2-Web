@@ -18,6 +18,7 @@ export type CampaignBusinessStatus =
   | "declined"
   | "expired"
   | "active"
+  | "completed"
   | "removed";
 
 /** Legacy builder/API statuses still in use during migration. */
@@ -54,6 +55,7 @@ export const BUSINESS_STATUS_LABEL: Record<CampaignBusinessStatus, string> = {
   declined: "Declined",
   expired: "Expired",
   active: "Live",
+  completed: "Completed",
   removed: "Removed",
 };
 
@@ -66,9 +68,30 @@ export const SETUP_STATUS_LABEL: Record<SetupStatus, string> = {
   complete: "Setup complete",
 };
 
+export type MarketingReadyStatus = "pending" | "ready" | "blocked";
+
+export const MARKETING_READY_LABEL: Record<MarketingReadyStatus, string> = {
+  pending: "Marketing pending",
+  ready: "Marketing ready",
+  blocked: "Marketing blocked",
+};
+
+export type SettlementReadyStatus = "pending" | "needs_info" | "ready";
+
+export const SETTLEMENT_READY_LABEL: Record<SettlementReadyStatus, string> = {
+  pending: "Settlement pending",
+  needs_info: "Settlement needs info",
+  ready: "Settlement ready",
+};
+
 /** Whether this status should appear on the public campaign page. */
 export function isPublicParticipantStatus(status: CampaignBusinessStatus): boolean {
-  return status === "accepted" || status === "active" || status === "ready";
+  return (
+    status === "accepted" ||
+    status === "active" ||
+    status === "ready" ||
+    status === "completed"
+  );
 }
 
 /** Map legacy builder status to spec-aligned status. */
@@ -112,8 +135,9 @@ export function fromApiAcceptanceStatus(status: string): CampaignBusinessStatus 
     case "expired":
       return "expired";
     case "live":
-    case "completed":
       return "active";
+    case "completed":
+      return "completed";
     default:
       return "awaiting_acceptance";
   }
@@ -137,6 +161,7 @@ export function businessStatusTone(
     case "accepted":
     case "active":
     case "ready":
+    case "completed":
       return "success";
     case "awaiting_acceptance":
     case "invited":

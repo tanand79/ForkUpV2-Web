@@ -23,7 +23,8 @@ import type { BusinessInviteStatus } from "@/lib/campaign-context";
 import { fetchCampaignDashboard, type CampaignDashboardData } from "@/lib/api";
 import { toDateOnlyString, formatDateUs } from "@/lib/date-only";
 import { ApiAcceptanceStatusBadge } from "@/components/campaign/BusinessStatusBadge";
-import { formatRespondByLabel, SETUP_STATUS_LABEL, type SetupStatus } from "@/lib/business-status";
+import { formatRespondByLabel, SETUP_STATUS_LABEL, MARKETING_READY_LABEL, SETTLEMENT_READY_LABEL, type SetupStatus, type MarketingReadyStatus, type SettlementReadyStatus } from "@/lib/business-status";
+import { campaignPublicPath } from "@/lib/campaign-paths";
 import { BusinessEmailActions } from "./BusinessEmailActions";
 import { CampaignVisibilityPanel } from "./CampaignVisibilityPanel";
 import { SuccessEngineActionList } from "./SuccessEngineActionList";
@@ -285,9 +286,8 @@ export function CampaignDashboard() {
   const showReceiptTracking = stage === "live" || stage === "closed" || stage === "settlement";
   // During Live, the business list is final — never show "none yet" messaging.
   const allowBusinessEmptyState = stage !== "live";
-
-
-  
+  /** Current campaign slug for the live /campaign/{slug}/ public page link. */
+  const publicSlug = state.campaignSlug ?? apiDashboard?.slug ?? "";
 
   const togglePreview = (id: string) =>
     setPreviewIds((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -378,14 +378,18 @@ export function CampaignDashboard() {
         Back to success screen
       </button>
 
-      {/* Open the canonical Public Campaign Page supporters see. */}
-      <button
-        onClick={() => goTo("campaign-page")}
-        className="mb-6 ml-4 inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold transition-colors hover:bg-secondary"
-      >
-        <ExternalLink className="size-4 text-primary" />
-        View Public Campaign Page
-      </button>
+      {/* Open the live /campaign/{slug}/ page (same as success screen / business dashboard). */}
+      {publicSlug ? (
+        <a
+          href={campaignPublicPath(publicSlug)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mb-6 ml-4 inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold transition-colors hover:bg-secondary"
+        >
+          <ExternalLink className="size-4 text-primary" />
+          View Public Campaign Page
+        </a>
+      ) : null}
 
       <div className="animate-rise mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -562,7 +566,35 @@ export function CampaignDashboard() {
                               inv.setupStatus}
                           </span>
                         )}
+                      {inv.marketingReadyStatus &&
+                        inv.acceptanceStatus === "accepted" &&
+                        inv.marketingReadyStatus !== "pending" && (
+                          <span className="text-xs text-muted-foreground">
+                            {MARKETING_READY_LABEL[
+                              inv.marketingReadyStatus as MarketingReadyStatus
+                            ] ?? inv.marketingReadyStatus}
+                          </span>
+                        )}
+                      {inv.settlementReadyStatus &&
+                        inv.acceptanceStatus === "accepted" &&
+                        inv.settlementReadyStatus !== "pending" && (
+                          <span className="text-xs text-muted-foreground">
+                            {SETTLEMENT_READY_LABEL[
+                              inv.settlementReadyStatus as SettlementReadyStatus
+                            ] ?? inv.settlementReadyStatus}
+                          </span>
+                        )}
                     </div>
+                    {inv.messageToBusiness && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Message: {inv.messageToBusiness}
+                      </p>
+                    )}
+                    {inv.proposedTerms && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Proposed terms: {inv.proposedTerms}
+                      </p>
+                    )}
                     {(inv.acceptanceStatus === "changes_requested" ||
                       inv.inviteStatus === "needs_info") &&
                       inv.changeRequestMessage && (

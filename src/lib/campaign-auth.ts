@@ -36,8 +36,8 @@ export const CAMPAIGN_AUTH_STEPS: StepId[] = [
   "business-claim",
   "business-invites-nonprofit",
   "choose-organizer-mode",
-  "quick-start",
-  "campaign-review",
+  // Guest may build Online Donations + Ambassador drafts (3-word Quick Start + review).
+  // Launch / business partners / settlement still require auth via later steps.
   "methods",
   "details",
   "businesses",

@@ -320,6 +320,28 @@ export function BusinessAcceptance() {
           body={`During the campaign window, ${givebackPercent}% of eligible supporter spending at ${businessName} is donated to ${nonprofitName}.`}
         />
 
+        {apiInvite?.messageToBusiness && (
+          <>
+            <div className="h-px bg-border" />
+            <InfoBlock
+              icon={MessageSquareText}
+              title="Message from the nonprofit"
+              body={apiInvite.messageToBusiness}
+            />
+          </>
+        )}
+
+        {apiInvite?.proposedTerms && (
+          <>
+            <div className="h-px bg-border" />
+            <InfoBlock
+              icon={Handshake}
+              title="Proposed terms"
+              body={apiInvite.proposedTerms}
+            />
+          </>
+        )}
+
         <div className="h-px bg-border" />
 
         <p className="line-clamp-5 text-pretty leading-relaxed text-foreground/80">{story}</p>

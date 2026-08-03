@@ -127,6 +127,17 @@ export function NonprofitDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [publishingSlug, setPublishingSlug] = useState<string | null>(null);
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
+  const [creatingCampaign, setCreatingCampaign] = useState(false);
+
+  /**
+   * Create New Campaign — run AI analyze then open idea picker.
+   * Purpose: provide button loading while startNewCampaign analyzes the org.
+   */
+  const onCreateNewCampaign = () => {
+    setCreatingCampaign(true);
+    startNewCampaign();
+    window.setTimeout(() => setCreatingCampaign(false), 15000);
+  };
 
   const nonprofitId = state.nonprofitProfile?.id;
 
@@ -712,13 +723,18 @@ export function NonprofitDashboard() {
         </div>
         <button
           type="button"
+          disabled={creatingCampaign}
           onClick={() => {
-            startNewCampaign();
+            onCreateNewCampaign();
           }}
-          className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark active:scale-95"
+          className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark active:scale-95 disabled:opacity-60"
         >
-          <Plus className="size-4" />
-          Create New Campaign
+          {creatingCampaign ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Plus className="size-4" />
+          )}
+          {creatingCampaign ? "Preparing ideas…" : "Create New Campaign"}
         </button>
       </div>
 
@@ -946,10 +962,11 @@ export function NonprofitDashboard() {
                   No campaigns in this tab yet.{" "}
                   <button
                     type="button"
-                    onClick={() => startNewCampaign()}
-                    className="font-semibold text-primary"
+                    disabled={creatingCampaign}
+                    onClick={() => onCreateNewCampaign()}
+                    className="font-semibold text-primary disabled:opacity-60"
                   >
-                    Create one
+                    {creatingCampaign ? "Preparing ideas…" : "Create one"}
                   </button>
                 </div>
               )}

@@ -23,6 +23,7 @@ import {
   deriveCampaignReadiness,
   readinessTrackRows,
 } from "@/lib/campaign-readiness";
+import { dateFieldRequirements } from "@/lib/campaign-timing";
 import { formatDateUs } from "@/lib/date-only";
 import {
   Dialog,
@@ -61,7 +62,14 @@ export function ReviewLaunch() {
 
   const invitedBusinesses = selectedBusinesses;
   const hasStory = !!state.description;
-  const hasDates = !!state.startDate && !!state.endDate;
+  // Online/ambassador: end date only. Giveback still needs start + end.
+  const dateReqs = dateFieldRequirements(state.methods);
+  const hasDates =
+    (!dateReqs.requireEndDate || !!state.endDate) &&
+    (!dateReqs.requireStartDate || !!state.startDate);
+  const datesSummary = state.startDate
+    ? `${formatDate(state.startDate)} → ${formatDate(state.endDate)}`
+    : formatDate(state.endDate);
   const hasEventDate = !!state.eventDate;
   const hasLogo = !!state.logo;
   const hasCover = !!state.cover;
@@ -141,6 +149,11 @@ export function ReviewLaunch() {
       update({
         campaignSlug: result.slug,
         invited: state.invited.map((b) => ({ ...b, persisted: true })),
+        // Keep nonprofit id from create/update so guest→signup can link ownership.
+        nonprofitProfile:
+          state.nonprofitProfile && result.nonprofitId
+            ? { ...state.nonprofitProfile, id: result.nonprofitId }
+            : state.nonprofitProfile,
       });
       discardLocalDraft({ force: true });
       const sentForReview =
@@ -289,7 +302,7 @@ export function ReviewLaunch() {
                   {hasDates ? (
                     <p className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Calendar className="size-3" />
-                      {formatDate(state.startDate)} → {formatDate(state.endDate)}
+                      {datesSummary}
                     </p>
                   ) : (
                     <button
@@ -442,7 +455,7 @@ export function ReviewLaunch() {
             <div className="grid gap-4 sm:grid-cols-2">
               <SummaryRow icon={<Calendar className="size-4" />} label="Campaign Dates" complete={hasDates}>
                 {hasDates ? (
-                  `${formatDate(state.startDate)} → ${formatDate(state.endDate)}`
+                  datesSummary
                 ) : (
                   <MissingItem lines={["Campaign dates needed before launch."]} action="Add Dates" onClick={() => goTo("campaign-review")} compact />
                 )}

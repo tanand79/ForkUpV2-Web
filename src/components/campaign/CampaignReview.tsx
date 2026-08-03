@@ -22,6 +22,7 @@ import {
 import { useCampaign, SUPPORT_METHOD_META, type SupportMethod } from "@/lib/campaign-context";
 import { uploadImage } from "@/lib/api";
 import { CampaignGalleryPicker } from "@/components/campaign/CampaignGalleryPicker";
+import { UsDateInput } from "@/components/campaign/UsDateInput";
 import { dateFieldRequirements } from "@/lib/campaign-timing";
 import { formatDateUs, formatDateTimeUs, looksLikeIsoDateTime } from "@/lib/date-only";
 
@@ -269,13 +270,12 @@ export function CampaignReview() {
                             Start date
                             {dateReqs.startOptional ? " (optional)" : ""}
                           </label>
-                          <input
+                          <UsDateInput
                             ref={startDateRef}
-                            type="date"
                             value={state.startDate}
-                            onChange={(e) =>
+                            onChange={(startDate) =>
                               update({
-                                startDate: e.target.value,
+                                startDate,
                                 submitForForkupReview: false,
                                 continueWithoutBusinessMethods: false,
                               })
@@ -289,13 +289,12 @@ export function CampaignReview() {
                           <label className="text-xs font-semibold text-muted-foreground">
                             End date
                           </label>
-                          <input
-                            type="date"
+                          <UsDateInput
                             value={state.endDate}
                             min={state.startDate || undefined}
-                            onChange={(e) =>
+                            onChange={(endDate) =>
                               update({
-                                endDate: e.target.value,
+                                endDate,
                                 submitForForkupReview: false,
                                 continueWithoutBusinessMethods: false,
                               })
@@ -309,13 +308,12 @@ export function CampaignReview() {
                           <label className="text-xs font-semibold text-muted-foreground">
                             Guest Bartending event date
                           </label>
-                          <input
+                          <UsDateInput
                             ref={eventDateRef}
-                            type="date"
                             value={state.eventDate}
-                            onChange={(e) =>
+                            onChange={(eventDate) =>
                               update({
-                                eventDate: e.target.value,
+                                eventDate,
                                 submitForForkupReview: false,
                                 continueWithoutBusinessMethods: false,
                               })

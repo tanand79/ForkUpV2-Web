@@ -128,8 +128,9 @@ export function PublicLandingPage() {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // Lovable parity — Start a Campaign flow direction only:
-  //   no org yet  → Find your organization (nonprofit-claim)
+  // Parallel AI-first create flow (guest through preview). Existing Quick Start
+  // stays intact for claimed / logged-in organizers.
+  //   no org yet  → AI Find org
   //   org already → Organization Ready (start)
   const startCampaign = () => {
     stashAccountIntent("nonprofit");
@@ -137,7 +138,7 @@ export function PublicLandingPage() {
       goTo("start");
       return;
     }
-    goTo("nonprofit-claim");
+    goTo("ai-find-org");
   };
 
   const joinAsBusiness = () => {

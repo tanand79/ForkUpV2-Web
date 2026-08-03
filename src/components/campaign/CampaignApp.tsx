@@ -12,6 +12,7 @@ import {
   type AccountIntent,
 } from "@/lib/campaign-auth";
 import { syncAuthSession, buildSessionPatch } from "@/lib/auth-session";
+import { ensureGuestNonprofitLinked } from "@/lib/link-guest-nonprofit";
 import { WizardHeader } from "@/components/campaign/WizardHeader";
 import { StartFundraising } from "@/components/campaign/StartFundraising";
 import { ChooseMethods } from "@/components/campaign/ChooseMethods";
@@ -69,9 +70,18 @@ import { ChooseOrganizerMode } from "@/components/campaign/ChooseOrganizerMode";
 import { QuickStart } from "@/components/campaign/QuickStart";
 import { CreateFundraiser } from "@/components/campaign/CreateFundraiser";
 import { GuidedBuilderShell } from "@/components/campaign/GuidedBuilderShell";
+import {
+  AiFindOrganization,
+  AiCampaignIdeas,
+  AiCampaignPurpose,
+  AiCampaignBuild,
+  AiCampaignDates,
+  AiCampaignPreview,
+  AiContinueGuest,
+} from "@/components/campaign/ai-flow";
 
 function AuthLoginScreen() {
-  const { goTo, switchActiveRole, update } = useCampaign();
+  const { goTo, switchActiveRole, update, state } = useCampaign();
   const [mounted, setMounted] = useState(false);
   const [roleHint, setRoleHint] = useState<AccountIntent>("nonprofit");
   const [finishing, setFinishing] = useState(false);
@@ -88,18 +98,53 @@ function AuthLoginScreen() {
       const returnStep = consumeAuthReturnStep();
       const role = selectedRole;
 
+      // Capture guest ownership clues before session patch can clear local profile.
+      const pendingNonprofitId = state.nonprofitProfile?.id ?? null;
+      const pendingCampaignSlug = state.campaignSlug ?? null;
+      const pendingNonprofitProfile = state.nonprofitProfile;
+
       // Bound wait so a stuck /auth/context cannot leave the spinner forever.
-      const session = await Promise.race([
+      let session = await Promise.race([
         syncAuthSession(role, { force: true }),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000)),
       ]);
+
+      // Guest-created campaign: link its nonprofit to this account so dashboard lists it.
+      if (role === "nonprofit" || pendingNonprofitId || pendingCampaignSlug) {
+        try {
+          const linkedId = await ensureGuestNonprofitLinked({
+            nonprofitId: pendingNonprofitId,
+            campaignSlug: pendingCampaignSlug,
+            alreadyLinkedIds: session?.nonprofitMemberships.map((m) => m.id) ?? [],
+          });
+          if (linkedId) {
+            session = await syncAuthSession(role, { force: true });
+          }
+        } catch {
+          /* best-effort — user can still claim org manually */
+        }
+      }
+
       if (!session) {
         // Token is already saved — send user to hub; dashboard will retry sync.
         goTo(role === "business" ? "business-dashboard" : role === "supporter" ? "supporter-dashboard" : "nonprofit-dashboard");
         return;
       }
 
-      update(buildSessionPatch(session));
+      const patch = buildSessionPatch(session);
+      // If link hasn't landed in memberships yet, keep guest nonprofit profile locally.
+      if (
+        !patch.nonprofitProfile &&
+        pendingNonprofitProfile &&
+        (pendingNonprofitId || pendingCampaignSlug)
+      ) {
+        update({
+          ...patch,
+          nonprofitProfile: pendingNonprofitProfile,
+        });
+      } else {
+        update(patch);
+      }
       switchActiveRole(role);
 
       goTo(
@@ -126,7 +171,18 @@ function AuthLoginScreen() {
 
       {mounted && (
         <div className="mt-8">
-          <AuthLogin intent={roleHint} onSuccess={finishAuth} />
+          <AuthLogin
+            intent={roleHint}
+            onSuccess={finishAuth}
+            linkOrganization={
+              state.nonprofitProfile?.id
+                ? {
+                    organizationType: "nonprofit",
+                    organizationId: state.nonprofitProfile.id,
+                  }
+                : undefined
+            }
+          />
           {finishing && (
             <p className="mt-4 text-center text-sm text-muted-foreground">Loading your account…</p>
           )}
@@ -201,6 +257,20 @@ function WizardBody() {
       return <CreateFundraiser />;
     case "quick-start":
       return <QuickStart />;
+    case "ai-find-org":
+      return <AiFindOrganization />;
+    case "ai-campaign-ideas":
+      return <AiCampaignIdeas />;
+    case "ai-campaign-purpose":
+      return <AiCampaignPurpose />;
+    case "ai-campaign-build":
+      return <AiCampaignBuild />;
+    case "ai-campaign-dates":
+      return <AiCampaignDates />;
+    case "ai-campaign-preview":
+      return <AiCampaignPreview />;
+    case "ai-continue-guest":
+      return <AiContinueGuest />;
     case "campaign-review":
       return <CampaignReview />;
     case "methods":
