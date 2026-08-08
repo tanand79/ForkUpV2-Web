@@ -26,6 +26,10 @@ import {
   mergeOrganizationSuggestions,
 } from "@/components/campaign/OrganizationNameSuggest";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
+import {
+  nearbyQueryParams,
+  useBrowserLocation,
+} from "@/hooks/use-browser-location";
 
 const STRENGTH_META: Record<
   OrganizationMatchStrength,
@@ -149,6 +153,8 @@ export function OrganizationLookupConfirm({
   const [suppressSuggest, setSuppressSuggest] = useState(false);
   /** Ignores stale AI/search responses when the user searches again quickly. */
   const requestIdRef = useRef(0);
+  const browserLocation = useBrowserLocation(true);
+  const nearby = nearbyQueryParams(browserLocation);
 
   useEffect(() => {
     onReviewActiveChange?.(Boolean(aiDraft) && !aiBusy);
@@ -244,11 +250,12 @@ export function OrganizationLookupConfirm({
     try {
       const trimmed = value.trim();
       const params = detectOrganizationSearchParams(trimmed);
+      const geo = nearby ?? {};
       // Lovable: website input → coherent website profile review (known/AI), not directory-first.
       if (params.website || looksLikeWebsite(trimmed)) {
         setSearched(true);
         try {
-          const result = await searchOrganizations({ website: trimmed });
+          const result = await searchOrganizations({ website: trimmed, ...geo });
           if (reqId !== requestIdRef.current) return;
           setBusinessWarning(result.businessWarning);
           // Do NOT short-circuit on a thin directory hit — known profile / AI
@@ -260,7 +267,7 @@ export function OrganizationLookupConfirm({
         return;
       }
 
-      const result = await searchOrganizations(params);
+      const result = await searchOrganizations({ ...params, ...geo });
       if (reqId !== requestIdRef.current) return;
 
       let merged: OrganizationSearchCandidate[] = (result.candidates ?? []).map((c) => ({
@@ -277,6 +284,9 @@ export function OrganizationLookupConfirm({
             q: usQuery,
             state: stateMatch?.[1]?.toUpperCase(),
             limit: 25,
+            ...(nearby
+              ? { lat: nearby.lat, lng: nearby.lng }
+              : {}),
           });
           if (reqId !== requestIdRef.current) return;
           merged = mergeOrganizationSuggestions(merged, us.candidates ?? [], 25);
@@ -368,8 +378,25 @@ export function OrganizationLookupConfirm({
               query={value}
               enabled={!loading && !suppressSuggest}
               onSelect={selectSuggestion}
+              nearby={nearby ?? null}
             />
           </div>
+          {browserLocation.status === "ready" ? (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MapPin className="size-3.5" />
+              Using your location (~8 mi). Orgs without a mapped address still appear.
+            </p>
+          ) : browserLocation.status === "prompting" ? (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MapPin className="size-3.5" />
+              Checking your location for nearby matches…
+            </p>
+          ) : browserLocation.error ? (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MapPin className="size-3.5" />
+              {browserLocation.error}
+            </p>
+          ) : null}
           {error && (
             <p className="mt-2 flex items-center gap-1.5 text-sm text-destructive">
               <AlertTriangle className="size-4" /> {error}

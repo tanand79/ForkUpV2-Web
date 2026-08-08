@@ -28,7 +28,12 @@ export function mapApiBusinessesToUi(apiBusinesses: ApiBusiness[]): Business[] {
   for (const api of apiBusinesses) {
     const caps = capabilitiesFromApi(api.capabilities);
     for (const loc of api.locations) {
-      const locationLabel = [loc.locationName, loc.city, loc.state].filter(Boolean).join(", ");
+      const baseLabel = [loc.locationName, loc.city, loc.state].filter(Boolean).join(", ");
+      const miles =
+        loc.distanceMiles != null && Number.isFinite(loc.distanceMiles)
+          ? ` · ${loc.distanceMiles} mi`
+          : "";
+      const locationLabel = (baseLabel || loc.locationName) + miles;
       rows.push({
         id: apiBusinessId(api.id, loc.id),
         name: api.locations.length > 1 ? `${api.businessName} — ${loc.locationName}` : api.businessName,

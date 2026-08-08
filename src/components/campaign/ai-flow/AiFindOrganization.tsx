@@ -20,6 +20,10 @@ import { OrganizationNameSuggest } from "@/components/campaign/OrganizationNameS
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
 import { saveAiFlowPendingOrg } from "@/lib/ai-campaign-flow-storage";
 import { stashAccountIntent } from "@/lib/campaign-auth";
+import {
+  nearbyQueryParams,
+  useBrowserLocation,
+} from "@/hooks/use-browser-location";
 import { AiFlowShell } from "./AiFlowShell";
 
 export function AiFindOrganization() {
@@ -28,6 +32,8 @@ export function AiFindOrganization() {
   const [selected, setSelected] = useState<OrganizationSearchCandidate | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const browserLocation = useBrowserLocation(true);
+  const nearby = nearbyQueryParams(browserLocation);
 
   useEffect(() => {
     // Nonprofit organizers (membership) only create for their own org.
@@ -151,8 +157,16 @@ export function AiFindOrganization() {
           query={query}
           enabled={!busy && !selected}
           onSelect={(c) => void onSelect(c)}
+          nearby={nearby ?? null}
         />
       </div>
+
+      {browserLocation.status === "ready" ? (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <MapPin className="size-3.5" />
+          Preferring matches near you (~8 mi). Unmapped orgs still appear.
+        </p>
+      ) : null}
 
       {selected && (
         <div className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm">

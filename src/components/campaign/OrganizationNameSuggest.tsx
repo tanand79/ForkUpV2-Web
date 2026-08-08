@@ -104,12 +104,15 @@ interface OrganizationNameSuggestProps {
   query: string;
   enabled?: boolean;
   onSelect: (candidate: OrganizationSearchCandidate) => void;
+  /** Optional browser GPS for ~8 mile nearby bias on local + IRS suggest. */
+  nearby?: { lat: number; lng: number; radiusMiles?: number } | null;
 }
 
 export function OrganizationNameSuggest({
   query,
   enabled = true,
   onSelect,
+  nearby = null,
 }: OrganizationNameSuggestProps) {
   const [suggestions, setSuggestions] = useState<OrganizationSearchCandidate[]>([]);
   const [busy, setBusy] = useState(false);
@@ -145,13 +148,22 @@ export function OrganizationNameSuggest({
           const params = detectOrganizationSearchParams(trimmed);
           const usQuery = params.q || params.ein || params.location || trimmed;
           const state = stateFromQuery(trimmed);
+          const geo =
+            nearby != null
+              ? {
+                  lat: nearby.lat,
+                  lng: nearby.lng,
+                  radiusMiles: nearby.radiusMiles,
+                }
+              : {};
 
           const [localResult, usResult] = await Promise.all([
-            searchOrganizations(params).catch(() => null),
+            searchOrganizations({ ...params, ...geo }).catch(() => null),
             suggestUsNonprofits({
               q: usQuery,
               state,
               limit: MAX_SUGGESTIONS,
+              ...(nearby != null ? { lat: nearby.lat, lng: nearby.lng } : {}),
             }).catch(() => null),
           ]);
           if (reqId !== requestIdRef.current) return;
@@ -175,7 +187,7 @@ export function OrganizationNameSuggest({
     }, DEBOUNCE_MS);
 
     return () => window.clearTimeout(timer);
-  }, [query, enabled]);
+  }, [query, enabled, nearby?.lat, nearby?.lng, nearby?.radiusMiles]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -226,9 +238,14 @@ export function OrganizationNameSuggest({
       ) : (
         <ul ref={listRef} className="max-h-72 overflow-y-auto py-1">
           {suggestions.map((candidate, index) => {
-            const location =
+            const locationBase =
               [candidate.city, candidate.state].filter(Boolean).join(", ") ||
               candidate.causeCategory;
+            const miles =
+              candidate.distanceMiles != null && Number.isFinite(candidate.distanceMiles)
+                ? `${candidate.distanceMiles} mi`
+                : null;
+            const location = [locationBase, miles].filter(Boolean).join(" · ");
             const selected = index === activeIndex;
             const fromIrs = candidate.source === "irs_us";
             return (

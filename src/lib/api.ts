@@ -91,6 +91,8 @@ export interface ApiBusinessLocation {
   locationName: string;
   city: string;
   state: string;
+  /** Miles from browser GPS when nearby filter is active; null when unknown. */
+  distanceMiles?: number | null;
 }
 
 export interface ApiBusiness {
@@ -102,9 +104,25 @@ export interface ApiBusiness {
   locations: ApiBusinessLocation[];
 }
 
-export function fetchBuilderBusinesses(query?: string) {
-  const q = query?.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
-  return fetchJson<ApiBusiness[]>(`/api/builder/businesses${q}`);
+/**
+ * GET /api/builder/businesses
+ * Optional nearby: lat, lng, radiusMiles (default 8 on server).
+ */
+export function fetchBuilderBusinesses(
+  query?: string,
+  nearby?: { lat: number; lng: number; radiusMiles?: number } | null,
+) {
+  const search = new URLSearchParams();
+  if (query?.trim()) search.set("q", query.trim());
+  if (nearby) {
+    search.set("lat", String(nearby.lat));
+    search.set("lng", String(nearby.lng));
+    if (nearby.radiusMiles != null) {
+      search.set("radiusMiles", String(nearby.radiusMiles));
+    }
+  }
+  const qs = search.toString();
+  return fetchJson<ApiBusiness[]>(`/api/builder/businesses${qs ? `?${qs}` : ""}`);
 }
 
 export function createCampaign(payload: CreateCampaignPayload) {
@@ -190,6 +208,9 @@ export interface NonprofitProfile {
   city: string | null;
   state: string | null;
   zip: string | null;
+  /** Present when geo columns are populated (nearby filter). */
+  latitude?: number | null;
+  longitude?: number | null;
   verificationStatus: string;
   claimStatus: string;
   profileStatus: string;
@@ -268,6 +289,8 @@ export interface OrganizationSearchCandidate extends NonprofitProfile {
   matchStrength: OrganizationMatchStrength;
   /** Present on US IRS suggestions; omitted for legacy local-only search rows. */
   source?: OrganizationDirectorySource;
+  /** Miles from browser GPS when nearby filter applied; null when unknown. */
+  distanceMiles?: number | null;
 }
 
 export interface OrganizationBusinessWarning {
@@ -286,6 +309,12 @@ export interface OrganizationSearchResult {
   candidates: OrganizationSearchCandidate[];
   businessWarning: OrganizationBusinessWarning | null;
   requiresConfirmation: boolean;
+  /** Present when the client sent lat/lng for nearby filtering. */
+  nearby?: {
+    latitude: number;
+    longitude: number;
+    radiusMiles: number;
+  } | null;
 }
 
 /** Unified "Find your organization" search by name, website, EIN, and/or location. */
@@ -294,12 +323,22 @@ export function searchOrganizations(params: {
   website?: string;
   ein?: string;
   location?: string;
+  lat?: number;
+  lng?: number;
+  radiusMiles?: number;
 }) {
   const search = new URLSearchParams();
   if (params.q?.trim()) search.set("q", params.q.trim());
   if (params.website?.trim()) search.set("website", params.website.trim());
   if (params.ein?.trim()) search.set("ein", params.ein.trim());
   if (params.location?.trim()) search.set("location", params.location.trim());
+  if (params.lat != null && params.lng != null) {
+    search.set("lat", String(params.lat));
+    search.set("lng", String(params.lng));
+    if (params.radiusMiles != null) {
+      search.set("radiusMiles", String(params.radiusMiles));
+    }
+  }
   // Bust any intermediary GET cache so a new search never shows a prior org.
   search.set("_", String(Date.now()));
   return fetchJson<OrganizationSearchResult>(
@@ -314,6 +353,11 @@ export interface UsNonprofitSuggestResult {
   totalResults: number;
   provider: string;
   candidates: OrganizationSearchCandidate[];
+  nearby?: {
+    latitude: number;
+    longitude: number;
+    derivedState: string | null;
+  } | null;
 }
 
 /**
@@ -324,11 +368,17 @@ export function suggestUsNonprofits(params: {
   q: string;
   state?: string;
   limit?: number;
+  lat?: number;
+  lng?: number;
 }) {
   const search = new URLSearchParams();
   search.set("q", params.q.trim());
   if (params.state?.trim()) search.set("state", params.state.trim());
   if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.lat != null && params.lng != null) {
+    search.set("lat", String(params.lat));
+    search.set("lng", String(params.lng));
+  }
   search.set("_", String(Date.now()));
   return fetchJson<UsNonprofitSuggestResult>(
     `/api/profiles/nonprofits/us-suggest?${search.toString()}`,

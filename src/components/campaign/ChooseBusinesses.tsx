@@ -7,6 +7,10 @@ import { givebackMethodForBusiness, METHOD_TYPE_META } from "@/lib/method-timing
 import { fetchBuilderBusinesses } from "@/lib/api";
 import { mapApiBusinessesToUi } from "@/lib/api-businesses";
 import { LegacyInviteStatusBadge } from "@/components/campaign/BusinessStatusBadge";
+import {
+  nearbyQueryParams,
+  useBrowserLocation,
+} from "@/hooks/use-browser-location";
 
 
 
@@ -40,12 +44,17 @@ export function ChooseBusinesses() {
   const [catalog, setCatalog] = useState<Business[]>(state.businessCatalog);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  /** When false, fetch the full catalog without GPS radius (user opted out). */
+  const [nearbyOnly, setNearbyOnly] = useState(true);
+  const browserLocation = useBrowserLocation(true);
+  const nearby = nearbyQueryParams(browserLocation);
 
   useEffect(() => {
     let cancelled = false;
     setCatalogLoading(true);
     setCatalogError(null);
-    fetchBuilderBusinesses()
+    const geo = nearbyOnly ? nearby : undefined;
+    fetchBuilderBusinesses(undefined, geo ?? null)
       .then((rows) => {
         if (cancelled) return;
         const mapped = mapApiBusinessesToUi(rows);
@@ -64,7 +73,7 @@ export function ChooseBusinesses() {
     return () => {
       cancelled = true;
     };
-  }, [update]);
+  }, [update, nearbyOnly, nearby?.lat, nearby?.lng, nearby?.radiusMiles]);
 
   const selectedCount = state.selectedBusinessIds.length;
   const invitedCount = state.invited.length;
@@ -114,6 +123,41 @@ export function ChooseBusinesses() {
             Choose a business from the list or invite a new one. Businesses appear on your campaign
             page after they accept.
           </p>
+          {nearbyOnly && browserLocation.status === "ready" ? (
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin className="size-3.5" />
+                Showing businesses within ~8 miles (unmapped locations still included).
+              </span>
+              <button
+                type="button"
+                onClick={() => setNearbyOnly(false)}
+                className="font-medium text-primary underline-offset-2 hover:underline"
+              >
+                Show all
+              </button>
+            </p>
+          ) : nearbyOnly && browserLocation.status === "prompting" ? (
+            <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+              <MapPin className="size-3.5" />
+              Checking your location for nearby businesses…
+            </p>
+          ) : nearbyOnly && browserLocation.error ? (
+            <p className="mt-2 text-sm text-muted-foreground">{browserLocation.error}</p>
+          ) : !nearbyOnly ? (
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+              Showing all businesses.
+              {browserLocation.status === "ready" ? (
+                <button
+                  type="button"
+                  onClick={() => setNearbyOnly(true)}
+                  className="font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  Within ~8 miles
+                </button>
+              ) : null}
+            </p>
+          ) : null}
         </div>
 
         {/* Search + compact filters */}
