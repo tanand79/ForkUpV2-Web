@@ -174,6 +174,21 @@ export function ReceiptUpload() {
             <span className="text-muted-foreground">Status</span>
             <span className="font-semibold capitalize">{result.reviewStatus}</span>
           </div>
+          {result.ocrProvider && (
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">OCR</span>
+              <span className="text-right font-semibold capitalize">
+                {result.ocrProvider}
+                {result.ocrExtractStatus ? ` · ${result.ocrExtractStatus.replace(/_/g, " ")}` : ""}
+              </span>
+            </div>
+          )}
+          {result.merchantName && (
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Merchant</span>
+              <span className="truncate text-right font-semibold">{result.merchantName}</span>
+            </div>
+          )}
           {eligible != null && (
             <div className="mt-2 flex items-center justify-between">
               <span className="text-muted-foreground">Eligible amount</span>
@@ -186,9 +201,19 @@ export function ReceiptUpload() {
               <span className="font-semibold text-primary">${donation.toFixed(2)}</span>
             </div>
           )}
-          <p className="mt-3 text-xs text-muted-foreground">
-            Final amounts are confirmed by the organizer when they review your receipt.
-          </p>
+          {result.isManualSubtotal && (
+            <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">
+              Amount may need manual confirmation during review.
+            </p>
+          )}
+          {result.message && (
+            <p className="mt-3 text-xs text-muted-foreground">{result.message}</p>
+          )}
+          {!result.message && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Final amounts are confirmed by the organizer when they review your receipt.
+            </p>
+          )}
         </div>
 
         <div className="mt-6 flex flex-col items-center gap-2.5">

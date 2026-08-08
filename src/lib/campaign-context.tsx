@@ -66,6 +66,8 @@ const BUILDER_FLOW_STEPS: StepId[] = [
 /** Parallel AI-first funnel — also persisted to browser for guest resume. */
 const AI_FLOW_STEPS: StepId[] = [
   "ai-find-org",
+  "ai-connect-social",
+  "ai-analyzing",
   "ai-campaign-ideas",
   "ai-campaign-purpose",
   "ai-campaign-build",
@@ -157,6 +159,8 @@ function loadDraft(): CampaignDraft | null {
       "businesses",
       "invite",
       "ai-find-org",
+      "ai-connect-social",
+      "ai-analyzing",
       "ai-campaign-ideas",
       "ai-campaign-purpose",
       "ai-campaign-build",
@@ -258,6 +262,8 @@ export type StepId =
   | "quick-start"
   // Parallel AI-first create funnel (guest allowed through preview).
   | "ai-find-org"
+  | "ai-connect-social"
+  | "ai-analyzing"
   | "ai-campaign-ideas"
   | "ai-campaign-purpose"
   | "ai-campaign-build"
@@ -277,6 +283,8 @@ export type StepId =
   | "review"
   | "created"
   | "dashboard"
+  /** Owner-only preview while campaign awaits ForkUp approval. */
+  | "in-review-preview"
   // ⚠️ DESIGN MODE reference — existing MVP receipt capture / OCR flow.
   | "receipt-ocr"
   // Supporter-facing receipt upload (submits to the OCR/review pipeline).

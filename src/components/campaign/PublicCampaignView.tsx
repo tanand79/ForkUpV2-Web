@@ -215,7 +215,19 @@ function ParticipateModal({
   );
 }
 
-function LocationCard({ loc, campaignSlug }: { loc: ParticipatingLocation; campaignSlug: string }) {
+/**
+ * Participating location card on the public campaign page.
+ * When previewOnly is true (ready_to_launch), CTAs stay locked until go-live.
+ */
+function LocationCard({
+  loc,
+  campaignSlug,
+  previewOnly = false,
+}: {
+  loc: ParticipatingLocation;
+  campaignSlug: string;
+  previewOnly?: boolean;
+}) {
   const [participateOpen, setParticipateOpen] = useState(false);
 
   return (
@@ -238,16 +250,24 @@ function LocationCard({ loc, campaignSlug }: { loc: ParticipatingLocation; campa
       {loc.participationHours && (
         <p className="mt-1 text-xs text-muted-foreground">Hours: {loc.participationHours}</p>
       )}
-      <button type="button" onClick={() => setParticipateOpen(true)} className={ctaButtonClass}>
-        {ctaLabel(loc)}
-        {loc.reservationUrl && <ExternalLink className="size-3.5" />}
-      </button>
-      <ParticipateModal
-        open={participateOpen}
-        onOpenChange={setParticipateOpen}
-        campaignSlug={campaignSlug}
-        loc={loc}
-      />
+      {previewOnly ? (
+        <p className="mt-4 text-sm font-medium text-muted-foreground">
+          Participation opens when the campaign goes live.
+        </p>
+      ) : (
+        <>
+          <button type="button" onClick={() => setParticipateOpen(true)} className={ctaButtonClass}>
+            {ctaLabel(loc)}
+            {loc.reservationUrl && <ExternalLink className="size-3.5" />}
+          </button>
+          <ParticipateModal
+            open={participateOpen}
+            onOpenChange={setParticipateOpen}
+            campaignSlug={campaignSlug}
+            loc={loc}
+          />
+        </>
+      )}
     </li>
   );
 }
@@ -290,13 +310,15 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
   const [donationRefreshKey, setDonationRefreshKey] = useState(0);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
 
+  /** Scheduled approved campaign — show preview, block donate/participate. */
+  const isPreviewNotLive = campaign.campaignStatus === "ready_to_launch";
   const showDonations = campaign.methods.some((m) => m.methodType === "virtual_donations");
   const showLocations = campaign.participatingLocations.length > 0;
 
   const { data: donationsData } = useQuery({
     queryKey: ["campaign-donations", campaign.slug, donationRefreshKey],
     queryFn: () => fetchCampaignDonations(campaign.slug),
-    enabled: showDonations,
+    enabled: showDonations && !isPreviewNotLive,
     staleTime: 30_000,
   });
 
@@ -349,8 +371,8 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
     supportersGoing: campaign.supportersGoing,
     participatingLocationCount: campaign.participatingLocationCount,
     donationCount: donationsData?.totalCount,
-    showDonate: showDonations,
-    showLocations,
+    showDonate: showDonations && !isPreviewNotLive,
+    showLocations: showLocations && !isPreviewNotLive,
     copied,
     onDonate: () => setDonateOpen(true),
     onShare: () => void handleShare(),
@@ -374,6 +396,14 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
           </>
         }
       />
+
+      {isPreviewNotLive && (
+        <div className="border-b border-amber-300/60 bg-amber-50/95 px-4 py-3 text-center text-sm font-semibold text-amber-900">
+          This campaign is not live yet.
+          {campaign.dateRange ? ` It is scheduled for ${campaign.dateRange}.` : ""} You can
+          preview the page below.
+        </div>
+      )}
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 md:py-10">
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-10 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -432,7 +462,7 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
 
             <CampaignStory description={campaign.description} />
 
-            {showDonations && (
+            {showDonations && !isPreviewNotLive && (
               <section className="mt-10">
                 <PublicCampaignDonationsFeed
                   slug={campaign.slug}
@@ -455,6 +485,7 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
                       key={`${loc.businessId}-${loc.locationId}-${loc.methodId}`}
                       loc={loc}
                       campaignSlug={campaign.slug}
+                      previewOnly={isPreviewNotLive}
                     />
                   ))}
                 </ul>
@@ -510,8 +541,8 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
         </div>
       </main>
 
-      {/* Mobile sticky donate bar — GoFundMe pattern */}
-      {(showDonations || showLocations) && (
+      {/* Mobile sticky donate bar — GoFundMe pattern (hidden in not-yet-live preview) */}
+      {!isPreviewNotLive && (showDonations || showLocations) && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 p-4 backdrop-blur-md lg:hidden">
           <div className="mx-auto flex max-w-lg gap-2">
             {showDonations && (
@@ -545,15 +576,17 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
         </div>
       )}
 
-      <DonationModal
-        open={donateOpen}
-        onOpenChange={(open) => {
-          setDonateOpen(open);
-          if (!open) setDonationRefreshKey((k) => k + 1);
-        }}
-        campaignSlug={campaign.slug}
-        nonprofitName={campaign.nonprofit}
-      />
+      {!isPreviewNotLive && (
+        <DonationModal
+          open={donateOpen}
+          onOpenChange={(open) => {
+            setDonateOpen(open);
+            if (!open) setDonationRefreshKey((k) => k + 1);
+          }}
+          campaignSlug={campaign.slug}
+          nonprofitName={campaign.nonprofit}
+        />
+      )}
     </div>
   );
 }

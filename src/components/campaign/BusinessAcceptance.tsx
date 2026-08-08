@@ -14,6 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { AuthLogin } from "@/components/campaign/AuthLogin";
+import { BusinessLocationAchForm } from "@/components/campaign/BusinessLocationAchForm";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
 import { campaignPublicPath } from "@/lib/campaign-paths";
 import { useCampaign } from "@/lib/campaign-context";
@@ -274,6 +275,28 @@ export function BusinessAcceptance() {
             >
               View the campaign page
             </a>
+          )}
+          {view === "accepted" && apiInvite?.location.id && currentUser && (
+            <BusinessLocationAchForm
+              locationId={apiInvite.location.id}
+              defaultAuthorizedBy={authorizedRep}
+              defaultAuthorizedEmail={currentUser.email}
+            />
+          )}
+          {view === "accepted" && apiInvite?.location.id && !currentUser && (
+            <div className="mt-6 text-left">
+              <p className="mb-3 text-sm text-muted-foreground">
+                Sign in with your business account to add ACH bank details for settlement.
+              </p>
+              <AuthLogin
+                intent="business"
+                onSuccess={() => void loadInvitation()}
+                linkOrganization={{
+                  organizationType: "business",
+                  organizationId: apiInvite.business.id,
+                }}
+              />
+            </div>
           )}
         </div>
       </main>

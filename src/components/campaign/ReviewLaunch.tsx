@@ -102,7 +102,7 @@ export function ReviewLaunch() {
   const handleReviewPopupClose = (open: boolean) => {
     setReviewSentOpen(open);
     if (!open) {
-      goTo("nonprofit-dashboard");
+      goTo("in-review-preview");
     }
   };
 
@@ -237,7 +237,7 @@ export function ReviewLaunch() {
               onClick={() => handleReviewPopupClose(false)}
               className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
             >
-              Go to dashboard
+              View campaign preview
             </button>
           </DialogContent>
         </Dialog>

@@ -19,6 +19,7 @@ import { useRef, useState } from "react";
 import { ImageIcon, Replace } from "lucide-react";
 import type { CampaignImage } from "@/lib/campaign-context";
 import { uploadImage } from "@/lib/api";
+import { aiFlowCoverSourceLabel } from "./resolve-ai-flow-images";
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
@@ -133,10 +134,22 @@ export function AiCampaignCoverPicker({
               <p className="mb-2 text-xs font-semibold text-muted-foreground">
                 Suggested photos
               </p>
+              {suggestions.every(
+                (img) =>
+                  img.source === "website" ||
+                  aiFlowCoverSourceLabel(img) === "From website",
+              ) ? (
+                <p className="mb-2 rounded-lg bg-secondary/50 px-2.5 py-2 text-[11px] leading-snug text-muted-foreground">
+                  Facebook/Instagram posts aren’t publicly readable without login, so these
+                  photos are from the organization website. Upload a social post photo below
+                  if you prefer.
+                </p>
+              ) : null}
               <div className="grid grid-cols-3 gap-2">
                 {suggestions.map((img) => {
                   const selected = cover?.id === img.id || cover?.url === img.url;
                   const src = previewSrc(img);
+                  const sourceLabel = aiFlowCoverSourceLabel(img);
                   return (
                     <button
                       key={img.id}
@@ -154,6 +167,9 @@ export function AiCampaignCoverPicker({
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={src} alt={img.name} className="size-full object-cover" />
+                      <span className="absolute inset-x-0 top-0 bg-background/85 px-1 py-0.5 text-center text-[9px] font-semibold leading-tight text-foreground">
+                        {sourceLabel}
+                      </span>
                       {selected ? (
                         <span className="absolute inset-x-0 bottom-0 bg-primary/90 py-0.5 text-center text-[10px] font-semibold text-primary-foreground">
                           Current

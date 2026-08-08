@@ -9,6 +9,7 @@ import { ArrowLeft } from "lucide-react";
 import { assetSrc } from "@/lib/utils";
 import forkupLogo from "@/assets/forkup-logo-header.png";
 import { useCampaign } from "@/lib/campaign-context";
+import { HeaderAuthActions } from "../HeaderAuthActions";
 
 export function AiFlowShell({
   title,
@@ -27,18 +28,22 @@ export function AiFlowShell({
 
   return (
     <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-xl flex-col px-5 py-8 sm:px-6">
-      <button
-        type="button"
-        onClick={() => {
-          if (onBack) onBack();
-          else if (backStep) goTo(backStep);
-          else goTo("website-landing");
-        }}
-        className="mb-6 inline-flex w-fit items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        Back
-      </button>
+      {/* Top row: Back (left) + Sign in / Sign out (right) */}
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            if (onBack) onBack();
+            else if (backStep) goTo(backStep);
+            else goTo("website-landing");
+          }}
+          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" />
+          Back
+        </button>
+        <HeaderAuthActions step="ai-flow" />
+      </div>
 
       <button
         type="button"

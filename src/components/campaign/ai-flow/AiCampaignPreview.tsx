@@ -8,7 +8,7 @@
  * Date timing rules match AiCampaignDates (Needs ForkUp Review + CTAs).
  *
  * Inputs: campaign context (title, description, cover, logo, dates, methods, goal).
- * Output: preview / edit UI + Continue to guest/account step when ready.
+ * Output: preview / edit UI + Continue to signup (or review if logged in).
  *
  * Changelog: Auto-load featured cover from AI session / social suggest when
  * missing; on image load error try the next gallery URL before clearing.
@@ -28,6 +28,8 @@ import {
   SUPPORT_METHOD_META,
   type SupportMethod,
 } from "@/lib/campaign-context";
+import { getAuthToken } from "@/lib/auth-storage";
+import { stashAccountIntent, stashAuthReturnStep } from "@/lib/campaign-auth";
 import { formatCurrency } from "@/data/campaigns";
 import { formatDateUs } from "@/lib/date-only";
 import {
@@ -788,7 +790,16 @@ export function AiCampaignPreview() {
         <button
           type="button"
           disabled={!ready}
-          onClick={() => goTo("ai-continue-guest")}
+          onClick={() => {
+            if (getAuthToken()) {
+              goTo("review");
+              return;
+            }
+            stashAccountIntent("nonprofit");
+            stashAuthReturnStep("review");
+            sessionStorage.setItem("forkup-auth-initial-mode", "register");
+            goTo("auth-login");
+          }}
           className="inline-flex w-full flex-1 items-center justify-center rounded-full bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
           Continue

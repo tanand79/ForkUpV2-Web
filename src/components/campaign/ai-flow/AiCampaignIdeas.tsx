@@ -12,7 +12,7 @@ import {
   type AiCampaignIdea,
   type AiCampaignMethod,
 } from "@/lib/api-ai-campaign-flow";
-import { generateCampaignDraft } from "@/lib/api";
+import { generateCampaignDraft, suggestCampaignImages } from "@/lib/api";
 import { loadAiFlowStore, saveAiFlowStore } from "@/lib/ai-campaign-flow-storage";
 import { resolveAiFlowImages, ideaThumbnailFallbackUrls } from "./resolve-ai-flow-images";
 import { AiFlowShell } from "./AiFlowShell";
@@ -51,12 +51,40 @@ export function AiCampaignIdeas() {
       return;
     }
     void fetchAiCampaignSession(store.sessionToken)
-      .then((s) => setSession(s))
+      .then(async (s) => {
+        const ideasMissingThumbs = (s.ideas || []).some((idea) => !idea.thumbnailUrl);
+        if (!ideasMissingThumbs) {
+          setSession(s);
+          return;
+        }
+        // Live scrape when analyze stored no thumbnails (common when IG/FB OG is blocked).
+        try {
+          const { images } = await suggestCampaignImages({
+            facebookUrl: s.facebookUrl || state.promotion.facebookUrl || undefined,
+            instagramHandle: s.instagramUrl || state.promotion.instagramHandle || undefined,
+            websiteUrl: s.website || state.promotion.websiteUrl || undefined,
+            limit: Math.max(4, s.ideas?.length || 4),
+          });
+          if (images.length > 0) {
+            setSession({
+              ...s,
+              ideas: (s.ideas || []).map((idea, i) => ({
+                ...idea,
+                thumbnailUrl: idea.thumbnailUrl || images[i % images.length]?.url || images[0]?.url || null,
+              })),
+            });
+            return;
+          }
+        } catch {
+          /* keep original session */
+        }
+        setSession(s);
+      })
       .catch((err) =>
         setError(err instanceof Error ? err.message : "Could not load campaign ideas."),
       )
       .finally(() => setLoading(false));
-  }, []);
+  }, [state.promotion.facebookUrl, state.promotion.instagramHandle, state.promotion.websiteUrl]);
 
   const applyIdea = async (idea: AiCampaignIdea | null) => {
     setPickingId(idea?.id ?? "scratch");
@@ -129,7 +157,7 @@ export function AiCampaignIdeas() {
           ? String(idea.suggestedGoal)
           : state.goal || "10000";
 
-      // Social suggest first, then AI analysis images, then idea/library fallbacks.
+      // Keep the chosen idea card photo as cover; fill gallery around it.
       const media = await resolveAiFlowImages({
         facebookUrl,
         instagramHandle,
@@ -144,6 +172,9 @@ export function AiCampaignIdeas() {
           ...ideaThumbnailFallbackUrls(session?.ideas),
           libraryImageUrl,
         ],
+        preferredCoverUrl: idea?.thumbnailUrl || null,
+        mode: "idea",
+        limit: 6,
       });
 
       update({
@@ -177,7 +208,7 @@ export function AiCampaignIdeas() {
     <AiFlowShell
       title="Choose the campaign you want to build"
       subtitle="ForkUp prepared these ideas from your organization signals. Pick one or start from scratch."
-      backStep="ai-find-org"
+      backStep="ai-connect-social"
     >
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
@@ -189,10 +220,10 @@ export function AiCampaignIdeas() {
           <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
           <button
             type="button"
-            onClick={() => goTo("ai-find-org")}
+            onClick={() => goTo("ai-connect-social")}
             className="text-sm font-semibold text-primary"
           >
-            Back to organization search
+            Back to connect accounts
           </button>
         </div>
       ) : (

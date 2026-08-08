@@ -715,8 +715,66 @@ export interface BusinessInvitationDetail {
     nonprofit: string;
   };
   business: { id: number; name: string; email: string | null; emailHint: string | null };
-  location: { name: string; city: string; state: string };
+  location: { id: number | null; name: string; city: string; state: string };
   method: { type: string; name: string };
+}
+
+/**
+ * Location ACH settings (masked). GET /api/business/locations/:id/ach
+ */
+export interface LocationAchSettings {
+  locationId: number;
+  locationName: string;
+  achBankName: string | null;
+  achAccountHolderName: string | null;
+  achAccountType: string | null;
+  achRoutingNumberMasked: string | null;
+  achAccountNumberMasked: string | null;
+  achAccountLast4: string | null;
+  achAuthorizationStatus: string;
+  achAuthorizedBy: string | null;
+  achAuthorizedEmail: string | null;
+  achAuthorizedAt: string | null;
+  achLastUpdatedAt: string | null;
+  achSignaturePath: string | null;
+  achContactEmail: string | null;
+  hasAchData: boolean;
+}
+
+export function fetchLocationAch(locationId: number) {
+  return fetchJson<LocationAchSettings>(`/api/business/locations/${locationId}/ach`);
+}
+
+/**
+ * Save encrypted ACH bank details for a location.
+ * POST /api/business/locations/:id/ach
+ */
+export function saveLocationAch(
+  locationId: number,
+  body: {
+    achBankName?: string;
+    achAccountHolderName?: string;
+    achAccountType?: "checking" | "savings";
+    achRoutingNumber?: string;
+    achAccountNumber?: string;
+    achAuthorizationStatus?: "pending" | "authorized" | "revoked";
+    achAuthorizedBy?: string;
+    achAuthorizedEmail?: string;
+    achContactEmail?: string;
+    achSignatureBase64?: string;
+  },
+) {
+  return fetchJson<{
+    ok: boolean;
+    locationId: number;
+    hasAchData: boolean;
+    achAuthorizationStatus: string;
+    achSignaturePath: string | null;
+  }>(`/api/business/locations/${locationId}/ach`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 export function fetchBusinessInvitation(token: string) {
@@ -1493,6 +1551,11 @@ export interface ReceiptUploadResult {
   donationPercentage: number | null;
   imageUrl: string;
   message?: string;
+  /** Mindee extract status when OCR engine ran. */
+  ocrExtractStatus?: string | null;
+  ocrProvider?: string | null;
+  merchantName?: string | null;
+  isManualSubtotal?: boolean;
 }
 
 /** Supporter-facing receipt upload. Mirrors `submitParticipation` in shape. */

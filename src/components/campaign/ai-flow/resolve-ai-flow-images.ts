@@ -5,9 +5,9 @@
  * and gallery stay consistent across the AI create funnel.
  *
  * Priority:
- *   1) POST /api/campaign-images/suggest (Facebook / Instagram / website)
- *   2) AI session analysis images
- *   3) Optional fallback URLs (idea thumbnail, library suggested image)
+ *   1) POST /api/campaign-images/suggest — social first; website if social empty
+ *   2) AI session analysis images (social-sourced first; website if still empty)
+ *   3) Optional fallback URLs when still empty (idea thumbnail / library)
  *
  * Cover ranking (among collected URLs):
  *   facebook → instagram → website → other social → analysis → library
@@ -17,11 +17,13 @@
  * Outputs: { cover, images } ready for campaign context update.
  *
  * Changelog: Prefer true social OG images for cover; demote tall-logo URLs.
+ * Fall back to website images when social scrape returns nothing.
  */
 import type { CampaignImage } from "@/lib/campaign-context";
 import { suggestCampaignImages } from "@/lib/api";
 
 const DEFAULT_LIMIT = 6;
+const SCRATCH_LIMIT = 10;
 
 export type AiFlowAnalysisImage = {
   url: string;
@@ -38,6 +40,16 @@ export type ResolveAiFlowImagesInput = {
   /** Used only when social + analysis produced nothing. */
   fallbackUrls?: Array<string | null | undefined>;
   limit?: number;
+  /**
+   * idea — keep this URL as the featured cover (chosen campaign card thumbnail).
+   * scratch — ignore (scratch loads up to 10 social images).
+   */
+  preferredCoverUrl?: string | null;
+  /**
+   * idea — prefer analysis/idea images for gallery around the preferred cover.
+   * scratch — scrape up to `limit` from social (website only if social empty).
+   */
+  mode?: "idea" | "scratch";
 };
 
 export type ResolveAiFlowImagesResult = {
@@ -96,6 +108,9 @@ function sortForCover(images: CampaignImage[]): CampaignImage[] {
 /** Human label for cover source badge on Build / Preview. */
 export function aiFlowCoverSourceLabel(cover: CampaignImage | null | undefined): string {
   if (!cover) return "Suggested";
+  if (cover.id.startsWith("preferred-cover") || cover.name === "Campaign idea photo") {
+    return "From campaign idea";
+  }
   switch (cover.source) {
     case "facebook":
       return "From Facebook";
@@ -144,16 +159,27 @@ export function ideaThumbnailFallbackUrls(
 
 /**
  * Resolve cover + gallery with social-suggest-first priority and ranked cover pick.
+ *
+ * Modes:
+ *   idea — preferredCoverUrl (idea card thumbnail) wins as cover.
+ *   scratch — fetch up to 10 social images (website fallback only if social empty).
  */
 export async function resolveAiFlowImages(
   input: ResolveAiFlowImagesInput,
 ): Promise<ResolveAiFlowImagesResult> {
-  const limit = input.limit && input.limit > 0 ? input.limit : DEFAULT_LIMIT;
+  const mode = input.mode ?? "idea";
+  const limit =
+    input.limit && input.limit > 0
+      ? input.limit
+      : mode === "scratch"
+        ? SCRATCH_LIMIT
+        : DEFAULT_LIMIT;
   // Collect extra candidates so logo demotion still leaves a photo cover.
-  const fetchLimit = Math.max(limit * 2, 8);
+  const fetchLimit = Math.max(limit * 2, mode === "scratch" ? 20 : 8);
   const facebookUrl = normalizeUrl(input.facebookUrl);
   const instagramHandle = normalizeUrl(input.instagramHandle);
   const websiteUrl = normalizeUrl(input.websiteUrl);
+  const preferredCoverUrl = normalizeUrl(input.preferredCoverUrl);
 
   const merged: CampaignImage[] = [];
   const seen = new Set<string>();
@@ -168,58 +194,108 @@ export async function resolveAiFlowImages(
     merged.push(img);
   };
 
-  // 1) Social media suggest first (live OG scrape)
-  if (facebookUrl || instagramHandle || websiteUrl) {
+  if (preferredCoverUrl) {
+    push({
+      id: `preferred-cover-${Date.now()}`,
+      url: preferredCoverUrl,
+      name: "Campaign idea photo",
+      storedUrl: preferredCoverUrl,
+      source: "library",
+    });
+  }
+
+  const hasSocial = Boolean(facebookUrl || instagramHandle);
+
+  /**
+   * Two-pass scrape:
+   *  1) Facebook/Instagram only when links exist
+   *  2) Website only if no social photos were collected
+   */
+  const pushSuggested = (
+    suggested: Array<{ url: string; source: string; sourceUrl?: string | null }>,
+  ) => {
+    for (let i = 0; i < suggested.length; i++) {
+      const s = suggested[i];
+      push({
+        id: `social-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+        url: s.url,
+        name: `From ${s.source}`,
+        storedUrl: s.url,
+        source: s.source as CampaignImage["source"],
+        sourceUrl: s.sourceUrl,
+      });
+    }
+  };
+
+  if (hasSocial) {
     try {
-      const { images: suggested } = await suggestCampaignImages({
+      const { images: socialOnly } = await suggestCampaignImages({
         facebookUrl,
         instagramHandle,
+        websiteUrl: undefined,
+        limit: fetchLimit,
+      });
+      pushSuggested(socialOnly);
+    } catch {
+      /* try website fallback below */
+    }
+  }
+
+  const hasSocialPhotos = merged.some(
+    (m) => m.source === "facebook" || m.source === "instagram",
+  );
+
+  // Website only when social found nothing (scratch + idea).
+  if (websiteUrl && !hasSocialPhotos) {
+    try {
+      const { images: siteImages } = await suggestCampaignImages({
         websiteUrl,
         limit: fetchLimit,
       });
-      for (let i = 0; i < suggested.length; i++) {
-        const s = suggested[i];
-        push({
-          id: `social-${Date.now()}-${i}`,
-          url: s.url,
-          name: `From ${s.source}`,
-          storedUrl: s.url,
-          source: s.source,
-          sourceUrl: s.sourceUrl,
-        });
-      }
+      pushSuggested(siteImages);
     } catch {
       /* fall through to analysis images */
     }
   }
 
-  // 2) AI session analysis images next (never displace real social slots above)
+  // Analysis images — prefer social-sourced; website analysis only if still empty.
   const analysis = input.analysisImages ?? [];
-  for (let i = 0; i < analysis.length; i++) {
-    const img = analysis[i];
-    const url = normalizeUrl(img.url);
-    if (!url) continue;
-    push({
-      id: `ai-img-${i}`,
-      url,
-      name: `Suggested ${i + 1}`,
-      source: mapAnalysisSource(img.source),
-      ...(img.sourceUrl ? { sourceUrl: img.sourceUrl } : {}),
-    });
+  const pushAnalysis = (allowWebsite: boolean) => {
+    for (let i = 0; i < analysis.length; i++) {
+      const img = analysis[i];
+      const url = normalizeUrl(img.url);
+      if (!url) continue;
+      const mapped = mapAnalysisSource(img.source);
+      if (!allowWebsite && mapped === "website") continue;
+      // Scratch: once social photos exist, never mix website analysis into the set.
+      if (mode === "scratch" && hasSocialPhotos && mapped === "website") continue;
+      push({
+        id: `ai-img-${i}`,
+        url,
+        name: `Suggested ${i + 1}`,
+        source: mapped,
+        ...(img.sourceUrl ? { sourceUrl: img.sourceUrl } : {}),
+      });
+    }
+  };
+  pushAnalysis(false);
+  if (!hasSocialPhotos && (merged.length === 0 || (mode === "idea" && merged.length < 2))) {
+    pushAnalysis(true);
   }
 
-  // 3) Last-resort fallbacks (idea thumbnail / library URL)
-  const fallbacks = input.fallbackUrls ?? [];
-  for (let i = 0; i < fallbacks.length; i++) {
-    const url = normalizeUrl(fallbacks[i]);
-    if (!url) continue;
-    push({
-      id: `fallback-img-${i}`,
-      url,
-      name: "Suggested cover",
-      storedUrl: url,
-      source: "library",
-    });
+  if (merged.length === 0) {
+    const fallbacks = input.fallbackUrls ?? [];
+    for (let i = 0; i < fallbacks.length; i++) {
+      const url = normalizeUrl(fallbacks[i]);
+      if (!url) continue;
+      push({
+        id: `fallback-img-${i}`,
+        url,
+        name: "Suggested cover",
+        storedUrl: url,
+        source: "library",
+      });
+    }
   }
 
   if (merged.length === 0) {
@@ -227,6 +303,22 @@ export async function resolveAiFlowImages(
   }
 
   const ranked = sortForCover(merged).slice(0, limit);
+
+  if (preferredCoverUrl) {
+    const preferred =
+      ranked.find((img) => dedupeKey(normalizeUrl(img.url) || normalizeUrl(img.storedUrl)) === dedupeKey(preferredCoverUrl)) ||
+      merged.find(
+        (img) =>
+          dedupeKey(normalizeUrl(img.url) || normalizeUrl(img.storedUrl)) ===
+          dedupeKey(preferredCoverUrl),
+      ) ||
+      null;
+    if (preferred) {
+      const rest = ranked.filter((img) => img.id !== preferred.id && img.url !== preferred.url);
+      return { cover: preferred, images: rest };
+    }
+  }
+
   const [cover, ...images] = ranked;
   return { cover, images };
 }

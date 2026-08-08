@@ -19,6 +19,7 @@ const ADVANCED_BUILDER_STEPS: StepId[] = ["methods", "details", "media"];
 const POST_CREATION_STEPS: StepId[] = [
   "created",
   "dashboard",
+  "in-review-preview",
   "business-profile",
   "campaign-page",
   "reporting",
@@ -108,6 +109,8 @@ export function WizardHeader() {
 
   const aiFlowSteps: StepId[] = [
     "ai-find-org",
+    "ai-connect-social",
+    "ai-analyzing",
     "ai-campaign-ideas",
     "ai-campaign-purpose",
     "ai-campaign-build",

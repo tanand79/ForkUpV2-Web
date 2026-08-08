@@ -32,6 +32,9 @@ export function AuthLogin({
 
   linkOrganization,
 
+  /** Optional start tab; default remains login so existing callers are unchanged. */
+  initialMode = "login",
+
 }: {
 
   intent?: AccountIntent;
@@ -46,11 +49,13 @@ export function AuthLogin({
 
   };
 
+  initialMode?: "login" | "register";
+
 }) {
 
   const copy = ACCOUNT_INTENT_COPY[intent];
 
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register">(initialMode);
 
   const [email, setEmail] = useState("");
 

@@ -1,8 +1,9 @@
 /**
- * Client for pre-campaign AI flow (backend Steps 3–4 + Step 5 ideas).
+ * Client for pre-campaign AI flow (backend analyze + Step 5 ideas).
  *
  * Purpose: Call analyze + resume session APIs without editing api.ts.
  * Inputs/outputs match Forkup-Server `/api/ai-campaign-flow/*`.
+ * Visible UI: Steps 3–4 on frontend (ai-connect-social / ai-analyzing).
  */
 import { authHeaders } from "@/lib/auth-storage";
 import { getApiBaseUrl } from "@/lib/api-config";
@@ -92,6 +93,7 @@ export type AnalyzeAiCampaignInput = {
   facebookUrl?: string | null;
   instagramUrl?: string | null;
   linkedinUrl?: string | null;
+  youtubeUrl?: string | null;
   mission?: string | null;
   causeCategory?: string | null;
   city?: string | null;
@@ -100,10 +102,38 @@ export type AnalyzeAiCampaignInput = {
 
 /**
  * method: POST /api/ai-campaign-flow/analyze
- * Runs backend Steps 3–4 + idea generation (no dedicated UI screens).
+ * Runs website/social analysis + idea generation (called from ai-analyzing UI).
  */
 export function analyzeAiCampaignFlow(input: AnalyzeAiCampaignInput) {
   return fetchJson<AiAnalysisSession>("/api/ai-campaign-flow/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export type AiResolvedSources = {
+  organizationName: string;
+  ein: string | null;
+  nonprofitId: number | null;
+  website: string | null;
+  facebookUrl: string | null;
+  instagramUrl: string | null;
+  linkedinUrl: string | null;
+  youtubeUrl: string | null;
+  mission: string | null;
+  causeCategory: string | null;
+  city: string | null;
+  state: string | null;
+};
+
+/**
+ * method: POST /api/ai-campaign-flow/resolve-sources
+ * Purpose: Prefill Connect Social URL fields (no full analyze / ideas).
+ * Inputs: same identity fields as analyze. Outputs: resolved website + social URLs.
+ */
+export function resolveAiCampaignSources(input: AnalyzeAiCampaignInput) {
+  return fetchJson<AiResolvedSources>("/api/ai-campaign-flow/resolve-sources", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

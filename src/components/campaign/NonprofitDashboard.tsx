@@ -321,7 +321,7 @@ export function NonprofitDashboard() {
   }, [nonprofitId, pendingInvites]);
 
   const openCampaign = useCallback(
-    (slug: string, step: "dashboard" | "reporting" | "builder" = "dashboard") => {
+    (slug: string, step: "dashboard" | "reporting" | "builder" | "in-review-preview" = "dashboard") => {
       if (step === "builder") {
         void resumeCampaignBuilder(slug).catch((err) => {
           setError(err instanceof Error ? err.message : "Failed to open campaign setup");
@@ -630,11 +630,13 @@ export function NonprofitDashboard() {
             onClick={() =>
               openCampaign(
                 c.slug,
-                options.isDraftTab || c.status === "in_review"
+                options.isDraftTab
                   ? "builder"
-                  : options.isCompleted
-                    ? "reporting"
-                    : "dashboard",
+                  : c.status === "in_review"
+                    ? "in-review-preview"
+                    : options.isCompleted
+                      ? "reporting"
+                      : "dashboard",
               )
             }
             className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-full px-5 text-sm font-semibold transition-all active:scale-95 ${
@@ -643,13 +645,13 @@ export function NonprofitDashboard() {
                 : "bg-primary text-primary-foreground hover:bg-primary-dark"
             }`}
           >
-            {options.isDraftTab || c.status === "in_review"
-              ? c.status === "in_review"
+            {options.isDraftTab
+              ? "Continue setup"
+              : c.status === "in_review"
                 ? "View campaign"
-                : "Continue setup"
-              : options.isCompleted
-                ? "View results"
-                : "View dashboard"}{" "}
+                : options.isCompleted
+                  ? "View results"
+                  : "View dashboard"}{" "}
             <ArrowRight className="size-4" />
           </button>
         </div>

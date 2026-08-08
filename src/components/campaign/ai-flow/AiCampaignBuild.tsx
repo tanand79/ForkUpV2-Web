@@ -107,16 +107,22 @@ export function AiCampaignBuild() {
         }
       }
 
+      const scratchPath = store?.selectedIdeaId == null;
       const media = await resolveAiFlowImages({
         facebookUrl,
         instagramHandle,
         websiteUrl,
         analysisImages,
-        fallbackUrls: [
-          ...ideaThumbs,
-          state.cover?.url,
-          state.cover?.storedUrl,
-        ],
+        fallbackUrls: scratchPath
+          ? [state.cover?.url, state.cover?.storedUrl]
+          : [
+              ...ideaThumbs,
+              state.cover?.url,
+              state.cover?.storedUrl,
+            ],
+        preferredCoverUrl: scratchPath ? null : state.cover?.url || state.cover?.storedUrl || null,
+        mode: scratchPath ? "scratch" : "idea",
+        limit: scratchPath ? 10 : 6,
       });
       if (cancelled) return;
 

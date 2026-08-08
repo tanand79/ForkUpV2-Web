@@ -28,6 +28,7 @@ import { ReviewLaunch } from "@/components/campaign/ReviewLaunch";
 import { CampaignReview } from "@/components/campaign/CampaignReview";
 import { CampaignCreated } from "@/components/campaign/CampaignCreated";
 import { CampaignDashboard } from "@/components/campaign/CampaignDashboard";
+import { InReviewCampaignPreview } from "@/components/campaign/InReviewCampaignPreview";
 import { BusinessProfile } from "@/components/campaign/BusinessProfile";
 import { CampaignPage } from "@/components/campaign/CampaignPage";
 import { BusinessAcceptance } from "@/components/campaign/BusinessAcceptance";
@@ -72,6 +73,8 @@ import { CreateFundraiser } from "@/components/campaign/CreateFundraiser";
 import { GuidedBuilderShell } from "@/components/campaign/GuidedBuilderShell";
 import {
   AiFindOrganization,
+  AiConnectSocial,
+  AiAnalyzing,
   AiCampaignIdeas,
   AiCampaignPurpose,
   AiCampaignBuild,
@@ -85,9 +88,16 @@ function AuthLoginScreen() {
   const [mounted, setMounted] = useState(false);
   const [roleHint, setRoleHint] = useState<AccountIntent>("nonprofit");
   const [finishing, setFinishing] = useState(false);
+  /** One-shot register open from AI flow after guest continue was removed. */
+  const [initialMode, setInitialMode] = useState<"login" | "register">("login");
 
   useEffect(() => {
     setRoleHint(getRoleHint() ?? "nonprofit");
+    const raw = sessionStorage.getItem("forkup-auth-initial-mode");
+    if (raw === "register") {
+      setInitialMode("register");
+      sessionStorage.removeItem("forkup-auth-initial-mode");
+    }
     setMounted(true);
   }, []);
 
@@ -175,6 +185,7 @@ function AuthLoginScreen() {
         <div className="mt-8">
           <AuthLogin
             intent={roleHint}
+            initialMode={initialMode}
             onSuccess={finishAuth}
             linkOrganization={
               state.nonprofitProfile?.id
@@ -261,6 +272,10 @@ function WizardBody() {
       return <QuickStart />;
     case "ai-find-org":
       return <AiFindOrganization />;
+    case "ai-connect-social":
+      return <AiConnectSocial />;
+    case "ai-analyzing":
+      return <AiAnalyzing />;
     case "ai-campaign-ideas":
       return <AiCampaignIdeas />;
     case "ai-campaign-purpose":
@@ -331,6 +346,8 @@ function WizardBody() {
       return <CampaignCreated />;
     case "dashboard":
       return <CampaignDashboard />;
+    case "in-review-preview":
+      return <InReviewCampaignPreview />;
     case "receipt-ocr":
       return <ReceiptOcrTracking />;
     case "receipt-upload":
