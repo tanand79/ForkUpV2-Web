@@ -15,6 +15,8 @@ export const ALL_STEP_IDS: StepId[] = [
   "business-claim",
   "business-invites-nonprofit",
   "nonprofit-accepts-invite",
+  "fundraiser-invite-accept",
+  "fundraiser-dashboard",
   "nonprofit-dashboard",
   "business-dashboard",
   "supporter-dashboard",

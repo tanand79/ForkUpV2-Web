@@ -8,17 +8,22 @@
  * classic CampaignReview featured-image replace).
  *
  * Inputs:
- *   open — whether the sheet is visible
- *   cover / images — current campaign media
- *   onClose — dismiss without change
- *   onSelectCover — set featured cover (and keep other suggested images)
+ *   open - whether the sheet is visible
+ *   cover / images - current campaign media
+ *   optional social URLs - live-refetch suggest when opened
+ *   onClose - dismiss without change
+ *   onSelectCover - set featured cover (and keep other suggested images)
+ *   onSuggestedImages - optional: push live-fetched suggestions into gallery
  *
  * Output: calls onSelectCover with the chosen CampaignImage, then parent closes.
+ *
+ * Changelog: Additive live refetch of social post images on open (YT/LI/FB/IG).
+ * Additive: referrerPolicy=no-referrer so social CDN images can render in browser.
  */
-import { useRef, useState } from "react";
-import { ImageIcon, Replace } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ImageIcon, Loader2, Replace } from "lucide-react";
 import type { CampaignImage } from "@/lib/campaign-context";
-import { uploadImage } from "@/lib/api";
+import { suggestCampaignImages, uploadImage } from "@/lib/api";
 import { aiFlowCoverSourceLabel } from "./resolve-ai-flow-images";
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -37,12 +42,27 @@ function previewSrc(img: CampaignImage): string {
   return img.url || img.storedUrl || "";
 }
 
+function dedupeKey(url: string): string {
+  return url.split("?")[0].toLowerCase();
+}
+
 export interface AiCampaignCoverPickerProps {
   open: boolean;
   cover: CampaignImage | null;
   images: CampaignImage[];
   onClose: () => void;
   onSelectCover: (cover: CampaignImage) => void;
+  /** Optional social inputs for live POST /api/campaign-images/suggest on open. */
+  facebookUrl?: string | null;
+  instagramHandle?: string | null;
+  websiteUrl?: string | null;
+  linkedinUrl?: string | null;
+  youtubeUrl?: string | null;
+  /**
+   * Optional: parent stores live-fetched suggestions so gallery stays in sync.
+   * Inputs: newly suggested CampaignImage[]. Outputs: none.
+   */
+  onSuggestedImages?: (images: CampaignImage[]) => void;
 }
 
 export function AiCampaignCoverPicker({
@@ -51,19 +71,85 @@ export function AiCampaignCoverPicker({
   images,
   onClose,
   onSelectCover,
+  facebookUrl,
+  instagramHandle,
+  websiteUrl,
+  linkedinUrl,
+  youtubeUrl,
+  onSuggestedImages,
 }: AiCampaignCoverPickerProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingSuggest, setLoadingSuggest] = useState(false);
+  const [liveSuggestions, setLiveSuggestions] = useState<CampaignImage[]>([]);
+
+  useEffect(() => {
+    if (!open) {
+      setLiveSuggestions([]);
+      setLoadingSuggest(false);
+      setError(null);
+      return;
+    }
+
+    const fb = (facebookUrl || "").trim();
+    const ig = (instagramHandle || "").trim();
+    const web = (websiteUrl || "").trim();
+    const li = (linkedinUrl || "").trim();
+    const yt = (youtubeUrl || "").trim();
+    const hasAny = Boolean(fb || ig || web || li || yt);
+    if (!hasAny) return;
+
+    let cancelled = false;
+    setLoadingSuggest(true);
+    void (async () => {
+      try {
+        const { images: suggested } = await suggestCampaignImages({
+          facebookUrl: fb || undefined,
+          instagramHandle: ig || undefined,
+          websiteUrl: web || undefined,
+          linkedinUrl: li || undefined,
+          youtubeUrl: yt || undefined,
+          limit: 10,
+        });
+        if (cancelled) return;
+        const mapped: CampaignImage[] = suggested.map((s, i) => ({
+          id: `live-social-${Date.now()}-${i}`,
+          url: s.url,
+          name: `From ${s.source}`,
+          storedUrl: s.url,
+          source: s.source,
+          sourceUrl: s.sourceUrl,
+          ...(s.caption ? { caption: s.caption } : {}),
+        }));
+        setLiveSuggestions(mapped);
+        if (mapped.length > 0) onSuggestedImages?.(mapped);
+      } catch {
+        if (!cancelled) {
+          /* keep existing cover/images; do not block picker */
+        }
+      } finally {
+        if (!cancelled) setLoadingSuggest(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // Refetch whenever the sheet opens or social inputs change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, facebookUrl, instagramHandle, websiteUrl, linkedinUrl, youtubeUrl]);
 
   if (!open) return null;
 
-  /** Deduped suggestions: current cover first, then gallery images. */
+  /** Deduped suggestions: live social first, then current cover, then gallery. */
   const suggestions: CampaignImage[] = [];
   const seen = new Set<string>();
-  for (const img of [cover, ...images].filter(Boolean) as CampaignImage[]) {
-    const key = img.id || previewSrc(img);
-    if (!key || seen.has(key) || !previewSrc(img)) continue;
+  for (const img of [...liveSuggestions, cover, ...images].filter(Boolean) as CampaignImage[]) {
+    const src = previewSrc(img);
+    if (!src) continue;
+    const key = dedupeKey(src);
+    if (seen.has(key)) continue;
     seen.add(key);
     suggestions.push(img);
   }
@@ -129,6 +215,13 @@ export function AiCampaignCoverPicker({
         </div>
 
         <div className="space-y-4 overflow-y-auto p-5">
+          {loadingSuggest ? (
+            <p className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin text-primary" />
+              Finding photos from social links…
+            </p>
+          ) : null}
+
           {suggestions.length > 0 ? (
             <div>
               <p className="mb-2 text-xs font-semibold text-muted-foreground">
@@ -166,7 +259,12 @@ export function AiCampaignCoverPicker({
                       }`}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={src} alt={img.name} className="size-full object-cover" />
+                      <img
+                        src={src}
+                        alt={img.name}
+                        referrerPolicy="no-referrer"
+                        className="size-full object-cover"
+                      />
                       <span className="absolute inset-x-0 top-0 bg-background/85 px-1 py-0.5 text-center text-[9px] font-semibold leading-tight text-foreground">
                         {sourceLabel}
                       </span>
@@ -180,11 +278,11 @@ export function AiCampaignCoverPicker({
                 })}
               </div>
             </div>
-          ) : (
+          ) : !loadingSuggest ? (
             <p className="text-xs text-muted-foreground">
               No suggested photos yet. Upload an image below.
             </p>
-          )}
+          ) : null}
 
           <button
             type="button"

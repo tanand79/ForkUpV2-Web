@@ -21,6 +21,7 @@ const DASHBOARD_STEPS: StepId[] = [
   "nonprofit-dashboard",
   "business-dashboard",
   "supporter-dashboard",
+  "fundraiser-dashboard",
   "account-hub",
 ];
 
@@ -31,6 +32,7 @@ export const CAMPAIGN_AUTH_STEPS: StepId[] = [
   // nonprofit-claim is intentionally public for org search (Lovable parity).
   // Auth is enforced inside NonprofitClaim on submit before claim/save.
   "nonprofit-dashboard",
+  "fundraiser-dashboard",
   "business-dashboard",
   "supporter-dashboard",
   "business-claim",
@@ -73,6 +75,15 @@ export function roleHintFromStep(step: StepId): UserRole | null {
     step === "choose-organizer-mode" ||
     step === "quick-start" ||
     step === "campaign-review" ||
+    step === "ai-find-org" ||
+    step === "ai-connect-social" ||
+    step === "ai-analyzing" ||
+    step === "ai-campaign-ideas" ||
+    step === "ai-campaign-purpose" ||
+    step === "ai-campaign-build" ||
+    step === "ai-campaign-dates" ||
+    step === "ai-campaign-preview" ||
+    step === "ai-continue-guest" ||
     step === "methods"
   ) {
     return "nonprofit";
@@ -132,7 +143,8 @@ export function stashRoleHint(role: UserRole) {
 export function getRoleHint(): UserRole | null {
   if (typeof window === "undefined") return null;
   const raw = sessionStorage.getItem(ROLE_HINT_KEY);
-  if (raw === "nonprofit" || raw === "business" || raw === "supporter") return raw;
+  if (raw === "nonprofit" || raw === "business" || raw === "supporter" || raw === "fundraiser")
+    return raw;
   return null;
 }
 
@@ -226,6 +238,16 @@ export const ACCOUNT_INTENT_COPY: Record<
       "Create one ForkUp account to join campaigns and give back — no separate email needed for other roles.",
     fullNamePlaceholder: "Your name",
     registerCta: "Create account",
+    signInCta: "Sign in",
+  },
+  fundraiser: {
+    title: "Fundraiser",
+    signInDescription:
+      "Use your ForkUp account to raise for nonprofits you support and track partnership invites.",
+    registerDescription:
+      "Create one ForkUp account as a fundraiser — invite nonprofits to campaigns you build for them.",
+    fullNamePlaceholder: "Your name",
+    registerCta: "Create fundraiser account",
     signInCta: "Sign in",
   },
 };

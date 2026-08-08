@@ -18,7 +18,6 @@ import {
   Lock,
   Facebook,
   Instagram,
-  Linkedin,
   Youtube,
   Sparkles,
 } from "lucide-react";
@@ -69,7 +68,7 @@ export function AiConnectSocial() {
   const { update, goTo, state } = useCampaign();
   const [facebookUrl, setFacebookUrl] = useState("");
   const [instagramUrl, setInstagramUrl] = useState("");
-  const [linkedinUrl, setLinkedinUrl] = useState("");
+  // LinkedIn intentionally omitted from this confirm UI (not shown / not saved).
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [ready, setReady] = useState(false);
@@ -129,7 +128,6 @@ export function AiConnectSocial() {
         const nextWebsite = sources.website || "";
         const nextFacebook = sources.facebookUrl || "";
         const nextInstagram = sources.instagramUrl || "";
-        const nextLinkedin = sources.linkedinUrl || "";
         const nextYoutube = sources.youtubeUrl || "";
 
         saveAiFlowPendingOrg({
@@ -137,7 +135,7 @@ export function AiConnectSocial() {
           website: nextWebsite || null,
           facebookUrl: nextFacebook || null,
           instagramUrl: nextInstagram || null,
-          linkedinUrl: nextLinkedin || null,
+          linkedinUrl: null,
           youtubeUrl: nextYoutube || null,
           mission: sources.mission || seed.mission,
           causeCategory: sources.causeCategory || seed.causeCategory,
@@ -149,7 +147,6 @@ export function AiConnectSocial() {
 
         setFacebookUrl(nextFacebook);
         setInstagramUrl(nextInstagram);
-        setLinkedinUrl(nextLinkedin);
         setYoutubeUrl(nextYoutube);
         setWebsiteUrl(nextWebsite);
 
@@ -178,7 +175,6 @@ export function AiConnectSocial() {
 
     const nextFacebook = opts?.skipSocial ? "" : facebookUrl.trim();
     const nextInstagram = opts?.skipSocial ? "" : instagramUrl.trim();
-    const nextLinkedin = opts?.skipSocial ? "" : linkedinUrl.trim();
     const nextYoutube = opts?.skipSocial ? "" : youtubeUrl.trim();
     const nextWebsite = websiteUrl.trim() || pending.website || "";
 
@@ -187,7 +183,7 @@ export function AiConnectSocial() {
       website: nextWebsite || null,
       facebookUrl: nextFacebook || null,
       instagramUrl: nextInstagram || null,
-      linkedinUrl: nextLinkedin || null,
+      linkedinUrl: null,
       youtubeUrl: nextYoutube || null,
     });
 
@@ -204,9 +200,15 @@ export function AiConnectSocial() {
     goTo("ai-analyzing");
   };
 
+  // Nonprofit Create Campaign: Back returns to dashboard (not find-org picker).
+  const backStep =
+    state.accountIntent !== "fundraiser" && state.nonprofitMemberships.length > 0
+      ? "nonprofit-dashboard"
+      : "ai-find-org";
+
   if (!ready) {
     return (
-      <AiFlowShell title="Finding your links" backStep="ai-find-org">
+      <AiFlowShell title="Finding your links" backStep={backStep}>
         <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin text-primary" />
           Loading…
@@ -219,7 +221,6 @@ export function AiConnectSocial() {
     websiteUrl.trim() ||
       facebookUrl.trim() ||
       instagramUrl.trim() ||
-      linkedinUrl.trim() ||
       youtubeUrl.trim(),
   );
 
@@ -227,7 +228,7 @@ export function AiConnectSocial() {
     <AiFlowShell
       title={resolving ? "Finding your links" : "Review what AI found"}
       subtitle="ForkUp looks up your official website and public social profiles. You don’t need to type URLs."
-      backStep="ai-find-org"
+      backStep={backStep}
     >
       {resolving ? (
         <div className="rounded-2xl border border-primary/30 bg-primary/5 px-4 py-8 text-center">
@@ -272,11 +273,6 @@ export function AiConnectSocial() {
               icon={<Youtube className="size-4" />}
               label="YouTube"
               value={youtubeUrl}
-            />
-            <LinkRow
-              icon={<Linkedin className="size-4" />}
-              label="LinkedIn"
-              value={linkedinUrl}
             />
           </div>
 

@@ -1297,7 +1297,7 @@ export function BusinessInvitesNonprofit() {
 }
 
 export function NonprofitAcceptsInvite() {
-  const { setNonprofitProfile, goTo, update } = useCampaign();
+  const { setNonprofitProfile, goTo, update, startNewCampaign, state } = useCampaign();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") ?? "";
   const [invite, setInvite] = useState<NonprofitCampaignInvite | null>(null);
@@ -1375,12 +1375,19 @@ export function NonprofitAcceptsInvite() {
 
   if (done === "accepted") {
     const continueSetup = () => {
-      stashAuthReturnStep("quick-start");
+      stashAuthReturnStep("ai-campaign-preview");
       if (!getAuthToken()) {
         goTo("auth-login");
         return;
       }
-      goTo("quick-start");
+      if (
+        state.aiDrafted ||
+        (state.title.trim() && state.description.trim())
+      ) {
+        goTo("ai-campaign-preview");
+        return;
+      }
+      startNewCampaign();
     };
 
     return (

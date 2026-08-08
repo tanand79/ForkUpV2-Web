@@ -96,7 +96,8 @@ function mapBusinesses(context: AuthContextResponse): BusinessProfileState[] {
 export function getStoredActiveRole(): UserRole | null {
   if (typeof window === "undefined") return null;
   const raw = sessionStorage.getItem(ACTIVE_ROLE_KEY);
-  if (raw === "nonprofit" || raw === "business" || raw === "supporter") return raw;
+  if (raw === "nonprofit" || raw === "business" || raw === "supporter" || raw === "fundraiser")
+    return raw;
   return null;
 }
 
@@ -166,6 +167,10 @@ export function clearUserSession() {
     window.localStorage.removeItem(SESSION_KEY);
     window.localStorage.removeItem("forkup-nonprofit-profile");
     window.localStorage.removeItem("forkup-business-profile");
+    // Stale drafts often hold pre-reset business/nonprofit ids after db:reset.
+    window.localStorage.removeItem("forkup-campaign-draft");
+    window.localStorage.removeItem("forkup-ai-campaign-flow");
+    window.localStorage.removeItem("forkup-ai-campaign-flow-pending");
   } catch {
     /* ignore */
   }
@@ -304,7 +309,21 @@ export async function syncAuthSession(
       );
       lastSyncedAt = Date.now();
       return session;
-    } catch {
+    } catch (err) {
+      /**
+       * After db:reset auth_sessions/users are gone. Keeping a cached session
+       * shows empty dashboards / wrong org ids — clear on auth failure.
+       */
+      const status = (err as Error & { status?: number })?.status;
+      const message = err instanceof Error ? err.message : "";
+      if (
+        status === 401 ||
+        status === 403 ||
+        /not authenticated|unauthorized|invalid token|invalid session/i.test(message)
+      ) {
+        clearAuthAndSession();
+        return null;
+      }
       return loadUserSession();
     } finally {
       syncInFlight = null;

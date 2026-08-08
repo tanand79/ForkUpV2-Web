@@ -74,7 +74,7 @@ function ReviewSection({
 }
 
 export function CampaignReview() {
-  const { state, update, goTo, saveAndExit } = useCampaign();
+  const { state, update, goTo, saveAndExit, startNewCampaign } = useCampaign();
   const [editBasics, setEditBasics] = useState(false);
   const [editStory, setEditStory] = useState(false);
   const [editPromotion, setEditPromotion] = useState(false);
@@ -203,7 +203,9 @@ export function CampaignReview() {
       <main className="mx-auto max-w-[1160px] px-5 py-5 pb-32 sm:px-6">
         <button
           type="button"
-          onClick={() => goTo("quick-start")}
+          onClick={() =>
+            state.aiDrafted ? goTo("ai-campaign-build") : startNewCampaign()
+          }
           className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
@@ -376,7 +378,9 @@ export function CampaignReview() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => goTo("quick-start")}
+                    onClick={() =>
+                      state.aiDrafted ? goTo("ai-campaign-build") : startNewCampaign()
+                    }
                     className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline"
                   >
                     <Pencil className="size-3" />

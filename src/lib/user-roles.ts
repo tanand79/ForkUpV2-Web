@@ -1,24 +1,31 @@
+/**
+ * User experience roles — not separate accounts.
+ * fundraiser: raise for nonprofits you don't belong to (invite flow).
+ */
 import type { StepId } from "@/lib/campaign-context";
 
 /** Active experience context — not a separate account type. */
-export type UserRole = "nonprofit" | "business" | "supporter";
+export type UserRole = "nonprofit" | "business" | "supporter" | "fundraiser";
 
 export interface RoleAvailability {
   nonprofit: boolean;
   business: boolean;
   supporter: boolean;
+  fundraiser: boolean;
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   nonprofit: "Nonprofit Organizer",
   business: "Business Partner",
   supporter: "Supporter",
+  fundraiser: "Fundraiser",
 };
 
 export const ROLE_DASHBOARD: Record<UserRole, StepId> = {
   nonprofit: "nonprofit-dashboard",
   business: "business-dashboard",
   supporter: "supporter-dashboard",
+  fundraiser: "fundraiser-dashboard",
 };
 
 export const ROLE_CLAIM_STEP: Partial<Record<UserRole, StepId>> = {
@@ -35,6 +42,7 @@ export function roleAvailability(
     nonprofit: nonprofitCount > 0,
     business: businessCount > 0,
     supporter: isSignedIn,
+    fundraiser: isSignedIn,
   };
 }
 
@@ -42,6 +50,7 @@ export function availableRoles(avail: RoleAvailability): UserRole[] {
   const roles: UserRole[] = [];
   if (avail.nonprofit) roles.push("nonprofit");
   if (avail.business) roles.push("business");
+  if (avail.fundraiser) roles.push("fundraiser");
   if (avail.supporter) roles.push("supporter");
   return roles;
 }
@@ -52,6 +61,7 @@ export function dashboardStepForRole(
   hasBusinessMembership: boolean,
 ): StepId {
   if (role === "supporter") return ROLE_DASHBOARD.supporter;
+  if (role === "fundraiser") return ROLE_DASHBOARD.fundraiser;
   if (role === "business") {
     return hasBusinessMembership ? ROLE_DASHBOARD.business : ROLE_CLAIM_STEP.business!;
   }
@@ -63,8 +73,6 @@ export function resolvePostAuthDestination(
   roleHint: UserRole | null,
   avail: RoleAvailability,
 ): StepId {
-  // Prefer an explicit return destination (auth-gated claim/setup) so the
-  // interrupted flow can resume after sign-in. Role dashboard is the fallback.
   if (returnStep && returnStep !== "auth-login") {
     return returnStep;
   }
@@ -79,6 +87,7 @@ export function resolvePostAuthDestination(
 
   if (avail.nonprofit) return ROLE_DASHBOARD.nonprofit;
   if (avail.business) return ROLE_DASHBOARD.business;
+  if (avail.fundraiser) return ROLE_DASHBOARD.fundraiser;
   if (avail.supporter) return ROLE_DASHBOARD.supporter;
 
   return "account-hub";
@@ -89,13 +98,25 @@ export function pickDefaultActiveRole(
   hint: UserRole | null,
   previous: UserRole | null,
 ): UserRole {
-  if (hint === "nonprofit" || hint === "business" || hint === "supporter") {
+  if (
+    hint === "nonprofit" ||
+    hint === "business" ||
+    hint === "supporter" ||
+    hint === "fundraiser"
+  ) {
     return hint;
   }
-  if (previous && ((previous === "nonprofit" && avail.nonprofit) || (previous === "business" && avail.business) || previous === "supporter")) {
+  if (
+    previous &&
+    ((previous === "nonprofit" && avail.nonprofit) ||
+      (previous === "business" && avail.business) ||
+      previous === "supporter" ||
+      (previous === "fundraiser" && avail.fundraiser))
+  ) {
     return previous;
   }
   if (avail.nonprofit) return "nonprofit";
   if (avail.business) return "business";
+  if (avail.fundraiser) return "fundraiser";
   return "supporter";
 }

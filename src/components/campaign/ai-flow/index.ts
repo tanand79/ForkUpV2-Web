@@ -11,6 +11,10 @@ export { AiCampaignDates } from "./AiCampaignDates";
 export { AiCampaignPreview } from "./AiCampaignPreview";
 export { AiContinueGuest } from "./AiContinueGuest";
 export {
+  LegacyCampaignReviewDivert,
+  LegacyQuickStartDivert,
+} from "./LegacyBuilderToAiDivert";
+export {
   resolveAiFlowImages,
   aiFlowCoverSourceLabel,
   looksLikeLogoUrl,

@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { useCampaign, type SupportMethod } from "@/lib/campaign-context";
 import { fetchAiCampaignSession } from "@/lib/api-ai-campaign-flow";
-import { loadAiFlowStore } from "@/lib/ai-campaign-flow-storage";
+import { loadAiFlowStore, loadAiFlowPendingOrg } from "@/lib/ai-campaign-flow-storage";
 import {
   AiCampaignCoverPicker,
   AiCoverChangeButton,
@@ -50,6 +50,10 @@ export function AiCampaignBuild() {
   );
   const [coverPickerOpen, setCoverPickerOpen] = useState(false);
   const [findingPhotos, setFindingPhotos] = useState(false);
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState(
+    () => loadAiFlowPendingOrg()?.youtubeUrl?.trim() || "",
+  );
 
   // Repair mid-session state where an AI idea omitted donations/ambassador.
   useEffect(() => {
@@ -65,24 +69,45 @@ export function AiCampaignBuild() {
   }, []);
 
   /**
-   * When Build has no featured photo, retry social suggest first, then AI analysis.
-   * Covers cases where Ideas/Purpose resolved zero images (blocked scrapers, missing links).
+   * Hydrate cover/gallery from social posts when missing, and always capture
+   * LinkedIn/YouTube URLs for Change-photo live refetch.
    */
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
       const hasCoverNow = !!(state.cover?.url || state.cover?.storedUrl);
-      if (hasCoverNow && state.images.length > 0) return;
+      if (hasCoverNow && state.images.length > 0) {
+        // Still load session social URLs for the cover picker.
+        const store = loadAiFlowStore();
+        if (store?.sessionToken) {
+          try {
+            const session = await fetchAiCampaignSession(store.sessionToken);
+            if (cancelled) return;
+            if (session.linkedinUrl) setLinkedinUrl(session.linkedinUrl);
+            const yt =
+              session.analysis?.youtubeUrl ||
+              loadAiFlowPendingOrg()?.youtubeUrl ||
+              "";
+            if (yt) setYoutubeUrl(yt);
+          } catch {
+            /* ignore */
+          }
+        }
+        return;
+      }
 
       setFindingPhotos(!hasCoverNow);
       let facebookUrl = state.promotion.facebookUrl.trim();
       let instagramHandle = state.promotion.instagramHandle.trim();
       let websiteUrl = state.promotion.websiteUrl.trim();
+      let nextLinkedin = "";
+      let nextYoutube = loadAiFlowPendingOrg()?.youtubeUrl?.trim() || "";
       let analysisImages: {
         url: string;
         sourceUrl?: string | null;
         source?: string | null;
+        caption?: string | null;
       }[] = [];
       let ideaThumbs: string[] = [];
       const store = loadAiFlowStore();
@@ -96,10 +121,13 @@ export function AiCampaignBuild() {
             instagramHandle = session.instagramUrl;
           }
           if (!websiteUrl && session.website) websiteUrl = session.website;
+          if (session.linkedinUrl) nextLinkedin = session.linkedinUrl;
+          if (session.analysis?.youtubeUrl) nextYoutube = session.analysis.youtubeUrl;
           analysisImages = (session.analysis?.images || []).map((img) => ({
             url: img.url,
             sourceUrl: img.sourceUrl,
             source: img.source,
+            caption: img.caption,
           }));
           ideaThumbs = ideaThumbnailFallbackUrls(session.ideas);
         } catch {
@@ -107,11 +135,16 @@ export function AiCampaignBuild() {
         }
       }
 
+      if (nextLinkedin) setLinkedinUrl(nextLinkedin);
+      if (nextYoutube) setYoutubeUrl(nextYoutube);
+
       const scratchPath = store?.selectedIdeaId == null;
       const media = await resolveAiFlowImages({
         facebookUrl,
         instagramHandle,
         websiteUrl,
+        linkedinUrl: nextLinkedin || undefined,
+        youtubeUrl: nextYoutube || undefined,
         analysisImages,
         fallbackUrls: scratchPath
           ? [state.cover?.url, state.cover?.storedUrl]
@@ -266,7 +299,28 @@ export function AiCampaignBuild() {
         open={coverPickerOpen}
         cover={state.cover}
         images={state.images}
+        facebookUrl={state.promotion.facebookUrl}
+        instagramHandle={state.promotion.instagramHandle}
+        websiteUrl={state.promotion.websiteUrl}
+        linkedinUrl={linkedinUrl}
+        youtubeUrl={youtubeUrl}
         onClose={() => setCoverPickerOpen(false)}
+        onSuggestedImages={(suggested) => {
+          const seen = new Set(
+            [state.cover, ...state.images]
+              .filter(Boolean)
+              .map((img) => (img!.url || img!.storedUrl || "").split("?")[0].toLowerCase()),
+          );
+          const extras = suggested.filter((img) => {
+            const key = (img.url || img.storedUrl || "").split("?")[0].toLowerCase();
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          if (extras.length > 0) {
+            update({ images: [...state.images, ...extras].slice(0, 10) });
+          }
+        }}
         onSelectCover={(cover) => {
           // Keep previous cover in the gallery if it isn't the new pick.
           const prev = state.cover;

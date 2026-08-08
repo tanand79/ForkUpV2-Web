@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Eye, EyeOff, HeartHandshake, Loader2, Store, Users } from "lucide-react";
+import { Eye, EyeOff, HeartHandshake, Loader2, Megaphone, Store, Users } from "lucide-react";
 
 import { loginUser, registerUser, checkEmailAvailable } from "@/lib/api";
 
@@ -462,6 +462,19 @@ const INTENT_OPTIONS: {
 
   },
 
+
+
+  {
+
+    id: "fundraiser",
+
+    label: "Fundraiser",
+
+    description: "Raise for nonprofits and send them campaign invites",
+
+    icon: Megaphone,
+
+  },
 ];
 
 
@@ -480,7 +493,7 @@ export function AccountIntentPicker({
         value={value ?? ""}
         onChange={(e) => {
           const next = e.target.value as AccountIntent | "";
-          if (next === "nonprofit" || next === "business" || next === "supporter") {
+          if (next === "nonprofit" || next === "business" || next === "supporter" || next === "fundraiser") {
             onChange(next);
           }
         }}

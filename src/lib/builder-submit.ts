@@ -119,6 +119,67 @@ function givebackMethodForSelection(business: Business): ApiMethodType {
 }
 
 /**
+ * Method types to invite a catalog business for, given selected campaign methods.
+ * Purpose: Never force guest_bartending_event when the business cannot host it
+ * (seed restaurants often only support dine_and_donate) — otherwise the server
+ * silently skips the invite and the Business dashboard stays empty.
+ * Inputs: builder method flags + optional catalog Business capabilities.
+ * Outputs: one or more API method types to create partner invite rows for.
+ */
+function inviteMethodTypesForCatalogBusiness(
+  methods: CampaignState["methods"],
+  business: Business | undefined,
+): ApiMethodType[] {
+  const types: ApiMethodType[] = [];
+
+  if (methods.giveback) {
+    types.push(business ? givebackMethodForSelection(business) : "dine_and_donate");
+  }
+
+  if (methods.guestBartending) {
+    if (!business || business.supportsGuestBartending) {
+      types.push("guest_bartending_event");
+    } else if (!methods.giveback) {
+      // Guest bartending only: fall back to a giveback method the business supports.
+      if (business.supportsDineDonate) types.push("dine_and_donate");
+      else if (business.supportsShopDonate) types.push("shop_and_donate");
+      else if (business.supportsServiceGiveback) types.push("service_giveback");
+      else types.push("guest_bartending_event");
+    }
+  }
+
+  if (types.length === 0) {
+    types.push("dine_and_donate");
+  }
+
+  return [...new Set(types)];
+}
+
+/**
+ * Method types for a free-form (name/email) business invite.
+ * Purpose: Persist separate partner rows when both giveback and guest bartending
+ * are selected, instead of only sending guest_bartending_event.
+ */
+function inviteMethodTypesForNewBusiness(
+  methods: CampaignState["methods"],
+  invite: CampaignState["invited"][number],
+): ApiMethodType[] {
+  const types: ApiMethodType[] = [];
+  if (methods.giveback) {
+    types.push(inferInviteMethodType(invite));
+  }
+  if (methods.guestBartending) {
+    types.push("guest_bartending_event");
+  }
+  if (types.length === 0) {
+    types.push(
+      methods.guestBartending ? "guest_bartending_event" : inferInviteMethodType(invite),
+    );
+  }
+  return [...new Set(types)];
+}
+
+/**
  * Returns a durable cover URL suitable for DB storage.
  * Prefers `storedUrl` (S3 or /uploads/…); never returns blob:/data: preview URLs.
  */
@@ -228,31 +289,27 @@ export function buildCreateCampaignPayload(
       if (lockedKeys.has(`${parsed.businessId}:${parsed.locationId}`)) continue;
 
       const business = selectedBusinesses.find((b) => b.id === id);
-      const methodType = state.methods.guestBartending
-        ? "guest_bartending_event"
-        : business
-          ? givebackMethodForSelection(business)
-          : "dine_and_donate";
-
-      invitations.push({
-        businessId: parsed.businessId,
-        locationId: parsed.locationId,
-        methodType,
-        givebackPercentage: state.giveback,
-      });
+      for (const methodType of inviteMethodTypesForCatalogBusiness(state.methods, business)) {
+        invitations.push({
+          businessId: parsed.businessId,
+          locationId: parsed.locationId,
+          methodType,
+          givebackPercentage: state.giveback,
+        });
+      }
     }
 
     for (const invite of state.invited) {
       if (invite.persisted) continue;
-      newBusinessInvites.push({
-        businessName: invite.name,
-        businessEmail: invite.email,
-        methodType: state.methods.guestBartending
-          ? "guest_bartending_event"
-          : inferInviteMethodType(invite),
-        messageToBusiness: invite.note?.trim() || undefined,
-        proposedTerms: invite.proposedTerms?.trim() || undefined,
-      });
+      for (const methodType of inviteMethodTypesForNewBusiness(state.methods, invite)) {
+        newBusinessInvites.push({
+          businessName: invite.name,
+          businessEmail: invite.email,
+          methodType,
+          messageToBusiness: invite.note?.trim() || undefined,
+          proposedTerms: invite.proposedTerms?.trim() || undefined,
+        });
+      }
     }
   }
 

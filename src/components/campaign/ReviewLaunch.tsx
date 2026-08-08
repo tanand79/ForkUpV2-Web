@@ -76,10 +76,20 @@ export function ReviewLaunch() {
   // Lovable: featured image is required for launch readiness; logo is optional.
   const hasAssets = hasCover;
   const businessesRequired = state.methods.giveback || state.methods.guestBartending;
+  /** Catalog picks, free-form invites, or locked partner from a business-originated campaign. */
   const hasBusinesses =
-    invitedBusinesses.length > 0 || (state.lockedBusinessPartners?.length ?? 0) > 0;
+    invitedBusinesses.length > 0 ||
+    state.invited.length > 0 ||
+    (state.lockedBusinessPartners?.length ?? 0) > 0 ||
+    state.campaignOrigin === "business_invite";
+  /**
+   * Dine & Donate / Guest Bartending require at least one business invite before launch
+   * (acceptance may still be pending). Online/ambassador-only campaigns are unaffected.
+   */
+  const businessInviteMissing = businessesRequired && !hasBusinesses;
 
-  const canLaunch = requiredRemaining === 0 && termsAccepted;
+  const canLaunch =
+    requiredRemaining === 0 && termsAccepted && !businessInviteMissing;
   // Informational only — never gates launch.
   const verificationPending =
     state.nonprofitProfile?.verificationStatus === "needs_review";
@@ -107,6 +117,10 @@ export function ReviewLaunch() {
   };
 
   const handleLaunch = async () => {
+    if (businessInviteMissing) {
+      setLaunchError("Please invite a business.");
+      return;
+    }
     if (!canLaunch) return;
     if (!state.nonprofitProfile) {
       goTo("nonprofit-claim");
@@ -278,7 +292,7 @@ export function ReviewLaunch() {
             ) : (
               <PreviewPrompt
                 label="Add a featured campaign photo"
-                onClick={() => goTo("campaign-review")}
+                onClick={() => goTo("ai-campaign-preview")}
                 className="aspect-[16/9] rounded-none border-0 border-b"
               />
             )}
@@ -306,7 +320,7 @@ export function ReviewLaunch() {
                     </p>
                   ) : (
                     <button
-                      onClick={() => goTo("campaign-review")}
+                      onClick={() => goTo("ai-campaign-preview")}
                       className="text-xs font-medium text-primary hover:underline"
                     >
                       Add your campaign dates →
@@ -324,7 +338,7 @@ export function ReviewLaunch() {
               {hasStory ? (
                 <p className="mt-4 text-pretty text-sm text-muted-foreground">{state.description}</p>
               ) : (
-                <PreviewPrompt label="Add your campaign story" onClick={() => goTo("campaign-review")} className="mt-4" />
+                <PreviewPrompt label="Add your campaign story" onClick={() => goTo("ai-campaign-preview")} className="mt-4" />
               )}
 
               {/* Support methods */}
@@ -395,7 +409,7 @@ export function ReviewLaunch() {
                     "Tell supporters why this matters and how they can make a difference.",
                   ]}
                   action="Add Story"
-                  onClick={() => goTo("campaign-review")}
+                  onClick={() => goTo("ai-campaign-preview")}
                 />
               )}
             </div>
@@ -457,7 +471,7 @@ export function ReviewLaunch() {
                 {hasDates ? (
                   datesSummary
                 ) : (
-                  <MissingItem lines={["Campaign dates needed before launch."]} action="Add Dates" onClick={() => goTo("campaign-review")} compact />
+                  <MissingItem lines={["Campaign dates needed before launch."]} action="Add Dates" onClick={() => goTo("ai-campaign-preview")} compact />
                 )}
               </SummaryRow>
               {state.methods.guestBartending && (
@@ -472,7 +486,7 @@ export function ReviewLaunch() {
                     <MissingItem
                       lines={["Event date required for Guest Bartending before launch."]}
                       action="Add Event Date"
-                      onClick={() => goTo("campaign-review")}
+                      onClick={() => goTo("ai-campaign-preview")}
                       compact
                     />
                   )}
@@ -513,7 +527,16 @@ export function ReviewLaunch() {
                     ))}
                   </div>
                 ) : state.campaignOrigin === "business_invite" ? null : (
-                  <MissingItem lines={["No businesses added yet."]} action="Invite Businesses" onClick={() => goTo("businesses")} />
+                  <MissingItem
+                    lines={["Please invite a business."]}
+                    action="Invite Businesses"
+                    onClick={() => goTo("businesses")}
+                  />
+                )}
+                {businessInviteMissing && (
+                  <p className="mt-3 text-sm font-medium text-destructive" role="alert">
+                    Please invite a business.
+                  </p>
                 )}
               </div>
             )}
@@ -542,7 +565,7 @@ export function ReviewLaunch() {
                   )}
                 </div>
               ) : (
-                <MissingItem lines={["Add a featured campaign photo before launch."]} action="Add Assets" onClick={() => goTo("campaign-review")} />
+                <MissingItem lines={["Add a featured campaign photo before launch."]} action="Add Assets" onClick={() => goTo("ai-campaign-preview")} />
               )}
             </div>
           </div>
@@ -602,6 +625,11 @@ export function ReviewLaunch() {
             />
             <span className="text-sm font-semibold">I&rsquo;m ready to launch this campaign.</span>
           </label>
+          {businessInviteMissing && (
+            <p className="mt-3 text-sm font-medium text-destructive" role="alert">
+              Please invite a business.
+            </p>
+          )}
           {launchError && (
             <p className="mt-3 text-sm text-destructive" role="alert">
               {launchError}
@@ -613,7 +641,7 @@ export function ReviewLaunch() {
       <footer className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-5 py-4 sm:px-6">
           <button
-            onClick={() => goTo("campaign-review")}
+            onClick={() => goTo("ai-campaign-preview")}
             className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-5 py-2.5 text-sm font-medium transition-colors hover:bg-secondary"
           >
             <Pencil className="size-4" />
@@ -621,9 +649,11 @@ export function ReviewLaunch() {
           </button>
           <div className="flex items-center gap-3">
             <span className="hidden max-w-[16rem] text-xs text-muted-foreground sm:inline">
-              {canLaunch
-                ? "Your campaign is ready to launch."
-                : "Almost there. Complete the remaining items above and we\u2019ll prepare your campaign for launch."}
+              {businessInviteMissing
+                ? "Please invite a business."
+                : canLaunch
+                  ? "Your campaign is ready to launch."
+                  : "Almost there. Complete the remaining items above and we\u2019ll prepare your campaign for launch."}
             </span>
             <button
               onClick={handleLaunch}

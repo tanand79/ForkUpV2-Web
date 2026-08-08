@@ -8,19 +8,28 @@
 import { authHeaders } from "@/lib/auth-storage";
 import { getApiBaseUrl } from "@/lib/api-config";
 
-function normalizeApiPath(path: string): string {
+/**
+ * Normalize API path for fetch.
+ * Same-origin Next (`trailingSlash: true`) needs a trailing slash so POST
+ * does not 308; Express strips trailing slashes server-side.
+ */
+function normalizeApiPath(path: string, baseUrl: string = ""): string {
   const q = path.indexOf("?");
   const pathname = q === -1 ? path : path.slice(0, q);
   const search = q === -1 ? "" : path.slice(q);
-  const normalized = pathname.replace(/\/+$/, "") || "/";
+  let normalized = pathname.replace(/\/+$/, "") || "/";
+  if (!baseUrl && normalized.startsWith("/api") && normalized !== "/api") {
+    normalized = `${normalized}/`;
+  }
   return `${normalized}${search}`;
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const baseUrl = getApiBaseUrl();
-  const url = normalizeApiPath(`${baseUrl}${path}`);
+  const url = normalizeApiPath(`${baseUrl}${path}`, baseUrl);
   const res = await fetch(url, {
     cache: "no-store",
+    redirect: "follow",
     ...init,
     headers: {
       ...authHeaders(),
@@ -45,6 +54,8 @@ export type AiSuggestedImage = {
   url: string;
   source: string;
   sourceUrl: string | null;
+  /** Optional public post caption when server extracted one. */
+  caption?: string | null;
 };
 
 export type AiCampaignIdea = {
@@ -77,6 +88,12 @@ export type AiAnalysisSession = {
     themes: string[];
     summary: string;
     provider: string;
+    /** Additive: YouTube channel used for post thumbnails. */
+    youtubeUrl?: string | null;
+    facebookUrl?: string | null;
+    instagramUrl?: string | null;
+    linkedinUrl?: string | null;
+    website?: string | null;
   } | null;
   errorMessage: string | null;
   expiresAt: string;
@@ -148,4 +165,33 @@ export function fetchAiCampaignSession(sessionToken: string) {
   return fetchJson<AiAnalysisSession>(
     `/api/ai-campaign-flow/sessions/${encodeURIComponent(sessionToken)}`,
   );
+}
+
+export type AiDraftFromPurposeResult = {
+  title: string;
+  story: string;
+  purpose: string;
+  suggestedGoal?: number;
+  provider: string;
+};
+
+/**
+ * method: POST /api/ai-campaign-flow/draft-from-purpose
+ * Purpose: Scratch-path title + story from a short purpose (new AI stack).
+ * Inputs: purpose + optional org/mission/methods/goal. Outputs: draft fields.
+ */
+export function draftAiCampaignFromPurpose(input: {
+  purpose: string;
+  organizationName?: string;
+  mission?: string | null;
+  causeCategory?: string | null;
+  website?: string | null;
+  methods?: string[];
+  goal?: string | number | null;
+}) {
+  return fetchJson<AiDraftFromPurposeResult>("/api/ai-campaign-flow/draft-from-purpose", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }

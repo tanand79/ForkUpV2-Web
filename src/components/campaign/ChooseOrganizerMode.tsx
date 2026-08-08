@@ -1,21 +1,24 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 
 /**
- * Old guided/advanced mode picker — hidden from the Lovable primary flow.
- * Any deep link redirects into Quick Start (Build Your Campaign).
+ * Old guided/advanced mode picker — hidden from the primary AI create flow.
+ * Any deep link resumes a draft or starts the new AI campaign flow (once).
  */
 export function ChooseOrganizerMode() {
-  const { update, goTo, hasDraft, resumeDraft } = useCampaign();
+  const { update, hasDraft, resumeDraft, startNewCampaign } = useCampaign();
+  const kickedOff = useRef(false);
 
   useEffect(() => {
+    if (kickedOff.current) return;
+    kickedOff.current = true;
     update({ organizerMode: "guided" });
     if (hasDraft) resumeDraft();
-    else goTo("quick-start");
-  }, [update, goTo, hasDraft, resumeDraft]);
+    else startNewCampaign();
+  }, [update, hasDraft, resumeDraft, startNewCampaign]);
 
   return (
     <main className="mx-auto flex min-h-[40vh] max-w-2xl flex-col items-center justify-center px-5 py-10">

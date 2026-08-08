@@ -33,7 +33,7 @@ import { buildDraftSavePayload, buildCampaignGalleryPayload, canSaveDraftToServe
 import { subtractCalendarDays, toDateOnlyString } from "@/lib/date-only";
 import { invalidateNonprofitDashboardCache } from "@/lib/nonprofit-dashboard-cache";
 import { analyzeAiCampaignFlow } from "@/lib/api-ai-campaign-flow";
-import { saveAiFlowStore } from "@/lib/ai-campaign-flow-storage";
+import { saveAiFlowStore, saveAiFlowPendingOrg } from "@/lib/ai-campaign-flow-storage";
 
 function businessesFromCatalog(s: CampaignState): Business[] {
   return s.businessCatalog ?? [];
@@ -170,10 +170,18 @@ function loadDraft(): CampaignDraft | null {
     ];
     let lastStep = resumeSteps.includes(draft.lastStep as StepId)
       ? (draft.lastStep as StepId)
-      : "quick-start";
-    // Legacy builder steps → Lovable resume targets.
-    if (lastStep === "methods") lastStep = "quick-start";
-    if (lastStep === "details" || lastStep === "media") lastStep = "campaign-review";
+      : "ai-campaign-purpose";
+    // Legacy builder steps → AI-first resume targets.
+    if (lastStep === "quick-start" || lastStep === "methods") {
+      lastStep = "ai-campaign-purpose";
+    }
+    if (
+      lastStep === "campaign-review" ||
+      lastStep === "details" ||
+      lastStep === "media"
+    ) {
+      lastStep = "ai-campaign-preview";
+    }
     const savedState = draft.state as Partial<CampaignState>;
 
     return {
@@ -250,6 +258,8 @@ export type StepId =
   | "business-claim"
   | "business-invites-nonprofit"
   | "nonprofit-accepts-invite"
+  | "fundraiser-invite-accept"
+  | "fundraiser-dashboard"
   | "nonprofit-dashboard"
   | "business-dashboard"
   | "supporter-dashboard"
@@ -360,6 +370,8 @@ export interface CampaignImage {
     | "library"
     | "social_suggest";
   sourceUrl?: string | null;
+  /** Optional public social post caption (from server post extraction). */
+  caption?: string | null;
 }
 
 export interface CampaignVideo {
@@ -933,10 +945,31 @@ export function computeChecklist(state: CampaignState): ChecklistItem[] {
   });
 }
 
+/**
+ * Map legacy Lovable checklist step IDs onto the AI-first funnel.
+ * Purpose: Resume / Continue setup never lands on QuickStart or CampaignReview.
+ * Inputs: checklist step id + draft state. Output: AI (or launch) StepId.
+ */
+export function mapLegacyBuilderStepToAi(
+  step: StepId,
+  state: Pick<CampaignState, "aiDrafted" | "title" | "description" | "fundsSupport">,
+): StepId {
+  if (step === "quick-start" || step === "methods") {
+    if (state.aiDrafted) return "ai-campaign-preview";
+    if (state.title.trim() || state.description.trim()) return "ai-campaign-build";
+    return "ai-campaign-purpose";
+  }
+  if (step === "campaign-review" || step === "details" || step === "media") {
+    return "ai-campaign-preview";
+  }
+  return step;
+}
+
 /** First required step that is not yet complete (where a returning user lands). */
 export function firstIncompleteStep(state: CampaignState): StepId {
   const incomplete = computeChecklist(state).find((i) => i.required && i.status !== "complete");
-  return incomplete?.id ?? "review";
+  const id = incomplete?.id ?? "review";
+  return mapLegacyBuilderStepToAi(id, state);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1571,7 +1604,17 @@ export function CampaignProvider({
         }
         goTo("ai-campaign-ideas");
       } catch {
-        goTo("ai-find-org");
+        // Nonprofit own-org path: never send to find-org picker.
+        saveAiFlowPendingOrg({
+          organizationName: profile.organizationName,
+          nonprofitId: profile.id ?? null,
+          website: promotion.websiteUrl || null,
+          facebookUrl: promotion.facebookUrl || null,
+          instagramUrl: promotion.instagramHandle || null,
+          mission: profile.mission || null,
+          causeCategory: profile.causeCategory || null,
+        });
+        goTo("ai-connect-social");
       }
     })();
   };
@@ -1605,7 +1648,7 @@ export function CampaignProvider({
       }
       const npId = stateRef.current.nonprofitProfile?.id;
       if (!npId) {
-        goTo("quick-start");
+        startNewCampaign();
         return;
       }
       try {
@@ -1618,9 +1661,9 @@ export function CampaignProvider({
       } catch {
         /* fall through */
       }
-      goTo("quick-start");
+      startNewCampaign();
     })();
-  }, [goTo, resumeCampaignBuilder]);
+  }, [resumeCampaignBuilder, startNewCampaign]);
 
   // Nick V2 / Lovable: Build → Review → Partners (optional) → Launch.
   // Guest Bartender and Ambassador activation remain post-launch.
@@ -1664,7 +1707,8 @@ export function CampaignProvider({
 
   const back = () => {
     if (step === "campaign-review") {
-      goTo("quick-start");
+      if (state.aiDrafted) goTo("ai-campaign-build");
+      else goTo("ai-campaign-purpose");
       return;
     }
     const current = step === "invite" ? "businesses" : step;
@@ -1729,17 +1773,19 @@ export function CampaignProvider({
 
   const switchActiveRole = useCallback((role: UserRole, organizationId?: number) => {
     setState((prev) => {
+      // Fall back to the in-progress profile when memberships are still empty
+      // (e.g. right after signup before create/claim links organization_users).
       const nonprofitProfile =
         role === "nonprofit"
           ? prev.nonprofitMemberships.find((n) => n.id === organizationId) ??
             prev.nonprofitMemberships[0] ??
-            null
+            prev.nonprofitProfile
           : prev.nonprofitProfile;
       const businessProfile =
         role === "business"
           ? prev.businessMemberships.find((b) => b.id === organizationId) ??
             prev.businessMemberships[0] ??
-            null
+            prev.businessProfile
           : prev.businessProfile;
 
       const next = {

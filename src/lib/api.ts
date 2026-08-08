@@ -3,20 +3,29 @@ import type { CampaignDetail, CampaignListItem } from "@/lib/campaign-types";
 import { authHeaders } from "@/lib/auth-storage";
 import { getApiBaseUrl } from "@/lib/api-config";
 
-/** API paths must not end with `/` — Next `trailingSlash` can add one and break Express routes. */
-function normalizeApiPath(path: string): string {
+/** API paths must not end with `/` when calling Express directly.
+ * Same-origin Next (`trailingSlash: true`) needs a trailing slash so POST
+ * does not hit a 308 redirect (which drops the Ideas image fetch). */
+function normalizeApiPath(path: string, baseUrl: string = ""): string {
   const q = path.indexOf("?");
   const pathname = q === -1 ? path : path.slice(0, q);
   const search = q === -1 ? "" : path.slice(q);
-  const normalized = pathname.replace(/\/+$/, "") || "/";
+  let normalized = pathname.replace(/\/+$/, "") || "/";
+
+  // Local Next proxy: add trailing slash to avoid 308 Permanent Redirect on POST.
+  if (!baseUrl && normalized.startsWith("/api") && normalized !== "/api") {
+    normalized = `${normalized}/`;
+  }
+
   return `${normalized}${search}`;
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const baseUrl = getApiBaseUrl();
-  const url = normalizeApiPath(`${baseUrl}${path}`);
+  const url = normalizeApiPath(`${baseUrl}${path}`, baseUrl);
   const res = await fetch(url, {
     cache: "no-store",
+    redirect: "follow",
     ...init,
     headers: {
       ...authHeaders(),
@@ -27,7 +36,10 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const message = typeof body.error === "string" ? body.error : `API error: ${res.status}`;
-    throw new Error(message);
+    /** Additive: status helps clients clear stale tokens after db:reset. */
+    const err = new Error(message) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
   if (!contentType.includes("application/json")) {
     const hint = baseUrl
@@ -991,12 +1003,104 @@ export interface NonprofitPendingInvite {
   givebackPercentage: number;
   sentAt: string;
   acceptPath: string;
+  /** Additive: business partnership vs fundraiser proposal. */
+  inviteSource?: "business" | "fundraiser";
+  fundraiserName?: string | null;
+  fundraiserEmail?: string | null;
 }
 
 export function fetchNonprofitPendingInvites(nonprofitId: number) {
   return fetchJson<NonprofitPendingInvite[]>(
     `/api/manage/nonprofits/${nonprofitId}/pending-invites`,
   );
+}
+
+/** Fundraiser → nonprofit campaign invitation (GET /api/fundraiser/invites/:token). */
+export interface FundraiserCampaignInvite {
+  token: string;
+  invitationStatus: string;
+  message: string | null;
+  fundraiser: { name: string; email: string };
+  nonprofit: { id: number; name: string; email: string | null };
+  campaign: {
+    slug: string;
+    name: string;
+    story: string;
+    goal: number;
+    startDate: string | null;
+    endDate: string | null;
+    status: string;
+    coverImageUrl: string | null;
+  };
+}
+
+export function fetchFundraiserCampaignInvite(token: string) {
+  return fetchJson<FundraiserCampaignInvite>(
+    `/api/fundraiser/invites/${encodeURIComponent(token)}`,
+  );
+}
+
+/**
+ * method: POST /api/fundraiser/invites
+ * Creates draft campaign + emails nonprofit.
+ */
+export function createFundraiserCampaignInvite(body: {
+  nonprofitId: number;
+  campaignName: string;
+  campaignStory: string;
+  campaignGoal?: number;
+  startDate?: string | null;
+  endDate?: string | null;
+  coverImage?: string | null;
+  message?: string | null;
+}) {
+  return fetchJson<{
+    token: string;
+    acceptPath: string;
+    campaignSlug: string;
+    campaignName: string;
+  }>("/api/fundraiser/invites", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+}
+
+export function acceptFundraiserCampaignInvite(token: string) {
+  return fetchJson<{ success: boolean; invitationStatus: string; campaignSlug?: string }>(
+    `/api/fundraiser/invites/${encodeURIComponent(token)}/accept`,
+    { method: "POST", headers: { ...authHeaders() } },
+  );
+}
+
+export function declineFundraiserCampaignInvite(token: string, reason?: string) {
+  return fetchJson<{ success: boolean; invitationStatus: string }>(
+    `/api/fundraiser/invites/${encodeURIComponent(token)}/decline`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ reason }),
+    },
+  );
+}
+
+export interface FundraiserMyInvite {
+  token: string;
+  invitationStatus: string;
+  sentAt: string;
+  respondedAt: string | null;
+  message: string | null;
+  nonprofitName: string;
+  campaignSlug: string;
+  campaignName: string;
+  campaignStatus: string;
+  acceptPath: string;
+}
+
+export function fetchMyFundraiserInvites() {
+  return fetchJson<FundraiserMyInvite[]>("/api/fundraiser/my-invites", {
+    headers: { ...authHeaders() },
+  });
 }
 
 export interface NonprofitPartnerUpdate {
@@ -1602,6 +1706,8 @@ export interface SuggestedCampaignImage {
   url: string;
   source: "website" | "facebook" | "instagram" | "social_suggest";
   sourceUrl: string | null;
+  /** Optional public post caption when the server extracted one. */
+  caption?: string | null;
 }
 
 export interface CampaignGalleryImage {
@@ -1619,6 +1725,8 @@ export function suggestCampaignImages(body: {
   facebookUrl?: string;
   instagramHandle?: string;
   websiteUrl?: string;
+  linkedinUrl?: string;
+  youtubeUrl?: string;
   limit?: number;
 }) {
   return fetchJson<{ images: SuggestedCampaignImage[] }>("/api/campaign-images/suggest", {

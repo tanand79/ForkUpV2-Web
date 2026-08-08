@@ -34,11 +34,9 @@ import { useCallback, useState } from "react";
 
 import { useCampaign } from "@/lib/campaign-context";
 
-import { generateCampaignDraft } from "@/lib/api";
+import { draftAiCampaignFromPurpose, fetchAiCampaignSession } from "@/lib/api-ai-campaign-flow";
 
-import { fetchAiCampaignSession } from "@/lib/api-ai-campaign-flow";
-
-import { loadAiFlowStore, saveAiFlowStore } from "@/lib/ai-campaign-flow-storage";
+import { loadAiFlowStore, saveAiFlowStore, loadAiFlowPendingOrg } from "@/lib/ai-campaign-flow-storage";
 
 import { resolveAiFlowImages } from "./resolve-ai-flow-images";
 
@@ -134,6 +132,10 @@ export function AiCampaignPurpose() {
 
     let website = state.promotion.websiteUrl || undefined;
 
+    let linkedinUrl: string | undefined;
+
+    let youtubeUrl: string | undefined = loadAiFlowPendingOrg()?.youtubeUrl || undefined;
+
     let analysisImages: {
 
       url: string;
@@ -141,6 +143,8 @@ export function AiCampaignPurpose() {
       sourceUrl?: string | null;
 
       source?: string | null;
+
+      caption?: string | null;
 
     }[] = [];
 
@@ -164,6 +168,10 @@ export function AiCampaignPurpose() {
 
           instagramHandle = session.instagramUrl || instagramHandle;
 
+          linkedinUrl = session.linkedinUrl || linkedinUrl;
+
+          youtubeUrl = session.analysis?.youtubeUrl || youtubeUrl;
+
           analysisImages = (session.analysis?.images || []).map((img) => ({
 
             url: img.url,
@@ -171,6 +179,8 @@ export function AiCampaignPurpose() {
             sourceUrl: img.sourceUrl,
 
             source: img.source,
+
+            caption: img.caption,
 
           }));
 
@@ -186,7 +196,7 @@ export function AiCampaignPurpose() {
 
       try {
 
-        const draft = await generateCampaignDraft({
+        const draft = await draftAiCampaignFromPurpose({
 
           purpose: purposeText,
 
@@ -204,21 +214,11 @@ export function AiCampaignPurpose() {
 
             .map(([k]) => k),
 
-          organizationId: state.nonprofitProfile?.id,
-
         });
 
         if (draft.title) title = draft.title;
 
         if (draft.story) story = draft.story;
-
-        if (draft.suggestedImageUrl) libraryImageUrl = draft.suggestedImageUrl;
-
-        facebookUrl = draft.facebookUrl || facebookUrl;
-
-        instagramHandle = draft.instagramHandle || instagramHandle;
-
-        website = draft.websiteUrl || website;
 
         update({
 
@@ -252,6 +252,10 @@ export function AiCampaignPurpose() {
         instagramHandle,
 
         websiteUrl: website,
+
+        linkedinUrl,
+
+        youtubeUrl,
 
         analysisImages,
 

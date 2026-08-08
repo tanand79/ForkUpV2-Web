@@ -128,16 +128,14 @@ export function PublicLandingPage() {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // Parallel AI-first create flow (guest through preview). Existing Quick Start
-  // stays intact for claimed / logged-in organizers.
-  //   no org yet  → AI Find org
-  //   org already → Organization Ready (start)
+  // Nonprofit members → own-org create. Everyone else → fundraiser find-org path.
   const startCampaign = () => {
-    stashAccountIntent("nonprofit");
-    if (state.nonprofitProfile) {
+    if (state.nonprofitMemberships.length > 0 || state.nonprofitProfile) {
+      stashAccountIntent("nonprofit");
       goTo("start");
       return;
     }
+    stashAccountIntent("fundraiser");
     goTo("ai-find-org");
   };
 

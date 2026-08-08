@@ -41,7 +41,8 @@ import {
   type TimingCta,
 } from "@/lib/campaign-timing";
 import { fetchAiCampaignSession } from "@/lib/api-ai-campaign-flow";
-import { loadAiFlowStore } from "@/lib/ai-campaign-flow-storage";
+import { createFundraiserCampaignInvite } from "@/lib/api";
+import { loadAiFlowStore, loadAiFlowPendingOrg } from "@/lib/ai-campaign-flow-storage";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
 import {
   AiCampaignCoverPicker,
@@ -85,6 +86,12 @@ export function AiCampaignPreview() {
   const { state, update, goTo } = useCampaign();
   const [editing, setEditing] = useState(false);
   const [coverPickerOpen, setCoverPickerOpen] = useState(false);
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState(
+    () => loadAiFlowPendingOrg()?.youtubeUrl?.trim() || "",
+  );
   /** Failed social/CDN URLs so onError can fall through to the next suggestion. */
   const failedCoverUrls = useRef<Set<string>>(new Set());
 
@@ -97,13 +104,36 @@ export function AiCampaignPreview() {
 
     void (async () => {
       const hasCoverNow = !!(state.cover?.url || state.cover?.storedUrl);
-      if (hasCoverNow && state.images.length > 0) return;
+      if (hasCoverNow && state.images.length > 0) {
+        const store = loadAiFlowStore();
+        if (store?.sessionToken) {
+          try {
+            const session = await fetchAiCampaignSession(store.sessionToken);
+            if (cancelled) return;
+            if (session.linkedinUrl) setLinkedinUrl(session.linkedinUrl);
+            const yt =
+              session.analysis?.youtubeUrl ||
+              loadAiFlowPendingOrg()?.youtubeUrl ||
+              "";
+            if (yt) setYoutubeUrl(yt);
+          } catch {
+            /* ignore */
+          }
+        }
+        return;
+      }
 
       let facebookUrl = state.promotion.facebookUrl.trim();
       let instagramHandle = state.promotion.instagramHandle.trim();
       let websiteUrl = state.promotion.websiteUrl.trim();
-      let analysisImages: { url: string; sourceUrl?: string | null; source?: string | null }[] =
-        [];
+      let nextLinkedin = "";
+      let nextYoutube = loadAiFlowPendingOrg()?.youtubeUrl?.trim() || "";
+      let analysisImages: {
+        url: string;
+        sourceUrl?: string | null;
+        source?: string | null;
+        caption?: string | null;
+      }[] = [];
       let ideaThumbs: string[] = [];
       const store = loadAiFlowStore();
 
@@ -116,10 +146,13 @@ export function AiCampaignPreview() {
             instagramHandle = session.instagramUrl;
           }
           if (!websiteUrl && session.website) websiteUrl = session.website;
+          if (session.linkedinUrl) nextLinkedin = session.linkedinUrl;
+          if (session.analysis?.youtubeUrl) nextYoutube = session.analysis.youtubeUrl;
           analysisImages = (session.analysis?.images || []).map((img) => ({
             url: img.url,
             sourceUrl: img.sourceUrl,
             source: img.source,
+            caption: img.caption,
           }));
           ideaThumbs = ideaThumbnailFallbackUrls(session.ideas);
         } catch {
@@ -127,10 +160,15 @@ export function AiCampaignPreview() {
         }
       }
 
+      if (nextLinkedin) setLinkedinUrl(nextLinkedin);
+      if (nextYoutube) setYoutubeUrl(nextYoutube);
+
       const media = await resolveAiFlowImages({
         facebookUrl,
         instagramHandle,
         websiteUrl,
+        linkedinUrl: nextLinkedin || undefined,
+        youtubeUrl: nextYoutube || undefined,
         analysisImages,
         fallbackUrls: [
           ...ideaThumbs,
@@ -789,8 +827,48 @@ export function AiCampaignPreview() {
         </button>
         <button
           type="button"
-          disabled={!ready}
+          disabled={!ready || inviteSending}
           onClick={() => {
+            const fundraiserPath = state.accountIntent === "fundraiser";
+            if (fundraiserPath) {
+              if (!getAuthToken()) {
+                stashAccountIntent("fundraiser");
+                stashAuthReturnStep("ai-campaign-preview");
+                sessionStorage.setItem("forkup-auth-initial-mode", "register");
+                goTo("auth-login");
+                return;
+              }
+              const pending = loadAiFlowPendingOrg();
+              const nonprofitId =
+                pending?.nonprofitId ?? state.nonprofitProfile?.id ?? null;
+              if (!nonprofitId) {
+                setInviteError(
+                  "This nonprofit must exist in ForkUp before you can send an invite. Pick an organization with a ForkUp profile.",
+                );
+                return;
+              }
+              setInviteError(null);
+              setInviteSending(true);
+              void createFundraiserCampaignInvite({
+                nonprofitId,
+                campaignName: state.title.trim(),
+                campaignStory: state.description.trim(),
+                campaignGoal: Number(String(state.goal).replace(/[^0-9.]/g, "")) || 0,
+                startDate: state.startDate || null,
+                endDate: state.endDate || null,
+                coverImage:
+                  state.cover?.storedUrl || state.cover?.url || null,
+                message: null,
+              })
+                .then(() => goTo("fundraiser-dashboard"))
+                .catch((err) =>
+                  setInviteError(
+                    err instanceof Error ? err.message : "Failed to send invitation",
+                  ),
+                )
+                .finally(() => setInviteSending(false));
+              return;
+            }
             if (getAuthToken()) {
               goTo("review");
               return;
@@ -802,15 +880,43 @@ export function AiCampaignPreview() {
           }}
           className="inline-flex w-full flex-1 items-center justify-center rounded-full bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Continue
+          {inviteSending
+            ? "Sending invite…"
+            : state.accountIntent === "fundraiser"
+              ? "Send invite to nonprofit"
+              : "Continue"}
         </button>
       </div>
+      {inviteError ? (
+        <p className="mt-3 text-sm text-destructive">{inviteError}</p>
+      ) : null}
 
       <AiCampaignCoverPicker
         open={coverPickerOpen}
         cover={state.cover}
         images={state.images}
+        facebookUrl={state.promotion.facebookUrl}
+        instagramHandle={state.promotion.instagramHandle}
+        websiteUrl={state.promotion.websiteUrl}
+        linkedinUrl={linkedinUrl}
+        youtubeUrl={youtubeUrl}
         onClose={() => setCoverPickerOpen(false)}
+        onSuggestedImages={(suggested) => {
+          const seen = new Set(
+            [state.cover, ...state.images]
+              .filter(Boolean)
+              .map((img) => (img!.url || img!.storedUrl || "").split("?")[0].toLowerCase()),
+          );
+          const extras = suggested.filter((img) => {
+            const key = (img.url || img.storedUrl || "").split("?")[0].toLowerCase();
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          if (extras.length > 0) {
+            update({ images: [...state.images, ...extras].slice(0, 10) });
+          }
+        }}
         onSelectCover={(cover) => {
           update({ cover });
           setCoverPickerOpen(false);

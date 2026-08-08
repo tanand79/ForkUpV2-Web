@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, HeartHandshake, Plus, Store, Users } from "lucide-react";
+import { ArrowRight, HeartHandshake, Megaphone, Plus, Store, Users } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { getAuthToken } from "@/lib/auth-storage";
 import {
@@ -16,6 +16,7 @@ const ROLE_ICONS: Record<UserRole, typeof HeartHandshake> = {
   nonprofit: HeartHandshake,
   business: Store,
   supporter: Users,
+  fundraiser: Megaphone,
 };
 
 export function AccountHub() {
@@ -67,6 +68,14 @@ export function AccountHub() {
         : "Claim your business to accept invitations and partner with nonprofits",
       action: avail.business ? "Open dashboard" : "Claim business",
       available: true,
+    },
+    {
+      role: "fundraiser",
+      title: ROLE_LABELS.fundraiser,
+      description:
+        "Raise for nonprofits you support — build a campaign and send them an invite",
+      action: "Open fundraiser home",
+      available: signedIn,
     },
     {
       role: "supporter",

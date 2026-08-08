@@ -15,6 +15,8 @@ const ALL_STEP_IDS = [
   "business-claim",
   "business-invites-nonprofit",
   "nonprofit-accepts-invite",
+  "fundraiser-invite-accept",
+  "fundraiser-dashboard",
   "nonprofit-dashboard",
   "create-fundraiser",
   "quick-start",

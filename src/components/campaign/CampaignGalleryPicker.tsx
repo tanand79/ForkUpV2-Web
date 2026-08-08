@@ -112,6 +112,7 @@ export function CampaignGalleryPicker({
         storedUrl: s.url,
         source: s.source,
         sourceUrl: s.sourceUrl,
+        ...(s.caption ? { caption: s.caption } : {}),
       }));
       const existingManual = slots.filter((s) => s.source === "manual");
       const merged: CampaignImage[] = [];

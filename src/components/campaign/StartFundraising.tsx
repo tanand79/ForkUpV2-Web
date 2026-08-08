@@ -20,8 +20,8 @@ export function StartFundraising() {
     state.nonprofitMemberships.length > 0 || state.businessMemberships.length > 0;
 
   /**
-   * Lovable: Organization Ready → Build Your Campaign (quick-start)
-   * → Prepare My Draft → Campaign Review.
+   * Organization Ready → new AI campaign flow (analyze → ideas),
+   * or resume an in-progress AI / legacy draft.
    * Never send claimed orgs to update-profile / nonprofit-claim.
    * Never resume into the legacy details/media tab builder.
    */
@@ -30,15 +30,15 @@ export function StartFundraising() {
       goTo("nonprofit-claim");
       return;
     }
-    // Draft already prepared → Lovable Review screen.
-    if (
-      state.aiDrafted ||
-      (state.title.trim() && state.description.trim() && state.fundsSupport[0]?.trim())
-    ) {
-      goTo("campaign-review");
+    if (state.aiDrafted) {
+      goTo("ai-campaign-preview");
       return;
     }
-    goTo("quick-start");
+    if (state.title.trim() && state.description.trim() && state.fundsSupport[0]?.trim()) {
+      goTo("ai-campaign-preview");
+      return;
+    }
+    startNewCampaign();
   };
 
   return (
@@ -91,9 +91,7 @@ export function StartFundraising() {
           !(state.aiDrafted || (state.title.trim() && state.description.trim())) && (
           <button
             type="button"
-            onClick={() => {
-              goTo("quick-start");
-            }}
+            onClick={() => startNewCampaign()}
             className="mt-3 text-xs font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
           >
             Start building from the beginning

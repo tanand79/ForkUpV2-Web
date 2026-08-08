@@ -18,6 +18,9 @@
  *
  * Changelog: Prefer true social OG images for cover; demote tall-logo URLs.
  * Fall back to website images when social scrape returns nothing.
+ * Additive: pass linkedinUrl/youtubeUrl into suggest; preserve post captions.
+ * Additive: when social post images exist, prefer them over idea thumbnail cover.
+ * Additive: channel priority Instagram → Facebook → LinkedIn → YouTube → website.
  */
 import type { CampaignImage } from "@/lib/campaign-context";
 import { suggestCampaignImages } from "@/lib/api";
@@ -30,12 +33,17 @@ export type AiFlowAnalysisImage = {
   sourceUrl?: string | null;
   /** When present from analysis, preserves provider channel for ranking. */
   source?: string | null;
+  caption?: string | null;
 };
 
 export type ResolveAiFlowImagesInput = {
   facebookUrl?: string | null;
   instagramHandle?: string | null;
   websiteUrl?: string | null;
+  /** Additive: LinkedIn profile/company for post extraction. */
+  linkedinUrl?: string | null;
+  /** Additive: YouTube channel for recent video thumbnails. */
+  youtubeUrl?: string | null;
   analysisImages?: AiFlowAnalysisImage[] | null;
   /** Used only when social + analysis produced nothing. */
   fallbackUrls?: Array<string | null | undefined>;
@@ -74,17 +82,22 @@ export function looksLikeLogoUrl(url: string): boolean {
 
 /**
  * Lower is better for featured cover.
- * Real social channels beat analysis/library; logo-like URLs always rank last.
+ * Channel priority: Instagram → Facebook → LinkedIn → YouTube → website → library.
+ * Logo-like URLs always rank last within that order.
  */
 function coverRank(img: CampaignImage): number {
   const source = img.source ?? "";
+  const ref = `${img.sourceUrl || ""} ${normalizeUrl(img.url) || normalizeUrl(img.storedUrl)}`;
   let base = 50;
-  if (source === "facebook") base = 0;
-  else if (source === "instagram") base = 10;
-  else if (source === "website") base = 20;
-  else if (source === "social_suggest") base = 30;
-  else if (source === "library") base = 40;
-  else if (img.id.startsWith("ai-img-")) base = 45;
+  if (source === "instagram") base = 0;
+  else if (source === "facebook") base = 10;
+  else if (source === "social_suggest") {
+    if (/linkedin\.com|licdn\.com/i.test(ref)) base = 20;
+    else if (/youtube\.com|youtu\.be|ytimg\.com/i.test(ref)) base = 30;
+    else base = 35;
+  } else if (source === "website") base = 40;
+  else if (source === "library") base = 45;
+  else if (img.id.startsWith("ai-img-")) base = 48;
 
   const src = normalizeUrl(img.url) || normalizeUrl(img.storedUrl);
   // Heavy demotion so a FB logo never beats a real website/social photo.
@@ -122,8 +135,12 @@ export function aiFlowCoverSourceLabel(cover: CampaignImage | null | undefined):
       return "From library";
     case "manual":
       return "Uploaded";
-    case "social_suggest":
+    case "social_suggest": {
+      const ref = `${cover.sourceUrl || ""} ${cover.url || cover.storedUrl || ""}`;
+      if (/linkedin\.com/i.test(ref)) return "From LinkedIn";
+      if (/youtube\.com|youtu\.be/i.test(ref)) return "From YouTube";
       return cover.id.startsWith("ai-img-") ? "From AI analysis" : "From social";
+    }
     default:
       return cover.id.startsWith("ai-img-") ? "From AI analysis" : "Suggested";
   }
@@ -157,11 +174,15 @@ export function ideaThumbnailFallbackUrls(
   return urls;
 }
 
+function isSocialPostSource(source: CampaignImage["source"] | undefined): boolean {
+  return source === "facebook" || source === "instagram" || source === "social_suggest";
+}
+
 /**
  * Resolve cover + gallery with social-suggest-first priority and ranked cover pick.
  *
  * Modes:
- *   idea — preferredCoverUrl (idea card thumbnail) wins as cover.
+ *   idea — preferredCoverUrl (idea card thumbnail) used only when no social posts.
  *   scratch — fetch up to 10 social images (website fallback only if social empty).
  */
 export async function resolveAiFlowImages(
@@ -179,6 +200,8 @@ export async function resolveAiFlowImages(
   const facebookUrl = normalizeUrl(input.facebookUrl);
   const instagramHandle = normalizeUrl(input.instagramHandle);
   const websiteUrl = normalizeUrl(input.websiteUrl);
+  const linkedinUrl = normalizeUrl(input.linkedinUrl);
+  const youtubeUrl = normalizeUrl(input.youtubeUrl);
   const preferredCoverUrl = normalizeUrl(input.preferredCoverUrl);
 
   const merged: CampaignImage[] = [];
@@ -204,15 +227,20 @@ export async function resolveAiFlowImages(
     });
   }
 
-  const hasSocial = Boolean(facebookUrl || instagramHandle);
+  const hasSocial = Boolean(facebookUrl || instagramHandle || linkedinUrl || youtubeUrl);
 
   /**
    * Two-pass scrape:
-   *  1) Facebook/Instagram only when links exist
+   *  1) Social profiles / posts when links exist
    *  2) Website only if no social photos were collected
    */
   const pushSuggested = (
-    suggested: Array<{ url: string; source: string; sourceUrl?: string | null }>,
+    suggested: Array<{
+      url: string;
+      source: string;
+      sourceUrl?: string | null;
+      caption?: string | null;
+    }>,
   ) => {
     for (let i = 0; i < suggested.length; i++) {
       const s = suggested[i];
@@ -223,6 +251,7 @@ export async function resolveAiFlowImages(
         storedUrl: s.url,
         source: s.source as CampaignImage["source"],
         sourceUrl: s.sourceUrl,
+        ...(s.caption ? { caption: s.caption } : {}),
       });
     }
   };
@@ -233,6 +262,8 @@ export async function resolveAiFlowImages(
         facebookUrl,
         instagramHandle,
         websiteUrl: undefined,
+        linkedinUrl: linkedinUrl || undefined,
+        youtubeUrl: youtubeUrl || undefined,
         limit: fetchLimit,
       });
       pushSuggested(socialOnly);
@@ -241,9 +272,7 @@ export async function resolveAiFlowImages(
     }
   }
 
-  const hasSocialPhotos = merged.some(
-    (m) => m.source === "facebook" || m.source === "instagram",
-  );
+  const hasSocialPhotos = merged.some((m) => isSocialPostSource(m.source));
 
   // Website only when social found nothing (scratch + idea).
   if (websiteUrl && !hasSocialPhotos) {
@@ -275,6 +304,7 @@ export async function resolveAiFlowImages(
         name: `Suggested ${i + 1}`,
         source: mapped,
         ...(img.sourceUrl ? { sourceUrl: img.sourceUrl } : {}),
+        ...(img.caption ? { caption: img.caption } : {}),
       });
     }
   };
@@ -302,7 +332,34 @@ export async function resolveAiFlowImages(
     return { cover: null, images: [] };
   }
 
+  const socialRanked = sortForCover(merged.filter((m) => isSocialPostSource(m.source)));
   const ranked = sortForCover(merged).slice(0, limit);
+
+  // Prefer real social post photos over the idea-card thumbnail when available.
+  if (socialRanked.length > 0) {
+    const cover = socialRanked[0]!;
+    const rest = ranked.filter((img) => img.id !== cover.id && img.url !== cover.url);
+    // Keep preferred idea thumb in the gallery if it wasn't chosen as cover.
+    if (preferredCoverUrl) {
+      const preferredInRest = rest.some(
+        (img) =>
+          dedupeKey(normalizeUrl(img.url) || normalizeUrl(img.storedUrl)) ===
+          dedupeKey(preferredCoverUrl),
+      );
+      if (!preferredInRest) {
+        const preferred =
+          merged.find(
+            (img) =>
+              dedupeKey(normalizeUrl(img.url) || normalizeUrl(img.storedUrl)) ===
+              dedupeKey(preferredCoverUrl),
+          ) || null;
+        if (preferred && rest.length < Math.max(0, limit - 1)) {
+          rest.push(preferred);
+        }
+      }
+    }
+    return { cover, images: rest.slice(0, Math.max(0, limit - 1)) };
+  }
 
   if (preferredCoverUrl) {
     const preferred =

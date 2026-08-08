@@ -25,7 +25,10 @@ import { AmbassadorSetup } from "@/components/campaign/AmbassadorSetup";
 import { GuestBartenderSetup } from "@/components/campaign/GuestBartenderSetup";
 import { CampaignMedia } from "@/components/campaign/CampaignMedia";
 import { ReviewLaunch } from "@/components/campaign/ReviewLaunch";
-import { CampaignReview } from "@/components/campaign/CampaignReview";
+import {
+  LegacyCampaignReviewDivert,
+  LegacyQuickStartDivert,
+} from "@/components/campaign/ai-flow/LegacyBuilderToAiDivert";
 import { CampaignCreated } from "@/components/campaign/CampaignCreated";
 import { CampaignDashboard } from "@/components/campaign/CampaignDashboard";
 import { InReviewCampaignPreview } from "@/components/campaign/InReviewCampaignPreview";
@@ -57,6 +60,8 @@ import {
   BusinessInvitesNonprofit,
   NonprofitAcceptsInvite,
 } from "@/components/campaign/EntryFlows";
+import { FundraiserAcceptsInvite } from "@/components/campaign/FundraiserAcceptsInvite";
+import { FundraiserDashboard } from "@/components/campaign/FundraiserDashboard";
 import { PublicLandingPage } from "@/components/campaign/PublicLandingPage";
 import { CampaignDirectory } from "@/components/campaign/CampaignDirectory";
 import { PastCampaigns } from "@/components/campaign/PastCampaigns";
@@ -68,7 +73,6 @@ import { AccountHub } from "@/components/campaign/AccountHub";
 import { SuccessState } from "@/components/campaign/SuccessStates";
 import { AuthLogin, AccountIntentPicker } from "@/components/campaign/AuthLogin";
 import { ChooseOrganizerMode } from "@/components/campaign/ChooseOrganizerMode";
-import { QuickStart } from "@/components/campaign/QuickStart";
 import { CreateFundraiser } from "@/components/campaign/CreateFundraiser";
 import { GuidedBuilderShell } from "@/components/campaign/GuidedBuilderShell";
 import {
@@ -144,12 +148,9 @@ function AuthLoginScreen() {
       }
 
       const patch = buildSessionPatch(session);
-      // If link hasn't landed in memberships yet, keep guest nonprofit profile locally.
-      if (
-        !patch.nonprofitProfile &&
-        pendingNonprofitProfile &&
-        (pendingNonprofitId || pendingCampaignSlug)
-      ) {
+      // Keep the org picked during build/claim when the new account has no memberships yet.
+      // (Previously required id/slug — wiped website-only / pre-create profiles on signup.)
+      if (!patch.nonprofitProfile && pendingNonprofitProfile) {
         update({
           ...patch,
           nonprofitProfile: pendingNonprofitProfile,
@@ -256,6 +257,20 @@ function WizardBody() {
           <NonprofitAcceptsInvite />
         </Suspense>
       );
+    case "fundraiser-invite-accept":
+      return (
+        <Suspense
+          fallback={
+            <div className="flex justify-center py-20">
+              <span className="text-sm text-muted-foreground">Loading invitation…</span>
+            </div>
+          }
+        >
+          <FundraiserAcceptsInvite />
+        </Suspense>
+      );
+    case "fundraiser-dashboard":
+      return <FundraiserDashboard />;
     case "nonprofit-dashboard":
       return <NonprofitDashboard />;
     case "business-dashboard":
@@ -269,7 +284,8 @@ function WizardBody() {
     case "create-fundraiser":
       return <CreateFundraiser />;
     case "quick-start":
-      return <QuickStart />;
+      // Legacy Lovable Build — always divert into AI funnel (file kept for Design Mode).
+      return <LegacyQuickStartDivert />;
     case "ai-find-org":
       return <AiFindOrganization />;
     case "ai-connect-social":
@@ -289,7 +305,8 @@ function WizardBody() {
     case "ai-continue-guest":
       return <AiContinueGuest />;
     case "campaign-review":
-      return <CampaignReview />;
+      // Legacy Lovable Review — divert to AI preview (CampaignReview kept for Design Mode).
+      return <LegacyCampaignReviewDivert />;
     case "methods":
       return (
         <GuidedBuilderShell step="methods">

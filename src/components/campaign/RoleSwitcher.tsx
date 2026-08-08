@@ -14,7 +14,7 @@ import {
 } from "@/lib/user-roles";
 import { headerPillClass } from "./SiteHeader";
 
-const ALL_ROLES: UserRole[] = ["nonprofit", "business", "supporter"];
+const ALL_ROLES: UserRole[] = ["nonprofit", "business", "fundraiser", "supporter"];
 
 function roleLabel(role: UserRole, hasMembership: boolean): string {
   if (role === "nonprofit" && !hasMembership) return `${ROLE_LABELS.nonprofit} (set up)`;
@@ -60,7 +60,7 @@ export function RoleSwitcher() {
         value={active}
         onChange={(e) => navigateRole(e.target.value as UserRole)}
         className={`${headerPillClass} h-8 max-w-[11.5rem] cursor-pointer appearance-none truncate py-1.5 pl-3.5 pr-8`}
-        title="Switch between nonprofit, business, and supporter"
+        title="Switch between nonprofit, business, fundraiser, and supporter"
       >
         {ALL_ROLES.map((role) => (
           <option key={role} value={role}>

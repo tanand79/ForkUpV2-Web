@@ -780,7 +780,7 @@ export function NonprofitDashboard() {
           {pendingInvites.length > 0 && (
             <section className="animate-rise mt-8 rounded-3xl border border-primary/30 bg-primary/5 p-6">
               <h2 className="font-display text-lg font-bold tracking-tight">
-                Invitations from businesses
+                Partnership invitations
               </h2>
               <ul className="mt-4 space-y-3">
                 {pendingInvites.map((inv) => (
@@ -791,7 +791,9 @@ export function NonprofitDashboard() {
                     <div>
                       <p className="font-semibold">{inv.campaignName}</p>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {inv.businessName} · {inv.methodName} · {inv.givebackPercentage}% giveback
+                        {inv.inviteSource === "fundraiser"
+                          ? `${inv.fundraiserName || inv.businessName} · Fundraiser proposal`
+                          : `${inv.businessName} · ${inv.methodName} · ${inv.givebackPercentage}% giveback`}
                       </p>
                     </div>
                     <a
