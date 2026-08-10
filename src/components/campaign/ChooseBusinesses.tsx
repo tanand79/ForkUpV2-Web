@@ -57,8 +57,8 @@ export function ChooseBusinesses() {
   const [catalog, setCatalog] = useState<Business[]>(state.businessCatalog);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  /** When true, fetch catalog within ~8 miles. Off by default = normal full list. */
-  const [nearbyOnly, setNearbyOnly] = useState(false);
+  /** When true, fetch catalog within ~8 miles. On by default for geo filter. */
+  const [nearbyOnly, setNearbyOnly] = useState(true);
   const [sendingAppend, setSendingAppend] = useState(false);
   const [appendError, setAppendError] = useState<string | null>(null);
   const browserLocation = useBrowserLocation(nearbyOnly);
@@ -286,7 +286,8 @@ export function ChooseBusinesses() {
               type="checkbox"
               checked={nearbyOnly}
               onChange={(e) => setNearbyOnly(e.target.checked)}
-              className="size-4 rounded border-border"
+              className="size-4 rounded border-border accent-primary text-primary"
+              style={{ accentColor: "var(--color-primary, #A65A3A)" }}
             />
             <span className="inline-flex items-center gap-1.5">
               <MapPin className="size-3.5 text-muted-foreground" />

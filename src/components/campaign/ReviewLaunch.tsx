@@ -27,6 +27,7 @@ import { dateFieldRequirements } from "@/lib/campaign-timing";
 import { formatDateUs } from "@/lib/date-only";
 import { campaignPublicPath } from "@/lib/campaign-paths";
 import { OpenCoverResizeControl } from "@/components/campaign/OpenCoverResizeControl";
+import { AiCoverChangeButton } from "@/components/campaign/ai-flow/AiCampaignCoverPicker";
 import {
   Dialog,
   DialogContent,
@@ -340,6 +341,7 @@ export function ReviewLaunch() {
                     }
                   }}
                 />
+                <AiCoverChangeButton onClick={() => goTo("ai-campaign-preview")} />
               </div>
             ) : (
               <PreviewPrompt

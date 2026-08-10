@@ -14,6 +14,7 @@
  * Outputs: interactive slider UI only (no API calls)
  *
  * Changelog: Added Embla-based slider + thumbnails for public campaign page.
+ * Changelog: Hero uses object-contain so full images autofit (no crop).
  */
 
 import { useEffect, useState } from "react";
@@ -83,17 +84,59 @@ export function PublicCampaignImageSlider({
   const displaySrc = (src: string) =>
     failedSrcs.has(src) ? placeholderSrc : src;
 
+  /** Shared hero frame: full image visible (contain), letterboxed on muted bg. */
+  const heroImgClass =
+    "mx-auto aspect-[16/10] w-full object-contain object-center";
+
+  /**
+   * Thumbnail strip (always shown when there is at least one slide).
+   * Inputs: none — uses slides/activeIdx/api from closure
+   * Outputs: JSX strip
+   */
+  const thumbnailStrip = (
+    <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+      {slides.map((src, idx) => (
+        <button
+          key={`thumb-${src}-${idx}`}
+          type="button"
+          onClick={() => {
+            if (slides.length > 1) api?.scrollTo(idx);
+            setActiveIdx(idx);
+          }}
+          aria-label={`Show photo ${idx + 1}`}
+          aria-current={idx === activeIdx ? "true" : undefined}
+          className={`size-16 shrink-0 overflow-hidden rounded-lg bg-muted ring-2 transition-shadow ${
+            idx === activeIdx
+              ? "ring-primary"
+              : "ring-transparent opacity-80 hover:opacity-100"
+          }`}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={displaySrc(src)}
+            alt=""
+            className="size-full object-cover object-center"
+            onError={() => markFailed(src)}
+          />
+        </button>
+      ))}
+    </div>
+  );
+
   if (slides.length <= 1) {
     const only = slides[0] ?? placeholderSrc;
     return (
-      <div className="overflow-hidden rounded-2xl border border-border bg-muted">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={displaySrc(only)}
-          alt={alt}
-          className="aspect-[16/10] w-full object-cover"
-          onError={() => markFailed(only)}
-        />
+      <div>
+        <div className="overflow-hidden rounded-2xl border border-border bg-muted">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={displaySrc(only)}
+            alt={alt}
+            className={heroImgClass}
+            onError={() => markFailed(only)}
+          />
+        </div>
+        {thumbnailStrip}
       </div>
     );
   }
@@ -113,7 +156,7 @@ export function PublicCampaignImageSlider({
                 <img
                   src={displaySrc(src)}
                   alt={idx === 0 ? alt : `${alt} — photo ${idx + 1}`}
-                  className="aspect-[16/10] w-full object-cover"
+                  className={heroImgClass}
                   onError={() => markFailed(src)}
                 />
               </CarouselItem>
@@ -130,30 +173,7 @@ export function PublicCampaignImageSlider({
         </div>
       </Carousel>
 
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-        {slides.map((src, idx) => (
-          <button
-            key={`thumb-${src}-${idx}`}
-            type="button"
-            onClick={() => api?.scrollTo(idx)}
-            aria-label={`Show photo ${idx + 1}`}
-            aria-current={idx === activeIdx ? "true" : undefined}
-            className={`size-16 shrink-0 overflow-hidden rounded-lg ring-2 transition-shadow ${
-              idx === activeIdx
-                ? "ring-primary"
-                : "ring-transparent opacity-80 hover:opacity-100"
-            }`}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={displaySrc(src)}
-              alt=""
-              className="size-full object-cover"
-              onError={() => markFailed(src)}
-            />
-          </button>
-        ))}
-      </div>
+      {thumbnailStrip}
     </div>
   );
 }

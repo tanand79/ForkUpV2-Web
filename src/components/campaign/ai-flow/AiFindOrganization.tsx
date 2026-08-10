@@ -25,6 +25,7 @@ import {
   TEST_LOCATION_RICHMOND_VA,
   useBrowserLocation,
 } from "@/hooks/use-browser-location";
+import { SearchRadiusControl } from "@/components/campaign/SearchRadiusControl";
 import { AiFlowShell } from "./AiFlowShell";
 
 export function AiFindOrganization() {
@@ -33,10 +34,13 @@ export function AiFindOrganization() {
   const [selected, setSelected] = useState<OrganizationSearchCandidate | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Off by default — normal national/name search. On = ~8 mile filter. */
-  const [useNearbyFilter, setUseNearbyFilter] = useState(false);
+  /** On by default — nearby. Uncheck for normal national search. */
+  const [useNearbyFilter, setUseNearbyFilter] = useState(true);
+  const [radiusMiles, setRadiusMiles] = useState(8);
   const browserLocation = useBrowserLocation(useNearbyFilter);
-  const nearby = useNearbyFilter ? nearbyQueryParams(browserLocation) : undefined;
+  const nearby = useNearbyFilter
+    ? nearbyQueryParams(browserLocation, radiusMiles)
+    : undefined;
 
   useEffect(() => {
     // Nonprofit organizers (membership) only create for their own org.
@@ -176,32 +180,36 @@ export function AiFindOrganization() {
             setSelected(null);
             if (!on) browserLocation.setLocationOverride(null);
           }}
-          className="size-4 rounded border-border"
+          className="size-4 rounded border-border accent-primary text-primary"
+          style={{ accentColor: "var(--color-primary, #A65A3A)" }}
         />
         <span className="inline-flex items-center gap-1.5">
           <MapPin className="size-3.5 text-muted-foreground" />
-          Search within ~8 miles of my location
+          Search near my location
         </span>
       </label>
+
+      <SearchRadiusControl
+        enabled={useNearbyFilter}
+        valueMiles={radiusMiles}
+        onChange={(miles) => {
+          setRadiusMiles(miles);
+          setSelected(null);
+        }}
+        latitude={browserLocation.latitude}
+        longitude={browserLocation.longitude}
+      />
 
       {useNearbyFilter ? (
         <div className="mt-2 space-y-1">
           {browserLocation.status === "ready" ? (
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
               <span>
-                {browserLocation.isOverride
-                  ? `Using test pin: ${TEST_LOCATION_RICHMOND_VA.label}.`
-                  : "Using your browser location."}
+                {browserLocation.usedAutoFallback || browserLocation.isOverride
+                  ? `Nearby active (${TEST_LOCATION_RICHMOND_VA.label}${browserLocation.usedAutoFallback ? " auto" : ""}).`
+                  : `Nearby active${browserLocation.city ? ` near ${browserLocation.city}` : ""}.`}
               </span>
-              {browserLocation.isOverride ? (
-                <button
-                  type="button"
-                  onClick={() => browserLocation.setLocationOverride(null)}
-                  className="font-medium text-primary underline-offset-2 hover:underline"
-                >
-                  Clear test pin
-                </button>
-              ) : (
+              {!browserLocation.usedAutoFallback && !browserLocation.isOverride ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -213,7 +221,19 @@ export function AiFindOrganization() {
                   }}
                   className="font-medium text-primary underline-offset-2 hover:underline"
                 >
-                  Test as Richmond, VA
+                  Use Richmond, VA pin
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    browserLocation.setLocationOverride(null);
+                    browserLocation.refresh();
+                    setSelected(null);
+                  }}
+                  className="font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  Retry device GPS
                 </button>
               )}
             </p>
@@ -221,6 +241,9 @@ export function AiFindOrganization() {
             <p className="text-xs text-muted-foreground">Checking location…</p>
           ) : browserLocation.error ? (
             <p className="text-xs text-muted-foreground">{browserLocation.error}</p>
+          ) : null}
+          {browserLocation.error && browserLocation.status === "ready" ? (
+            <p className="text-xs text-amber-700">{browserLocation.error}</p>
           ) : null}
         </div>
       ) : (

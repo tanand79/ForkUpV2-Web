@@ -559,9 +559,12 @@ export function AiCampaignPreview() {
                 update({ cover: { ...pending, storedUrl } });
               }}
             />
-            {editing ? (
-              <AiCoverChangeButton onClick={() => setCoverPickerOpen(true)} />
-            ) : null}
+            <AiCoverChangeButton
+              onClick={() => {
+                setEditing(true);
+                setCoverPickerOpen(true);
+              }}
+            />
           </div>
         ) : (
           <button

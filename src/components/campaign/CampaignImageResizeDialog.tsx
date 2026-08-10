@@ -3,8 +3,8 @@
 /**
  * Campaign image Resize dialog (additive).
  *
- * Purpose: Free all-sides crop — drag edges/corners independently, or drag
- * the box to move — then export a JPEG for re-upload.
+ * Purpose: Crop with handles on all sides, plus Facebook-style drag-to-move
+ * and zoom of the photo under the crop — then export a JPEG for re-upload.
  *
  * Inputs:
  *   open — whether the dialog is visible
@@ -17,6 +17,7 @@
  *
  * Changelog: Added visible Resize option for Review gallery + AI cover picker.
  * Changelog: Free crop with handles on all sides (not zoom/pan-only).
+ * Changelog: FB-style image pan + zoom under the crop (kept all-sides handles).
  */
 
 import {
@@ -33,7 +34,17 @@ import { exportNaturalRectCrop } from "@/lib/resize-campaign-image";
 const MIN_CROP_PX = 48;
 
 type CropRect = { x: number; y: number; w: number; h: number };
-type HandleId = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw" | "move";
+type HandleId =
+  | "n"
+  | "s"
+  | "e"
+  | "w"
+  | "ne"
+  | "nw"
+  | "se"
+  | "sw"
+  | "move-crop"
+  | "pan-image";
 
 export interface CampaignImageResizeDialogProps {
   open: boolean;
@@ -45,7 +56,7 @@ export interface CampaignImageResizeDialogProps {
 }
 
 /**
- * Modal free-crop UI for one campaign image.
+ * Modal crop + FB-style pan/zoom UI for one campaign image.
  *
  * Inputs: CampaignImageResizeDialogProps
  * Outputs: JSX dialog; onApply with the cropped File
@@ -61,6 +72,10 @@ export function CampaignImageResizeDialog({
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [stageSize, setStageSize] = useState({ w: 360, h: 280 });
   const [crop, setCrop] = useState<CropRect>({ x: 0, y: 0, w: 100, h: 100 });
+  /** Zoom of the photo under the crop (1 = fit contain). */
+  const [zoom, setZoom] = useState(1);
+  /** Photo translate inside the image layer (display px). */
+  const [imgOffset, setImgOffset] = useState({ x: 0, y: 0 });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,7 +83,8 @@ export function CampaignImageResizeDialog({
     handle: HandleId;
     startX: number;
     startY: number;
-    origin: CropRect;
+    originCrop: CropRect;
+    originImg: { x: number; y: number };
   } | null>(null);
 
   useEffect(() => {
@@ -76,6 +92,8 @@ export function CampaignImageResizeDialog({
     setNatural(null);
     setError(null);
     setSaving(false);
+    setZoom(1);
+    setImgOffset({ x: 0, y: 0 });
     setCrop({ x: 0, y: 0, w: 100, h: 100 });
   }, [open, imageSrc]);
 
@@ -94,36 +112,23 @@ export function CampaignImageResizeDialog({
     return () => ro.disconnect();
   }, [open]);
 
-  const layout = (() => {
-    if (!natural) {
-      return {
-        scale: 1,
-        displayW: stageSize.w,
-        displayH: stageSize.h,
-        offsetX: 0,
-        offsetY: 0,
-      };
-    }
-    const scale = Math.min(stageSize.w / natural.w, stageSize.h / natural.h);
-    const displayW = natural.w * scale;
-    const displayH = natural.h * scale;
-    return {
-      scale,
-      displayW,
-      displayH,
-      offsetX: (stageSize.w - displayW) / 2,
-      offsetY: (stageSize.h - displayH) / 2,
-    };
-  })();
+  const baseScale = natural
+    ? Math.min(stageSize.w / natural.w, stageSize.h / natural.h)
+    : 1;
+  const effScale = baseScale * zoom;
+  const displayW = natural ? natural.w * effScale : stageSize.w;
+  const displayH = natural ? natural.h * effScale : stageSize.h;
+  const layerOx = (stageSize.w - (natural ? natural.w * baseScale : stageSize.w)) / 2;
+  const layerOy = (stageSize.h - (natural ? natural.h * baseScale : stageSize.h)) / 2;
+  const baseDisplayW = natural ? natural.w * baseScale : stageSize.w;
+  const baseDisplayH = natural ? natural.h * baseScale : stageSize.h;
 
   /**
-   * Initializes a centered ~90% crop once natural size is known.
-   * Inputs: natural image size + current display layout
-   * Outputs: updates crop state in display pixels relative to the image box
+   * Initializes a centered ~90% crop in the contain image box.
+   * Inputs: base contain width/height
+   * Outputs: updates crop state
    */
-  const initCrop = (nw: number, nh: number, scale: number) => {
-    const dw = nw * scale;
-    const dh = nh * scale;
+  const initCrop = (dw: number, dh: number) => {
     const insetX = dw * 0.05;
     const insetY = dh * 0.05;
     setCrop({
@@ -132,6 +137,8 @@ export function CampaignImageResizeDialog({
       w: Math.max(MIN_CROP_PX, dw - insetX * 2),
       h: Math.max(MIN_CROP_PX, dh - insetY * 2),
     });
+    setImgOffset({ x: 0, y: 0 });
+    setZoom(1);
   };
 
   const onImgLoad = (e: SyntheticEvent<HTMLImageElement>) => {
@@ -141,12 +148,12 @@ export function CampaignImageResizeDialog({
     if (!nw || !nh) return;
     setNatural({ w: nw, h: nh });
     const scale = Math.min(stageSize.w / nw, stageSize.h / nh);
-    initCrop(nw, nh, scale);
+    initCrop(nw * scale, nh * scale);
   };
 
   /**
-   * Clamps a proposed crop rect inside the displayed image bounds.
-   * Inputs: proposed rect, display image size
+   * Clamps crop inside the base contain box.
+   * Inputs: proposed crop, max box size
    * Outputs: clamped CropRect
    */
   const clampCrop = (next: CropRect, maxW: number, maxH: number): CropRect => {
@@ -159,21 +166,46 @@ export function CampaignImageResizeDialog({
   };
 
   /**
-   * Applies edge/corner/move drag delta to the crop rectangle.
-   * Inputs: handle id, pointer deltas, origin rect
-   * Outputs: next CropRect in display image coordinates
+   * Keeps the zoomed photo covering the crop rectangle (FB-style clamp).
+   * Inputs: proposed image offset, current crop + zoom sizes
+   * Outputs: clamped { x, y }
    */
-  const applyHandleDelta = (
+  const clampImgOffset = (
+    ox: number,
+    oy: number,
+    nextZoom: number,
+    c: CropRect,
+  ) => {
+    if (!natural) return { x: ox, y: oy };
+    const dw = natural.w * baseScale * nextZoom;
+    const dh = natural.h * baseScale * nextZoom;
+    // Image drawn at (ox, oy) inside base contain box; crop is in that box.
+    const minX = c.x + c.w - dw;
+    const minY = c.y + c.h - dh;
+    const maxX = c.x;
+    const maxY = c.y;
+    return {
+      x: Math.min(maxX, Math.max(minX, ox)),
+      y: Math.min(maxY, Math.max(minY, oy)),
+    };
+  };
+
+  /**
+   * Applies crop edge/corner/move deltas.
+   * Inputs: handle, pointer delta, origins
+   * Outputs: next crop rect
+   */
+  const applyCropDelta = (
     handle: HandleId,
     dx: number,
     dy: number,
     origin: CropRect,
-    maxW: number,
-    maxH: number,
   ): CropRect => {
     let { x, y, w, h } = origin;
+    const maxW = baseDisplayW;
+    const maxH = baseDisplayH;
 
-    if (handle === "move") {
+    if (handle === "move-crop") {
       return clampCrop({ x: x + dx, y: y + dy, w, h }, maxW, maxH);
     }
 
@@ -206,7 +238,8 @@ export function CampaignImageResizeDialog({
         handle,
         startX: e.clientX,
         startY: e.clientY,
-        origin: { ...crop },
+        originCrop: { ...crop },
+        originImg: { ...imgOffset },
       };
     };
 
@@ -215,15 +248,23 @@ export function CampaignImageResizeDialog({
     if (!drag || !natural) return;
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
-    setCrop(
-      applyHandleDelta(
-        drag.handle,
-        dx,
-        dy,
-        drag.origin,
-        layout.displayW,
-        layout.displayH,
-      ),
+
+    if (drag.handle === "pan-image") {
+      setImgOffset(
+        clampImgOffset(
+          drag.originImg.x + dx,
+          drag.originImg.y + dy,
+          zoom,
+          drag.originCrop,
+        ),
+      );
+      return;
+    }
+
+    const nextCrop = applyCropDelta(drag.handle, dx, dy, drag.originCrop);
+    setCrop(nextCrop);
+    setImgOffset((prev) =>
+      clampImgOffset(prev.x, prev.y, zoom, nextCrop),
     );
   };
 
@@ -231,17 +272,28 @@ export function CampaignImageResizeDialog({
     dragRef.current = null;
   };
 
+  const handleZoom = (next: number) => {
+    const z = Math.min(3, Math.max(1, next));
+    setZoom(z);
+    setImgOffset((prev) => clampImgOffset(prev.x, prev.y, z, crop));
+  };
+
   const handleApply = async () => {
-    if (!imageSrc || !natural || layout.scale <= 0) return;
+    if (!imageSrc || !natural || effScale <= 0) return;
     setSaving(true);
     setError(null);
     try {
+      // Crop is in the base contain box; photo is drawn at imgOffset with zoom.
+      const sx = (crop.x - imgOffset.x) / effScale;
+      const sy = (crop.y - imgOffset.y) / effScale;
+      const sw = crop.w / effScale;
+      const sh = crop.h / effScale;
       const file = await exportNaturalRectCrop({
         src: imageSrc,
-        x: crop.x / layout.scale,
-        y: crop.y / layout.scale,
-        width: crop.w / layout.scale,
-        height: crop.h / layout.scale,
+        x: sx,
+        y: sy,
+        width: sw,
+        height: sh,
         fileName:
           (imageName || "campaign-image").replace(/\.[^.]+$/, "") + "-cropped.jpg",
       });
@@ -299,8 +351,8 @@ export function CampaignImageResizeDialog({
 
         <div className="space-y-4 overflow-y-auto p-5">
           <p className="text-xs text-muted-foreground">
-            Drag any side or corner to crop · drag inside the box to move · Apply
-            saves the selection
+            Drag the photo to move it (like Facebook) · drag edges/corners to crop ·
+            use zoom · Apply saves the selection
           </p>
 
           <div
@@ -310,35 +362,38 @@ export function CampaignImageResizeDialog({
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={imageSrc}
-              alt="Crop preview"
-              draggable={false}
-              referrerPolicy="no-referrer"
-              onLoad={onImgLoad}
-              className="pointer-events-none absolute max-w-none select-none"
+            {/* Base contain layer */}
+            <div
+              className="absolute overflow-hidden"
               style={{
-                left: layout.offsetX,
-                top: layout.offsetY,
-                width: layout.displayW,
-                height: layout.displayH,
+                left: layerOx,
+                top: layerOy,
+                width: baseDisplayW,
+                height: baseDisplayH,
               }}
-            />
-
-            {natural ? (
-              <div
-                className="absolute"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageSrc}
+                alt="Crop preview"
+                draggable={false}
+                referrerPolicy="no-referrer"
+                onLoad={onImgLoad}
+                className="absolute max-w-none select-none"
                 style={{
-                  left: layout.offsetX,
-                  top: layout.offsetY,
-                  width: layout.displayW,
-                  height: layout.displayH,
+                  left: imgOffset.x,
+                  top: imgOffset.y,
+                  width: displayW,
+                  height: displayH,
+                  cursor: "grab",
                 }}
-              >
+                onPointerDown={onHandleDown("pan-image")}
+              />
+
+              {natural ? (
                 <div
                   role="presentation"
-                  className="absolute box-border cursor-move border-2 border-primary bg-transparent"
+                  className="absolute box-border border-2 border-primary bg-transparent"
                   style={{
                     left: crop.x,
                     top: crop.y,
@@ -346,89 +401,120 @@ export function CampaignImageResizeDialog({
                     height: crop.h,
                     boxShadow: "0 0 0 9999px rgba(0,0,0,0.45)",
                   }}
-                  onPointerDown={onHandleDown("move")}
                 >
-                  {/* Edge handles */}
-                  <span
-                    aria-hidden
-                    style={handleStyle({
-                      left: "50%",
-                      top: -7,
-                      transform: "translateX(-50%)",
-                      cursor: "ns-resize",
-                    })}
-                    onPointerDown={onHandleDown("n")}
-                  />
-                  <span
-                    aria-hidden
-                    style={handleStyle({
-                      left: "50%",
-                      bottom: -7,
-                      transform: "translateX(-50%)",
-                      cursor: "ns-resize",
-                    })}
-                    onPointerDown={onHandleDown("s")}
-                  />
-                  <span
-                    aria-hidden
-                    style={handleStyle({
-                      top: "50%",
-                      left: -7,
-                      transform: "translateY(-50%)",
-                      cursor: "ew-resize",
-                    })}
-                    onPointerDown={onHandleDown("w")}
-                  />
-                  <span
-                    aria-hidden
-                    style={handleStyle({
-                      top: "50%",
-                      right: -7,
-                      transform: "translateY(-50%)",
-                      cursor: "ew-resize",
-                    })}
-                    onPointerDown={onHandleDown("e")}
-                  />
-                  {/* Corner handles */}
-                  <span
-                    aria-hidden
-                    style={handleStyle({
-                      left: -7,
-                      top: -7,
-                      cursor: "nwse-resize",
-                    })}
-                    onPointerDown={onHandleDown("nw")}
-                  />
-                  <span
-                    aria-hidden
-                    style={handleStyle({
-                      right: -7,
-                      top: -7,
-                      cursor: "nesw-resize",
-                    })}
-                    onPointerDown={onHandleDown("ne")}
-                  />
-                  <span
-                    aria-hidden
-                    style={handleStyle({
-                      left: -7,
-                      bottom: -7,
-                      cursor: "nesw-resize",
-                    })}
-                    onPointerDown={onHandleDown("sw")}
-                  />
-                  <span
-                    aria-hidden
-                    style={handleStyle({
-                      right: -7,
-                      bottom: -7,
-                      cursor: "nwse-resize",
-                    })}
-                    onPointerDown={onHandleDown("se")}
-                  />
-                </div>
-              </div>
-            ) : null}
+                    {/* FB-style: drag inside crop pans the photo */}
+                    <button
+                      type="button"
+                      aria-label="Move photo"
+                      className="absolute inset-3 cursor-grab rounded-sm bg-transparent active:cursor-grabbing"
+                      onPointerDown={onHandleDown("pan-image")}
+                    />
+                    {/* Small affordance to move the crop frame itself */}
+                    <button
+                      type="button"
+                      aria-label="Move crop frame"
+                      className="absolute left-1/2 top-1/2 z-[4] -translate-x-1/2 -translate-y-1/2 cursor-move rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold shadow-sm"
+                      onPointerDown={onHandleDown("move-crop")}
+                    >
+                      Move frame
+                    </button>
+
+                    <span
+                      aria-hidden
+                      style={handleStyle({
+                        left: "50%",
+                        top: -7,
+                        transform: "translateX(-50%)",
+                        cursor: "ns-resize",
+                      })}
+                      onPointerDown={onHandleDown("n")}
+                    />
+                    <span
+                      aria-hidden
+                      style={handleStyle({
+                        left: "50%",
+                        bottom: -7,
+                        transform: "translateX(-50%)",
+                        cursor: "ns-resize",
+                      })}
+                      onPointerDown={onHandleDown("s")}
+                    />
+                    <span
+                      aria-hidden
+                      style={handleStyle({
+                        top: "50%",
+                        left: -7,
+                        transform: "translateY(-50%)",
+                        cursor: "ew-resize",
+                      })}
+                      onPointerDown={onHandleDown("w")}
+                    />
+                    <span
+                      aria-hidden
+                      style={handleStyle({
+                        top: "50%",
+                        right: -7,
+                        transform: "translateY(-50%)",
+                        cursor: "ew-resize",
+                      })}
+                      onPointerDown={onHandleDown("e")}
+                    />
+                    <span
+                      aria-hidden
+                      style={handleStyle({
+                        left: -7,
+                        top: -7,
+                        cursor: "nwse-resize",
+                      })}
+                      onPointerDown={onHandleDown("nw")}
+                    />
+                    <span
+                      aria-hidden
+                      style={handleStyle({
+                        right: -7,
+                        top: -7,
+                        cursor: "nesw-resize",
+                      })}
+                      onPointerDown={onHandleDown("ne")}
+                    />
+                    <span
+                      aria-hidden
+                      style={handleStyle({
+                        left: -7,
+                        bottom: -7,
+                        cursor: "nesw-resize",
+                      })}
+                      onPointerDown={onHandleDown("sw")}
+                    />
+                    <span
+                      aria-hidden
+                      style={handleStyle({
+                        right: -7,
+                        bottom: -7,
+                        cursor: "nwse-resize",
+                      })}
+                      onPointerDown={onHandleDown("se")}
+                    />
+                  </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
+              <span>Zoom</span>
+              <span className="text-muted-foreground">{zoom.toFixed(1)}×</span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={0.05}
+              value={zoom}
+              onChange={(e) => handleZoom(Number(e.target.value))}
+              className="w-full accent-primary"
+              aria-label="Zoom photo"
+            />
           </div>
 
           {error ? (

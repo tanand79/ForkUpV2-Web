@@ -26,6 +26,7 @@ import {
   mergeOrganizationSuggestions,
 } from "@/components/campaign/OrganizationNameSuggest";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
+import { SearchRadiusControl } from "@/components/campaign/SearchRadiusControl";
 import {
   nearbyQueryParams,
   useBrowserLocation,
@@ -153,10 +154,11 @@ export function OrganizationLookupConfirm({
   const [suppressSuggest, setSuppressSuggest] = useState(false);
   /** Ignores stale AI/search responses when the user searches again quickly. */
   const requestIdRef = useRef(0);
-  /** Off by default — normal search. On = ~8 mile GPS filter. */
-  const [useNearbyFilter, setUseNearbyFilter] = useState(false);
+  /** On by default — nearby. Uncheck for normal search. */
+  const [useNearbyFilter, setUseNearbyFilter] = useState(true);
+  const [radiusMiles, setRadiusMiles] = useState(8);
   const browserLocation = useBrowserLocation(useNearbyFilter);
-  const gpsNearby = nearbyQueryParams(browserLocation);
+  const gpsNearby = nearbyQueryParams(browserLocation, radiusMiles);
   const nearby = useNearbyFilter ? gpsNearby : undefined;
 
   useEffect(() => {
@@ -398,19 +400,27 @@ export function OrganizationLookupConfirm({
                 setUseNearbyFilter(on);
                 if (!on) browserLocation.setLocationOverride(null);
               }}
-              className="size-4 rounded border-border"
+              className="size-4 rounded border-border accent-primary text-primary"
+              style={{ accentColor: "var(--color-primary, #A65A3A)" }}
             />
             <span className="inline-flex items-center gap-1.5">
               <MapPin className="size-3.5 text-muted-foreground" />
-              Search within ~8 miles of my location
+              Search near my location
             </span>
           </label>
+          <SearchRadiusControl
+            enabled={useNearbyFilter}
+            valueMiles={radiusMiles}
+            onChange={setRadiusMiles}
+            latitude={browserLocation.latitude}
+            longitude={browserLocation.longitude}
+          />
           {useNearbyFilter ? (
             <p className="mt-1.5 text-xs text-muted-foreground">
               {browserLocation.status === "ready"
-                ? browserLocation.isOverride
-                  ? `Using test pin: ${gpsNearby?.city ?? "location"} (${gpsNearby?.state ?? ""}).`
-                  : "Using your browser location for nearby matches."
+                ? browserLocation.usedAutoFallback || browserLocation.isOverride
+                  ? `Nearby on (${gpsNearby?.city ?? "Richmond"}, ${gpsNearby?.state ?? "VA"}${browserLocation.usedAutoFallback ? " — auto pin" : ""}).`
+                  : "Nearby on — using your browser location."
                 : browserLocation.status === "prompting"
                   ? "Checking location…"
                   : browserLocation.error ?? "Allow location to filter nearby nonprofits."}

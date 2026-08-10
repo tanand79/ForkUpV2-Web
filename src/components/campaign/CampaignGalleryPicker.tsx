@@ -5,17 +5,19 @@
  *
  * Purpose: Load preview images from Facebook / Instagram / website handles,
  * let the organizer pick a featured cover, remove/replace slots, or upload manually.
+ * Layout matches the public campaign page: large open preview + horizontal thumb strip.
  * Uploads are auto-downscaled (~1600px) before save.
  *
  * Inputs: promotion channels + current cover/images from campaign state
  * Outputs: single onChange({ cover, images }) so cover/images stay in sync
  *
  * Changelog: Max raised to 8; upload path uses resizeCampaignImageFile.
- * Changelog: Visible Resize dialog per thumbnail (zoom/pan crop).
+ * Changelog: Visible Resize dialog (all-sides crop).
+ * Changelog: Public-style layout (large open preview + thumbnail strip).
  */
 
-import { useRef, useState } from "react";
-import { Crop, ImagePlus, Loader2, Sparkles, Star, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Crop, ImagePlus, Loader2, Replace, Sparkles, Star, X } from "lucide-react";
 import type { CampaignImage, PromotionChannels } from "@/lib/campaign-context";
 import { suggestCampaignImages, uploadImage } from "@/lib/api";
 import { MAX_CAMPAIGN_GALLERY_IMAGES } from "@/lib/builder-submit";
@@ -61,7 +63,9 @@ export function CampaignGalleryPicker({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
-  const [resizeTarget, setResizeTarget] = useState<CampaignImage | null>(null);
+  const [resizeOpen, setResizeOpen] = useState(false);
+  /** Which gallery slot is shown in the large open preview. */
+  const [activeId, setActiveId] = useState<string | null>(cover?.id ?? null);
 
   const slots: CampaignImage[] = [];
   if (cover) slots.push(cover);
@@ -70,6 +74,24 @@ export function CampaignGalleryPicker({
     if (cover && (img.id === cover.id || (img.url && img.url === cover.url))) continue;
     slots.push(img);
   }
+
+  const active =
+    slots.find((s) => s.id === activeId) ??
+    slots.find((s) => cover && s.id === cover.id) ??
+    slots[0] ??
+    null;
+
+  useEffect(() => {
+    if (!slots.length) {
+      setActiveId(null);
+      return;
+    }
+    if (!activeId || !slots.some((s) => s.id === activeId)) {
+      setActiveId(cover?.id ?? slots[0]!.id);
+    }
+    // Keep active valid when gallery membership changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slots.map((s) => s.id).join("|"), cover?.id]);
 
   const canAdd = slots.length < MAX_CAMPAIGN_GALLERY_IMAGES;
   const hasSocialInput = Boolean(
@@ -132,8 +154,9 @@ export function CampaignGalleryPicker({
         if (merged.length >= MAX_CAMPAIGN_GALLERY_IMAGES) break;
       }
       applySlots(merged);
+      setActiveId(merged[0]?.id ?? null);
       setHint(
-        `Loaded ${mapped.length} image${mapped.length === 1 ? "" : "s"}. The first is featured — tap a star to change.`,
+        `Loaded ${mapped.length} image${mapped.length === 1 ? "" : "s"}. Tap a thumbnail, then Resize or Set featured.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load images from social links.");
@@ -177,6 +200,7 @@ export function CampaignGalleryPicker({
       next.push(draft);
     }
     applySlots(next, cover?.id ?? id);
+    setActiveId(id);
 
     setUploading(true);
     try {
@@ -192,7 +216,7 @@ export function CampaignGalleryPicker({
       );
       applySlots(next, cover?.id ?? id);
       setHint(
-        `Image uploaded (large files auto-resized). ${Math.min(next.length, MAX_CAMPAIGN_GALLERY_IMAGES)}/${MAX_CAMPAIGN_GALLERY_IMAGES} photos — tap a star to change featured.`,
+        `Image uploaded. ${Math.min(next.length, MAX_CAMPAIGN_GALLERY_IMAGES)}/${MAX_CAMPAIGN_GALLERY_IMAGES} — Resize on the open preview below.`,
       );
     } catch {
       setError("We couldn't save that image. Please try again.");
@@ -206,24 +230,28 @@ export function CampaignGalleryPicker({
   };
 
   const removeAt = (id: string) => {
-    applySlots(
-      slots.filter((i) => i.id !== id),
-      cover && cover.id !== id ? cover.id : undefined,
-    );
+    const remaining = slots.filter((i) => i.id !== id);
+    applySlots(remaining, cover && cover.id !== id ? cover.id : undefined);
+    if (activeId === id) {
+      setActiveId(remaining[0]?.id ?? null);
+    }
   };
 
   const setAsCover = (id: string) => {
     applySlots(slots, id);
+    setActiveId(id);
+    setHint("Featured image updated.");
   };
 
   const handleBrokenImage = (id: string) => {
     const remaining = slots.filter((i) => i.id !== id);
     applySlots(remaining, cover && cover.id !== id ? cover.id : undefined);
     setHint("Removed a photo that couldn’t be loaded. Try Upload or Load from social again.");
+    if (activeId === id) setActiveId(remaining[0]?.id ?? null);
   };
 
   /**
-   * Applies a cropped File from CampaignImageResizeDialog to one gallery slot.
+   * Applies a cropped File from CampaignImageResizeDialog to the open preview image.
    * Inputs: target image id, cropped File
    * Outputs: updates cover/images via onChange after upload
    */
@@ -250,7 +278,8 @@ export function CampaignGalleryPicker({
           : i,
       );
       applySlots(next, cover?.id);
-      setHint("Image resized and saved.");
+      setActiveId(targetId);
+      setHint("Image cropped. Tap Save photos if you’re on the review screen.");
     } catch {
       setError("Could not save the resized image. Try again.");
       throw new Error("resize upload failed");
@@ -259,14 +288,16 @@ export function CampaignGalleryPicker({
     }
   };
 
+  const activeIsFeatured = Boolean(active && cover && active.id === cover.id);
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-xs font-semibold text-muted-foreground">Campaign photos</p>
           <p className="text-xs text-muted-foreground">
-            {slots.length}/{MAX_CAMPAIGN_GALLERY_IMAGES} · tap Resize on a photo · large uploads
-            auto-shrink
+            {slots.length}/{MAX_CAMPAIGN_GALLERY_IMAGES} · large preview + thumbnails · Resize on
+            the open image
           </p>
         </div>
       </div>
@@ -290,76 +321,132 @@ export function CampaignGalleryPicker({
         </p>
       )}
 
-      <div className="grid grid-cols-3 gap-2">
-        {slots.map((img) => {
-          const isFeatured = cover?.id === img.id;
-          return (
-            <div
-              key={img.id}
-              className={`group relative aspect-square overflow-hidden rounded-xl bg-secondary ring-1 ${
-                isFeatured ? "ring-2 ring-primary" : "ring-border"
-              }`}
+      {/* Open preview — same idea as public campaign hero */}
+      {active ? (
+        <div className="relative overflow-hidden rounded-2xl border border-border bg-muted">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewSrc(active)}
+            alt={active.name}
+            className="aspect-[16/10] w-full object-contain"
+            onError={() => handleBrokenImage(active.id)}
+          />
+          {activeIsFeatured ? (
+            <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-bold text-primary-foreground shadow-sm">
+              <Star className="size-3 fill-current" />
+              Featured
+            </span>
+          ) : null}
+          <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-2 bg-gradient-to-t from-foreground/70 to-transparent p-3">
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => setResizeOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-background/95 px-3 py-1.5 text-xs font-semibold shadow-sm"
             >
-              <img
-                src={previewSrc(img)}
-                alt={img.name}
-                className="size-full object-cover"
-                onError={() => handleBrokenImage(img.id)}
-              />
-              {isFeatured && (
-                <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
-                  <Star className="size-2.5 fill-current" />
-                  Featured
-                </span>
-              )}
-              <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-between gap-1 bg-gradient-to-t from-foreground/80 to-transparent p-1.5">
-                {!isFeatured && (
-                  <button
-                    type="button"
-                    onClick={() => setAsCover(img.id)}
-                    className="rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold"
-                  >
-                    Set featured
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setResizeTarget(img)}
-                  className="inline-flex items-center gap-0.5 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold"
-                  aria-label="Resize image"
-                >
-                  <Crop className="size-2.5" />
-                  Resize
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeAt(img.id)}
-                  className="ml-auto flex size-6 items-center justify-center rounded-full bg-background/90"
-                  aria-label="Remove image"
-                >
-                  <X className="size-3.5" />
-                </button>
-              </div>
-            </div>
-          );
-        })}
+              <Crop className="size-3.5" />
+              Resize
+            </button>
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+              className="inline-flex items-center gap-1.5 rounded-full bg-background/95 px-3 py-1.5 text-xs font-semibold shadow-sm"
+            >
+              <Replace className="size-3.5" />
+              Change photo
+            </button>
+            {!activeIsFeatured ? (
+              <button
+                type="button"
+                onClick={() => setAsCover(active.id)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-background/95 px-3 py-1.5 text-xs font-semibold shadow-sm"
+              >
+                <Star className="size-3.5" />
+                Set featured
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => removeAt(active.id)}
+              className="ml-auto inline-flex size-8 items-center justify-center rounded-full bg-background/95 shadow-sm"
+              aria-label="Remove image"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="flex aspect-[16/10] w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-secondary/40 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-50"
+        >
+          {uploading ? (
+            <Loader2 className="size-5 animate-spin" />
+          ) : (
+            <ImagePlus className="size-5" />
+          )}
+          <span className="text-sm font-semibold">
+            {uploading ? "Saving…" : "Upload a campaign photo"}
+          </span>
+        </button>
+      )}
 
-        {canAdd && (
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-border bg-secondary/40 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-50"
-          >
-            {uploading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <ImagePlus className="size-4" />
-            )}
-            <span className="text-[11px] font-semibold">{uploading ? "Saving…" : "Upload"}</span>
-          </button>
-        )}
-      </div>
+      {/* Thumbnail strip — like public campaign page */}
+      {(slots.length > 0 || canAdd) && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {slots.map((img) => {
+            const selected = active?.id === img.id;
+            const isFeatured = cover?.id === img.id;
+            return (
+              <button
+                key={img.id}
+                type="button"
+                onClick={() => setActiveId(img.id)}
+                aria-label={`Show ${img.name}`}
+                aria-current={selected ? "true" : undefined}
+                className={`relative size-16 shrink-0 overflow-hidden rounded-lg ring-2 transition-shadow ${
+                  selected
+                    ? "ring-primary"
+                    : "ring-transparent opacity-80 hover:opacity-100"
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewSrc(img)}
+                  alt=""
+                  className="size-full object-cover"
+                  onError={() => handleBrokenImage(img.id)}
+                />
+                {isFeatured ? (
+                  <span className="absolute left-0.5 top-0.5 rounded bg-primary px-1 text-[8px] font-bold text-primary-foreground">
+                    ★
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+
+          {canAdd && (
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="flex size-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-dashed border-border bg-secondary/40 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-50"
+              aria-label="Upload photo"
+            >
+              {uploading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ImagePlus className="size-4" />
+              )}
+              <span className="text-[9px] font-semibold">Add</span>
+            </button>
+          )}
+        </div>
+      )}
 
       <input
         ref={fileRef}
@@ -376,13 +463,13 @@ export function CampaignGalleryPicker({
       {error && <p className="text-xs font-medium text-destructive">{error}</p>}
 
       <CampaignImageResizeDialog
-        open={Boolean(resizeTarget)}
-        imageSrc={resizeTarget ? previewSrc(resizeTarget) : null}
-        imageName={resizeTarget?.name}
-        onClose={() => setResizeTarget(null)}
+        open={resizeOpen && Boolean(active)}
+        imageSrc={active ? previewSrc(active) : null}
+        imageName={active?.name}
+        onClose={() => setResizeOpen(false)}
         onApply={async (file) => {
-          if (!resizeTarget) return;
-          await handleResizeApply(resizeTarget.id, file);
+          if (!active) return;
+          await handleResizeApply(active.id, file);
         }}
       />
     </div>

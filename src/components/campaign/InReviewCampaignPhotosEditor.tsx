@@ -186,8 +186,9 @@ export function InReviewCampaignPhotosEditor({
         <div>
           <h2 className="text-sm font-bold">Campaign photos</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Up to {MAX_CAMPAIGN_GALLERY_IMAGES} photos. Tap <strong>Resize</strong> on a
-            thumbnail to crop, then <strong>Save photos</strong>.
+            Up to {MAX_CAMPAIGN_GALLERY_IMAGES} photos. Large preview + thumbnails (like the public
+            page). Tap <strong>Resize</strong> on the open image to crop, then{" "}
+            <strong>Save photos</strong>.
           </p>
         </div>
         <button

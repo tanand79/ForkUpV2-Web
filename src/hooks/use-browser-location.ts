@@ -3,15 +3,10 @@
 /**
  * Browser GPS for nearby (~8 mile) search filters.
  *
- * Purpose: Request device location once and expose coords for API calls
- * (Find Your Organization, Choose Businesses). Denials / errors fall back
- * to null so existing non-geo search still works.
- *
- * Also supports a manual test override (e.g. Richmond, VA) when Chrome
- * Sensors / DevTools is unavailable — VPN never affects this hook.
- *
- * Inputs: none (uses navigator.geolocation) + optional override via setter.
- * Outputs: { status, latitude, longitude, error, refresh, setLocationOverride, isOverride }.
+ * Purpose: Request device location and expose coords (+ city/state) for API calls.
+ * VPN does not affect this. When GPS is denied/unavailable/outside the US,
+ * automatically falls back to a Richmond VA test pin so nearby search still works
+ * in local/remote-dev from overseas.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -32,44 +27,104 @@ export type BrowserLocationState = {
   status: BrowserLocationStatus;
   latitude: number | null;
   longitude: number | null;
+  city: string | null;
+  state: string | null;
   error: string | null;
-  /** Re-request location (e.g. after user enables permission). */
   refresh: () => void;
-  /**
-   * Force nearby search to use these coords (test helper).
-   * Pass null to clear and return to real browser GPS.
-   */
   setLocationOverride: (coords: LatLngOverride | null) => void;
-  /** True when a manual test override is active. */
   isOverride: boolean;
+  /** True when using Richmond fallback because real GPS is unusable for US nearby. */
+  usedAutoFallback: boolean;
 };
 
-/** Downtown Richmond, VA — for ~8 mile nearby QA without Chrome Sensors. */
-export const TEST_LOCATION_RICHMOND_VA: LatLngOverride & { label: string } = {
+/** Downtown Richmond, VA — nearby QA when Sensors/VPN cannot set US GPS. */
+export const TEST_LOCATION_RICHMOND_VA: LatLngOverride & {
+  label: string;
+  city: string;
+  state: string;
+} = {
   latitude: 37.5407,
   longitude: -77.436,
   label: "Richmond, VA",
+  city: "Richmond",
+  state: "VA",
 };
 
 const GEO_OPTIONS: PositionOptions = {
   enableHighAccuracy: false,
-  timeout: 12000,
-  maximumAge: 5 * 60 * 1000,
+  timeout: 10000,
+  maximumAge: 10 * 60 * 1000,
 };
+
+type PlaceHint = { city: string | null; state: string | null };
+
+function isLikelyOutsideUs(lat: number, lng: number): boolean {
+  // Contiguous US + Alaska/Hawaii rough box. Outside → US IRS nearby cannot apply.
+  if (lat >= 24 && lat <= 50 && lng >= -125 && lng <= -66) return false;
+  if (lat >= 51 && lat <= 72 && lng >= -180 && lng <= -129) return false; // AK
+  if (lat >= 18 && lat <= 23 && lng >= -161 && lng <= -154) return false; // HI
+  return true;
+}
+
+/**
+ * Client reverse-geocode via BigDataCloud (no API key) so every nearby request
+ * can send city/state without waiting on the server Nominatim path.
+ */
+async function reverseGeocodeClient(
+  latitude: number,
+  longitude: number,
+): Promise<PlaceHint> {
+  try {
+    const url = new URL(
+      "https://api.bigdatacloud.net/data/reverse-geocode-client",
+    );
+    url.searchParams.set("latitude", String(latitude));
+    url.searchParams.set("longitude", String(longitude));
+    url.searchParams.set("localityLanguage", "en");
+    const res = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return { city: null, state: null };
+    const data = (await res.json()) as {
+      city?: string;
+      locality?: string;
+      principalSubdivisionCode?: string;
+      countryCode?: string;
+    };
+    if ((data.countryCode ?? "").toUpperCase() !== "US") {
+      return { city: null, state: null };
+    }
+    const subdiv = (data.principalSubdivisionCode ?? "").trim().toUpperCase();
+    const state = /^US-[A-Z]{2}$/.test(subdiv)
+      ? subdiv.slice(3)
+      : /^[A-Z]{2}$/.test(subdiv)
+        ? subdiv
+        : null;
+    return {
+      city: data.city || data.locality || null,
+      state,
+    };
+  } catch {
+    return { city: null, state: null };
+  }
+}
 
 /**
  * Subscribe to browser geolocation for nearby filtering.
  *
- * Inputs: enabled — when false, skips requesting GPS (default true).
- * Outputs: BrowserLocationState with lat/lng when granted or overridden.
+ * Inputs: enabled — when false, clears coords (normal search mode).
+ * Outputs: BrowserLocationState with lat/lng/city/state when ready.
  */
 export function useBrowserLocation(enabled = true): BrowserLocationState {
   const [status, setStatus] = useState<BrowserLocationStatus>("idle");
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
+  const [city, setCity] = useState<string | null>(null);
+  const [stateCode, setStateCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState(0);
   const [override, setOverride] = useState<LatLngOverride | null>(null);
+  const [usedAutoFallback, setUsedAutoFallback] = useState(false);
 
   const refresh = useCallback(() => {
     setToken((n) => n + 1);
@@ -77,9 +132,20 @@ export function useBrowserLocation(enabled = true): BrowserLocationState {
 
   const setLocationOverride = useCallback((coords: LatLngOverride | null) => {
     setOverride(coords);
+    setUsedAutoFallback(false);
     if (!coords) {
       setToken((n) => n + 1);
     }
+  }, []);
+
+  const applyRichmondFallback = useCallback((reason: string) => {
+    setLatitude(TEST_LOCATION_RICHMOND_VA.latitude);
+    setLongitude(TEST_LOCATION_RICHMOND_VA.longitude);
+    setCity(TEST_LOCATION_RICHMOND_VA.city);
+    setStateCode(TEST_LOCATION_RICHMOND_VA.state);
+    setStatus("ready");
+    setUsedAutoFallback(true);
+    setError(reason);
   }, []);
 
   useEffect(() => {
@@ -87,50 +153,87 @@ export function useBrowserLocation(enabled = true): BrowserLocationState {
       setStatus("idle");
       setLatitude(null);
       setLongitude(null);
+      setCity(null);
+      setStateCode(null);
       setError(null);
+      setUsedAutoFallback(false);
       return;
     }
 
-    // Manual test pin wins over real GPS / VPN / device location.
     if (override) {
       setLatitude(override.latitude);
       setLongitude(override.longitude);
       setStatus("ready");
+      setUsedAutoFallback(false);
       setError(null);
-      return;
+      // Resolve city/state for manual pins (Richmond known; others via reverse).
+      if (
+        Math.abs(override.latitude - TEST_LOCATION_RICHMOND_VA.latitude) < 0.0001 &&
+        Math.abs(override.longitude - TEST_LOCATION_RICHMOND_VA.longitude) < 0.0001
+      ) {
+        setCity(TEST_LOCATION_RICHMOND_VA.city);
+        setStateCode(TEST_LOCATION_RICHMOND_VA.state);
+        return;
+      }
+      let cancelled = false;
+      void reverseGeocodeClient(override.latitude, override.longitude).then(
+        (place) => {
+          if (cancelled) return;
+          setCity(place.city);
+          setStateCode(place.state);
+        },
+      );
+      return () => {
+        cancelled = true;
+      };
     }
 
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setStatus("unavailable");
-      setError("Location is not supported in this browser.");
-      setLatitude(null);
-      setLongitude(null);
+      applyRichmondFallback(
+        "Location unsupported — using Richmond, VA test pin for nearby search.",
+      );
       return;
     }
 
     let cancelled = false;
     setStatus("prompting");
     setError(null);
+    setUsedAutoFallback(false);
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (cancelled) return;
-        setLatitude(pos.coords.latitude);
-        setLongitude(pos.coords.longitude);
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        if (isLikelyOutsideUs(lat, lng)) {
+          applyRichmondFallback(
+            "Device GPS is outside the US — using Richmond, VA test pin so nearby (~8 mi) can work.",
+          );
+          return;
+        }
+
+        setLatitude(lat);
+        setLongitude(lng);
         setStatus("ready");
         setError(null);
+        void reverseGeocodeClient(lat, lng).then((place) => {
+          if (cancelled) return;
+          setCity(place.city);
+          setStateCode(place.state);
+          if (!place.state) {
+            // US box matched but reverse failed — still usable for distance, may lack IRS state bias.
+            setError("Location ready; city/state lookup was limited.");
+          }
+        });
       },
       (err) => {
         if (cancelled) return;
-        setLatitude(null);
-        setLongitude(null);
-        if (err.code === err.PERMISSION_DENIED) {
-          setStatus("denied");
-          setError("Location permission denied. Showing all matches.");
-        } else {
-          setStatus("unavailable");
-          setError("Could not read your location. Showing all matches.");
-        }
+        const reason =
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission denied — using Richmond, VA test pin for nearby search."
+            : "Could not read GPS — using Richmond, VA test pin for nearby search.";
+        applyRichmondFallback(reason);
       },
       GEO_OPTIONS,
     );
@@ -138,28 +241,39 @@ export function useBrowserLocation(enabled = true): BrowserLocationState {
     return () => {
       cancelled = true;
     };
-  }, [enabled, token, override]);
+  }, [enabled, token, override, applyRichmondFallback]);
 
   return {
     status,
     latitude,
     longitude,
+    city,
+    state: stateCode,
     error,
     refresh,
     setLocationOverride,
-    isOverride: Boolean(override),
+    isOverride: Boolean(override) || usedAutoFallback,
+    usedAutoFallback,
   };
 }
 
-/** Build optional nearby query params when GPS is ready. */
+/** Build optional nearby query params when GPS/fallback is ready. */
 export function nearbyQueryParams(
-  location: Pick<BrowserLocationState, "latitude" | "longitude" | "status" | "isOverride">,
+  location: Pick<
+    BrowserLocationState,
+    | "latitude"
+    | "longitude"
+    | "status"
+    | "isOverride"
+    | "city"
+    | "state"
+    | "usedAutoFallback"
+  >,
   radiusMiles = 8,
 ): {
   lat: number;
   lng: number;
   radiusMiles: number;
-  /** Passed when using the Richmond test pin so IRS search does not rely on reverse-geocode. */
   state?: string;
   city?: string;
 } | undefined {
@@ -170,18 +284,28 @@ export function nearbyQueryParams(
   ) {
     return undefined;
   }
-  const base = {
+  const params: {
+    lat: number;
+    lng: number;
+    radiusMiles: number;
+    state?: string;
+    city?: string;
+  } = {
     lat: location.latitude,
     lng: location.longitude,
     radiusMiles,
   };
-  // Richmond test pin — bake VA bias so slow/blocked reverse-geocode cannot empty results.
+  if (location.state) params.state = location.state;
+  if (location.city) params.city = location.city;
+
+  // Richmond pin / auto-fallback always bias VA + Richmond.
   if (
     location.isOverride &&
     Math.abs(location.latitude - TEST_LOCATION_RICHMOND_VA.latitude) < 0.0001 &&
     Math.abs(location.longitude - TEST_LOCATION_RICHMOND_VA.longitude) < 0.0001
   ) {
-    return { ...base, state: "VA", city: "Richmond" };
+    params.state = "VA";
+    params.city = "Richmond";
   }
-  return base;
+  return params;
 }
