@@ -32,6 +32,7 @@ type GLatLngLiteral = { lat: number; lng: number };
 type GMap = {
   setCenter: (c: GLatLngLiteral) => void;
   setZoom: (z: number) => void;
+  setOptions?: (opts: Record<string, unknown>) => void;
 };
 type GMarker = { setPosition: (c: GLatLngLiteral) => void };
 type GCircle = { setMap: (map: GMap | null) => void };
@@ -332,6 +333,7 @@ function GoogleRadiusMap({
     } else {
       mapRef.current.setCenter(center);
       mapRef.current.setZoom(zoomForMiles(radiusMiles));
+      mapRef.current.setOptions?.({ styles: WARM_MAP_STYLES });
       markerRef.current?.setPosition(center);
     }
 
@@ -391,6 +393,7 @@ function GoogleRadiusMap({
     );
   }
 
+  // Embed cannot load JSON map styles — warm CSS wash matches ForkUp cream/terracotta.
   return (
     <div
       className="absolute inset-0"
@@ -400,9 +403,21 @@ function GoogleRadiusMap({
         title="Search radius map"
         src={embedSrc}
         className="absolute inset-0 h-full w-full border-0"
+        style={{
+          filter:
+            "sepia(0.42) saturate(0.55) hue-rotate(-18deg) brightness(1.06) contrast(0.96)",
+        }}
         loading="lazy"
         referrerPolicy="no-referrer-when-downgrade"
         allowFullScreen
+      />
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(246,241,232,0.22) 0%, rgba(196,92,40,0.06) 100%)",
+        }}
+        aria-hidden
       />
       <RadiusOverlaySvg radiusMiles={radiusMiles} />
     </div>
@@ -505,15 +520,33 @@ function loadGoogleMaps(apiKey: string): Promise<void> {
   return w.__forkupMapsLoading;
 }
 
-/** Soft warm desaturation so the map stays on-theme. */
+/**
+ * ForkUp cream / terracotta basemap for Maps JavaScript API.
+ * Mirrors card colors: #F6F1E8 cream, #A65A3A terracotta ink.
+ */
 const WARM_MAP_STYLES: Record<string, unknown>[] = [
-  { elementType: "geometry", stylers: [{ color: "#f5efe6" }] },
+  { elementType: "geometry", stylers: [{ color: "#f6f1e8" }] },
+  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
   { elementType: "labels.text.fill", stylers: [{ color: "#5c4a3a" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#f5efe6" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#f6f1e8" }] },
+  {
+    featureType: "administrative",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#d9cfc0" }],
+  },
+  {
+    featureType: "administrative.land_parcel",
+    stylers: [{ visibility: "off" }],
+  },
   {
     featureType: "poi",
     elementType: "geometry",
     stylers: [{ color: "#ebe2d6" }],
+  },
+  {
+    featureType: "poi",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#7a7168" }],
   },
   {
     featureType: "poi.park",
@@ -521,9 +554,14 @@ const WARM_MAP_STYLES: Record<string, unknown>[] = [
     stylers: [{ color: "#e0d5c4" }],
   },
   {
+    featureType: "poi.park",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#7a7168" }],
+  },
+  {
     featureType: "road",
     elementType: "geometry",
-    stylers: [{ color: "#ffffff" }],
+    stylers: [{ color: "#fffaf3" }],
   },
   {
     featureType: "road",
@@ -531,8 +569,32 @@ const WARM_MAP_STYLES: Record<string, unknown>[] = [
     stylers: [{ color: "#d8cbbb" }],
   },
   {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [{ color: "#e8d5c4" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#d4bba6" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#a65a3a" }],
+  },
+  {
+    featureType: "transit",
+    stylers: [{ visibility: "off" }],
+  },
+  {
     featureType: "water",
     elementType: "geometry",
     stylers: [{ color: "#d4c4ae" }],
+  },
+  {
+    featureType: "water",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#8a7a68" }],
   },
 ];
