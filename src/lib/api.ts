@@ -156,6 +156,8 @@ export interface BuilderCampaignState {
   startDate: string | null;
   endDate: string | null;
   coverImageUrl: string | null;
+  /** Additive: featured YouTube watch/Shorts URL when set. */
+  featuredYoutubeUrl?: string | null;
   status: string;
   origin: "business_invite" | "nonprofit";
   methods: string[];

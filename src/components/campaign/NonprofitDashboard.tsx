@@ -39,6 +39,7 @@ import {
   type CampaignTab,
 } from "@/lib/nonprofit-dashboard-campaigns";
 import { RequestAgainButton } from "@/components/campaign/RequestAgainButton";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   invalidateNonprofitDashboardCache,
   readNonprofitDashboardCache,
@@ -129,6 +130,9 @@ export function NonprofitDashboard() {
   const [publishingSlug, setPublishingSlug] = useState<string | null>(null);
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
   const [creatingCampaign, setCreatingCampaign] = useState(false);
+  /** Selected campaign slugs for My Campaigns multi-select / bulk delete. */
+  const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   /**
    * Create New Campaign — run AI analyze then open idea picker.
@@ -226,6 +230,7 @@ export function NonprofitDashboard() {
       try {
         await deleteManageCampaign(campaign.slug);
         setCampaigns((prev) => prev.filter((c) => c.slug !== campaign.slug));
+        setSelectedSlugs((prev) => prev.filter((s) => s !== campaign.slug));
         if (nonprofitId) {
           const cached = readNonprofitDashboardCache(nonprofitId);
           if (cached) {
@@ -245,6 +250,106 @@ export function NonprofitDashboard() {
     },
     [tab, nonprofitId, discardLocalDraft, refreshServerDrafts],
   );
+
+  /**
+   * Toggle one campaign in My Campaigns multi-select.
+   * Inputs: campaign slug, checked state from checkbox.
+   * Outputs: updates selectedSlugs.
+   */
+  const toggleSelectSlug = useCallback((slug: string, checked: boolean) => {
+    setSelectedSlugs((prev) => {
+      if (checked) {
+        return prev.includes(slug) ? prev : [...prev, slug];
+      }
+      return prev.filter((s) => s !== slug);
+    });
+  }, []);
+
+  /**
+   * Bulk delete selected campaigns using the same API as single-card trash.
+   * Purpose: confirm once, then DELETE each selected slug and refresh local caches.
+   * Inputs: selectedSlugs + campaigns list. Outputs: removes deleted rows from UI/cache.
+   */
+  const deleteSelectedCampaigns = useCallback(async () => {
+    const selected = campaigns.filter((c) => selectedSlugs.includes(c.slug));
+    if (selected.length === 0) return;
+
+    const tabLabel =
+      tab === "active"
+        ? "active"
+        : tab === "completed"
+          ? "completed"
+          : tab === "in_review"
+            ? "in review"
+            : "draft";
+    const names =
+      selected.length <= 3
+        ? selected.map((c) => `"${c.name}"`).join(", ")
+        : `${selected.length} campaigns`;
+    const hasLive = selected.some(
+      (c) => c.status === "live" || c.status === "invitation_phase",
+    );
+    const liveWarning = hasLive
+      ? " One or more selected campaigns are live or in progress."
+      : "";
+    const message = `Delete ${names}? These ${tabLabel} campaign(s) and all related data will be permanently removed.${liveWarning}`;
+    if (!window.confirm(message)) return;
+
+    setBulkDeleting(true);
+    setError(null);
+    const deletedSlugs: string[] = [];
+    try {
+      for (const campaign of selected) {
+        setDeletingSlug(campaign.slug);
+        await deleteManageCampaign(campaign.slug);
+        deletedSlugs.push(campaign.slug);
+        discardLocalDraft({ slug: campaign.slug, force: true });
+      }
+      setCampaigns((prev) => prev.filter((c) => !deletedSlugs.includes(c.slug)));
+      if (nonprofitId && deletedSlugs.length > 0) {
+        const cached = readNonprofitDashboardCache(nonprofitId);
+        if (cached) {
+          writeNonprofitDashboardCache(nonprofitId, {
+            campaigns: cached.campaigns.filter((c) => !deletedSlugs.includes(c.slug)),
+            invites: cached.invites,
+          });
+        }
+      }
+      setSelectedSlugs([]);
+      await refreshServerDrafts();
+    } catch (err) {
+      if (deletedSlugs.length > 0) {
+        setCampaigns((prev) => prev.filter((c) => !deletedSlugs.includes(c.slug)));
+        setSelectedSlugs((prev) => prev.filter((s) => !deletedSlugs.includes(s)));
+        if (nonprofitId) {
+          const cached = readNonprofitDashboardCache(nonprofitId);
+          if (cached) {
+            writeNonprofitDashboardCache(nonprofitId, {
+              campaigns: cached.campaigns.filter((c) => !deletedSlugs.includes(c.slug)),
+              invites: cached.invites,
+            });
+          }
+        }
+        await refreshServerDrafts();
+      }
+      setError(err instanceof Error ? err.message : "Failed to delete campaign");
+    } finally {
+      setDeletingSlug(null);
+      setBulkDeleting(false);
+    }
+  }, [
+    campaigns,
+    selectedSlugs,
+    tab,
+    nonprofitId,
+    discardLocalDraft,
+    refreshServerDrafts,
+  ]);
+
+  /** Clear multi-select when switching My Campaigns tabs. */
+  useEffect(() => {
+    setSelectedSlugs([]);
+  }, [tab]);
 
   const mounted = useClientMounted();
   const isSignedIn = mounted && Boolean(getAuthToken());
@@ -349,6 +454,38 @@ export function NonprofitDashboard() {
   const { grouped, draftItems, draftCount, inReviewCount } = useMemo(
     () => resolveDashboardDrafts(campaigns),
     [campaigns],
+  );
+
+  /**
+   * Visible campaigns in the current My Campaigns tab.
+   * Purpose: drive Select all / bulk delete against the list the user sees.
+   */
+  const visibleCampaigns = useMemo(() => {
+    if (tab === "drafts") return draftItems.map((item) => item.campaign);
+    return grouped[tab];
+  }, [tab, draftItems, grouped]);
+
+  /**
+   * Select or clear all campaigns visible in the current tab.
+   * Inputs: checked (true = select all visible; false = clear).
+   * Outputs: updates selectedSlugs.
+   */
+  const toggleSelectAll = useCallback(
+    (checked: boolean) => {
+      if (!checked) {
+        setSelectedSlugs([]);
+        return;
+      }
+      setSelectedSlugs(visibleCampaigns.map((c) => c.slug));
+    },
+    [visibleCampaigns],
+  );
+
+  const allVisibleSelected =
+    visibleCampaigns.length > 0 &&
+    visibleCampaigns.every((c) => selectedSlugs.includes(c.slug));
+  const someVisibleSelected = visibleCampaigns.some((c) =>
+    selectedSlugs.includes(c.slug),
   );
 
   useEffect(() => {
@@ -514,16 +651,24 @@ export function NonprofitDashboard() {
   ) => {
     const tone = statusTone(c.status);
     const dates = formatDateRange(c.startDate, c.endDate);
+    const isSelected = selectedSlugs.includes(c.slug);
     return (
       <div key={c.slug} className="flex flex-col rounded-2xl border border-border bg-card p-5">
-        <div className="flex items-start justify-between gap-3">
-          <h3 className="font-display text-base font-bold leading-snug">{c.name}</h3>
-          <div className="flex shrink-0 items-center gap-2">
+        {/* Top row: select + status/trash — title stays full-width below so long names don't squeeze. */}
+        <div className="flex items-center justify-between gap-3">
+          <Checkbox
+            checked={isSelected}
+            disabled={bulkDeleting || deletingSlug === c.slug}
+            onCheckedChange={(value) => toggleSelectSlug(c.slug, value === true)}
+            aria-label={`Select ${c.name}`}
+            className="shrink-0"
+          />
+          <div className="flex min-w-0 shrink-0 items-center gap-2">
             <StatusPill label={statusLabel(c.status, c.startDate)} tone={tone} />
             <button
               type="button"
               aria-label={`Delete ${c.name}`}
-              disabled={deletingSlug === c.slug || publishingSlug === c.slug}
+              disabled={deletingSlug === c.slug || publishingSlug === c.slug || bulkDeleting}
               onClick={() => void deleteCampaign(c)}
               className="inline-flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
             >
@@ -535,6 +680,7 @@ export function NonprofitDashboard() {
             </button>
           </div>
         </div>
+        <h3 className="font-display mt-3 text-base font-bold leading-snug">{c.name}</h3>
         {dates && (
           <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
             <CalendarClock className="size-3.5" />
@@ -626,7 +772,7 @@ export function NonprofitDashboard() {
               type="button"
               disabled={publishingSlug === c.slug}
               onClick={() => void publishNow(c.slug)}
-              className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark active:scale-95 disabled:opacity-60"
+              className="inline-flex h-10 w-[11.5rem] items-center justify-center gap-1.5 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark active:scale-95 disabled:opacity-60"
             >
               {publishingSlug === c.slug ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -651,7 +797,7 @@ export function NonprofitDashboard() {
                       : "dashboard",
               )
             }
-            className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-full px-5 text-sm font-semibold transition-all active:scale-95 ${
+            className={`inline-flex h-10 w-[11.5rem] items-center justify-center gap-1.5 rounded-full px-5 text-sm font-semibold transition-all active:scale-95 ${
               c.status === "ready_to_launch"
                 ? "border border-border bg-card font-semibold text-foreground hover:bg-secondary"
                 : "bg-primary text-primary-foreground hover:bg-primary-dark"
@@ -675,7 +821,7 @@ export function NonprofitDashboard() {
               <button
                 type="button"
                 onClick={() => openCampaign(c.slug, "builder")}
-                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-border bg-card px-5 text-sm font-semibold text-foreground transition-all hover:bg-secondary active:scale-95"
+                className="inline-flex h-10 w-[11.5rem] items-center justify-center gap-1.5 rounded-full border border-border bg-card px-5 text-sm font-semibold text-foreground transition-all hover:bg-secondary active:scale-95"
               >
                 Edit campaign
               </button>
@@ -1002,6 +1148,46 @@ export function NonprofitDashboard() {
                 ))}
               </div>
             </div>
+
+            {!tabIsEmpty && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-5">
+                <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+                  <Checkbox
+                    checked={
+                      allVisibleSelected
+                        ? true
+                        : someVisibleSelected
+                          ? "indeterminate"
+                          : false
+                    }
+                    disabled={bulkDeleting || visibleCampaigns.length === 0}
+                    onCheckedChange={(value) => toggleSelectAll(value === true)}
+                    aria-label="Select all campaigns in this tab"
+                  />
+                  Select all
+                </label>
+                <div className="flex items-center gap-2">
+                  {selectedSlugs.length > 0 && (
+                    <span className="text-sm text-muted-foreground">
+                      {selectedSlugs.length} selected
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label="Delete selected campaigns"
+                    disabled={selectedSlugs.length === 0 || bulkDeleting}
+                    onClick={() => void deleteSelectedCampaigns()}
+                    className="inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {bulkDeleting ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="size-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {tab === "drafts"

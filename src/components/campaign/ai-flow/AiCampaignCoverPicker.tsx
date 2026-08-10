@@ -11,6 +11,7 @@
  *   open - whether the sheet is visible
  *   cover / images - current campaign media
  *   optional social URLs - live-refetch suggest when opened
+ *   featuredYoutubeUrl / onFeaturedYoutubeUrlChange - optional hero video URL
  *   onClose - dismiss without change
  *   onSelectCover - set featured cover (and keep other suggested images)
  *   onSuggestedImages - optional: push live-fetched suggestions into gallery
@@ -20,6 +21,7 @@
  * Changelog: Additive live refetch of social post images on open (YT/LI/FB/IG).
  * Additive: referrerPolicy=no-referrer so social CDN images can render in browser.
  * Changelog: Resize moved to open cover (OpenCoverResizeControl) — not in this sheet.
+ * Changelog: Additive featured YouTube watch/Shorts URL field (hero video first).
  */
 import { useEffect, useRef, useState } from "react";
 import { ImageIcon, Loader2, Replace } from "lucide-react";
@@ -27,6 +29,7 @@ import type { CampaignImage } from "@/lib/campaign-context";
 import { suggestCampaignImages, uploadImage } from "@/lib/api";
 import { aiFlowCoverSourceLabel } from "./resolve-ai-flow-images";
 import { resizeCampaignImageFile } from "@/lib/resize-campaign-image";
+import { parseFeaturedYoutubeUrl } from "@/lib/featured-youtube";
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
@@ -61,6 +64,16 @@ export interface AiCampaignCoverPickerProps {
   linkedinUrl?: string | null;
   youtubeUrl?: string | null;
   /**
+   * Additive: current featured YouTube watch/Shorts URL (hero video).
+   * Separate from youtubeUrl (org channel used for photo suggestions).
+   */
+  featuredYoutubeUrl?: string | null;
+  /**
+   * Additive: persist featured YouTube URL (normalized) or null to clear.
+   * Inputs: url or null. Outputs: parent updates campaign state.
+   */
+  onFeaturedYoutubeUrlChange?: (url: string | null) => void;
+  /**
    * Optional: parent stores live-fetched suggestions so gallery stays in sync.
    * Inputs: newly suggested CampaignImage[]. Outputs: none.
    */
@@ -78,6 +91,8 @@ export function AiCampaignCoverPicker({
   websiteUrl,
   linkedinUrl,
   youtubeUrl,
+  featuredYoutubeUrl,
+  onFeaturedYoutubeUrlChange,
   onSuggestedImages,
 }: AiCampaignCoverPickerProps) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -85,14 +100,19 @@ export function AiCampaignCoverPicker({
   const [error, setError] = useState<string | null>(null);
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const [liveSuggestions, setLiveSuggestions] = useState<CampaignImage[]>([]);
+  const [ytDraft, setYtDraft] = useState("");
+  const [ytError, setYtError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
       setLiveSuggestions([]);
       setLoadingSuggest(false);
       setError(null);
+      setYtError(null);
       return;
     }
+    setYtDraft(featuredYoutubeUrl?.trim() || "");
+    setYtError(null);
 
     const fb = (facebookUrl || "").trim();
     const ig = (instagramHandle || "").trim();
@@ -140,7 +160,7 @@ export function AiCampaignCoverPicker({
     };
     // Refetch whenever the sheet opens or social inputs change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, facebookUrl, instagramHandle, websiteUrl, linkedinUrl, youtubeUrl]);
+  }, [open, facebookUrl, instagramHandle, websiteUrl, linkedinUrl, youtubeUrl, featuredYoutubeUrl]);
 
   if (!open) return null;
 
@@ -155,6 +175,27 @@ export function AiCampaignCoverPicker({
     seen.add(key);
     suggestions.push(img);
   }
+
+  /**
+   * Save or clear the featured YouTube URL from the draft field.
+   * Inputs: none (reads ytDraft). Outputs: calls onFeaturedYoutubeUrlChange.
+   */
+  const applyYoutubeUrl = () => {
+    setYtError(null);
+    const raw = ytDraft.trim();
+    if (!raw) {
+      onFeaturedYoutubeUrlChange?.(null);
+      setYtDraft("");
+      return;
+    }
+    const parsed = parseFeaturedYoutubeUrl(raw);
+    if (!parsed) {
+      setYtError("Enter a valid YouTube watch or Shorts link.");
+      return;
+    }
+    onFeaturedYoutubeUrlChange?.(parsed.url);
+    setYtDraft(parsed.url);
+  };
 
   const handleUpload = async (file: File | null) => {
     if (!file) return;
@@ -195,6 +236,8 @@ export function AiCampaignCoverPicker({
     }
   };
 
+  const savedYt = parseFeaturedYoutubeUrl(featuredYoutubeUrl ?? null);
+
   return (
     <div className="fixed inset-0 z-[120] flex items-end justify-center bg-foreground/40 p-0 backdrop-blur-sm sm:items-center sm:p-6">
       <div
@@ -218,6 +261,59 @@ export function AiCampaignCoverPicker({
         </div>
 
         <div className="space-y-4 overflow-y-auto p-5">
+          {onFeaturedYoutubeUrlChange ? (
+            <div className="space-y-2 rounded-xl border border-border bg-secondary/20 p-3">
+              <p className="text-xs font-semibold text-foreground">Featured YouTube video</p>
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                Optional. Plays first (muted) on the public campaign page, then gallery photos.
+              </p>
+              <input
+                type="url"
+                inputMode="url"
+                placeholder="https://www.youtube.com/watch?v=…"
+                value={ytDraft}
+                disabled={uploading}
+                onChange={(e) => {
+                  setYtDraft(e.target.value);
+                  setYtError(null);
+                }}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none ring-primary focus:ring-2 disabled:opacity-50"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={uploading}
+                  onClick={applyYoutubeUrl}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                  Save video URL
+                </button>
+                {savedYt || ytDraft.trim() ? (
+                  <button
+                    type="button"
+                    disabled={uploading}
+                    onClick={() => {
+                      setYtDraft("");
+                      setYtError(null);
+                      onFeaturedYoutubeUrlChange(null);
+                    }}
+                    className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  >
+                    Clear video
+                  </button>
+                ) : null}
+              </div>
+              {savedYt ? (
+                <p className="truncate text-[11px] font-medium text-primary">
+                  Saved: {savedYt.url}
+                </p>
+              ) : null}
+              {ytError ? (
+                <p className="text-xs font-medium text-destructive">{ytError}</p>
+              ) : null}
+            </div>
+          ) : null}
+
           {loadingSuggest ? (
             <p className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin text-primary" />

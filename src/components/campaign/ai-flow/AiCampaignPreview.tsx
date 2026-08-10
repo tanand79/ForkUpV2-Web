@@ -980,6 +980,8 @@ export function AiCampaignPreview() {
         websiteUrl={state.promotion.websiteUrl}
         linkedinUrl={linkedinUrl}
         youtubeUrl={youtubeUrl}
+        featuredYoutubeUrl={state.featuredYoutubeUrl}
+        onFeaturedYoutubeUrlChange={(url) => update({ featuredYoutubeUrl: url })}
         onClose={() => setCoverPickerOpen(false)}
         onSuggestedImages={(suggested) => {
           const seen = new Set(

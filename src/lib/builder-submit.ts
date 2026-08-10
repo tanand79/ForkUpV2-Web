@@ -43,6 +43,11 @@ export interface CreateCampaignPayload {
   endDate?: string;
   eventDate?: string;
   coverImage: string;
+  /**
+   * Additive: optional featured YouTube watch/Shorts URL.
+   * Omit to leave unchanged on PATCH; null/"" to clear.
+   */
+  featuredYoutubeUrl?: string | null;
   methods: ApiMethodType[];
   invitations?: {
     businessId: number;
@@ -348,6 +353,10 @@ export function buildCreateCampaignPayload(
     endDate: state.endDate || undefined,
     eventDate: state.eventDate || undefined,
     coverImage: durableCoverImageUrl(state),
+    /** Additive: persist featured YouTube when set; send null to clear. */
+    featuredYoutubeUrl: state.featuredYoutubeUrl?.trim()
+      ? state.featuredYoutubeUrl.trim()
+      : null,
     methods,
     invitations,
     newBusinessInvites,

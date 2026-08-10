@@ -22,7 +22,6 @@ import { saveAiFlowPendingOrg, clearAiFlowStore } from "@/lib/ai-campaign-flow-s
 import { stashAccountIntent } from "@/lib/campaign-auth";
 import {
   nearbyQueryParams,
-  TEST_LOCATION_RICHMOND_VA,
   useBrowserLocation,
 } from "@/hooks/use-browser-location";
 import { SearchRadiusControl } from "@/components/campaign/SearchRadiusControl";
@@ -199,58 +198,6 @@ export function AiFindOrganization() {
         latitude={browserLocation.latitude}
         longitude={browserLocation.longitude}
       />
-
-      {useNearbyFilter ? (
-        <div className="mt-2 space-y-1">
-          {browserLocation.status === "ready" ? (
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <span>
-                {browserLocation.usedAutoFallback || browserLocation.isOverride
-                  ? `Nearby active (${TEST_LOCATION_RICHMOND_VA.label}${browserLocation.usedAutoFallback ? " auto" : ""}).`
-                  : `Nearby active${browserLocation.city ? ` near ${browserLocation.city}` : ""}.`}
-              </span>
-              {!browserLocation.usedAutoFallback && !browserLocation.isOverride ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    browserLocation.setLocationOverride({
-                      latitude: TEST_LOCATION_RICHMOND_VA.latitude,
-                      longitude: TEST_LOCATION_RICHMOND_VA.longitude,
-                    });
-                    setSelected(null);
-                  }}
-                  className="font-medium text-primary underline-offset-2 hover:underline"
-                >
-                  Use Richmond, VA pin
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    browserLocation.setLocationOverride(null);
-                    browserLocation.refresh();
-                    setSelected(null);
-                  }}
-                  className="font-medium text-primary underline-offset-2 hover:underline"
-                >
-                  Retry device GPS
-                </button>
-              )}
-            </p>
-          ) : browserLocation.status === "prompting" ? (
-            <p className="text-xs text-muted-foreground">Checking location…</p>
-          ) : browserLocation.error ? (
-            <p className="text-xs text-muted-foreground">{browserLocation.error}</p>
-          ) : null}
-          {browserLocation.error && browserLocation.status === "ready" ? (
-            <p className="text-xs text-amber-700">{browserLocation.error}</p>
-          ) : null}
-        </div>
-      ) : (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Nearby filter is off — normal search (all US matches).
-        </p>
-      )}
 
       {selected && (
         <div className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm">

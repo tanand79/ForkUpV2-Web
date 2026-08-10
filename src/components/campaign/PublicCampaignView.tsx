@@ -433,6 +433,7 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
               urls={galleryUrls}
               alt={campaign.name}
               placeholderSrc={imagePlaceholder}
+              featuredYoutubeUrl={campaign.featuredYoutubeUrl}
             />
 
             <h1 className="font-display mt-6 text-2xl font-bold leading-tight tracking-tight text-foreground sm:text-3xl md:text-4xl">

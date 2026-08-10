@@ -207,6 +207,12 @@ function loadDraft(): CampaignDraft | null {
         cover: savedState.cover ?? null,
         images: Array.isArray(savedState.images) ? savedState.images : [],
         video: savedState.video ?? null,
+        featuredYoutubeUrl:
+          typeof savedState.featuredYoutubeUrl === "string"
+            ? savedState.featuredYoutubeUrl
+            : savedState.featuredYoutubeUrl === null
+              ? null
+              : initialState.featuredYoutubeUrl,
         promotion: { ...initialState.promotion, ...savedState.promotion },
         storyAccepted: !!savedState.storyAccepted,
         aiDrafted: !!savedState.aiDrafted,
@@ -629,6 +635,11 @@ export interface CampaignState {
   cover: CampaignImage | null;
   images: CampaignImage[];
   video: CampaignVideo | null;
+  /**
+   * Additive: optional featured YouTube watch/Shorts URL for public hero.
+   * Separate from `video` (uploaded file). Null when unset.
+   */
+  featuredYoutubeUrl: string | null;
   // Optional promotion channels used by the Success Engine to prepare posts,
   // reminders, emails, and sharing tools. All fields are optional.
   promotion: PromotionChannels;
@@ -711,6 +722,7 @@ const initialState: CampaignState = {
   cover: null,
   images: [],
   video: null,
+  featuredYoutubeUrl: null,
   promotion: { facebookUrl: "", instagramHandle: "", websiteUrl: "", newsletter: "" },
   storyAccepted: false,
   aiDrafted: false,
@@ -1551,6 +1563,7 @@ export function CampaignProvider({
     state.methods,
     state.cover,
     state.images,
+    state.featuredYoutubeUrl,
     state.nonprofitProfile,
     state.promotion,
     state.fundsSupport,

@@ -1,12 +1,11 @@
 "use client";
 
 /**
- * Browser GPS for nearby (~8 mile) search filters.
+ * Browser location for nearby (~8 mile) search filters.
  *
- * Purpose: Request device location and expose coords (+ city/state) for API calls.
- * VPN does not affect this. When GPS is denied/unavailable/outside the US,
- * automatically falls back to a Richmond VA test pin so nearby search still works
- * in local/remote-dev from overseas.
+ * Purpose: Expose coords (+ city/state) for nearby API calls.
+ * Order: US device GPS → else Browser IP / VPN geolocation (US only) →
+ * else Richmond VA test pin (overseas QA).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -58,12 +57,26 @@ const GEO_OPTIONS: PositionOptions = {
 
 type PlaceHint = { city: string | null; state: string | null };
 
+type IpPlace = {
+  latitude: number;
+  longitude: number;
+  city: string | null;
+  state: string | null;
+};
+
 function isLikelyOutsideUs(lat: number, lng: number): boolean {
   // Contiguous US + Alaska/Hawaii rough box. Outside → US IRS nearby cannot apply.
   if (lat >= 24 && lat <= 50 && lng >= -125 && lng <= -66) return false;
   if (lat >= 51 && lat <= 72 && lng >= -180 && lng <= -129) return false; // AK
   if (lat >= 18 && lat <= 23 && lng >= -161 && lng <= -154) return false; // HI
   return true;
+}
+
+function stateFromSubdivisionCode(code: string | undefined): string | null {
+  const subdiv = (code ?? "").trim().toUpperCase();
+  if (/^US-[A-Z]{2}$/.test(subdiv)) return subdiv.slice(3);
+  if (/^[A-Z]{2}$/.test(subdiv)) return subdiv;
+  return null;
 }
 
 /**
@@ -94,18 +107,50 @@ async function reverseGeocodeClient(
     if ((data.countryCode ?? "").toUpperCase() !== "US") {
       return { city: null, state: null };
     }
-    const subdiv = (data.principalSubdivisionCode ?? "").trim().toUpperCase();
-    const state = /^US-[A-Z]{2}$/.test(subdiv)
-      ? subdiv.slice(3)
-      : /^[A-Z]{2}$/.test(subdiv)
-        ? subdiv
-        : null;
     return {
       city: data.city || data.locality || null,
-      state,
+      state: stateFromSubdivisionCode(data.principalSubdivisionCode),
     };
   } catch {
     return { city: null, state: null };
+  }
+}
+
+/**
+ * Geolocate via the browser's public IP (follows VPN exit node).
+ * Returns null when IP is outside the US or the lookup fails.
+ * Uses ipwho.is (no key); BigDataCloud client IP endpoint requires a paid/key path.
+ */
+async function ipGeolocateUsClient(): Promise<IpPlace | null> {
+  try {
+    const res = await fetch("https://ipwho.is/", {
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      success?: boolean;
+      latitude?: number;
+      longitude?: number;
+      country_code?: string;
+      city?: string;
+      region_code?: string;
+    };
+    if (data.success === false) return null;
+    const country = (data.country_code ?? "").toUpperCase();
+    const lat = data.latitude;
+    const lng = data.longitude;
+    if (country !== "US" || lat == null || lng == null) return null;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (isLikelyOutsideUs(lat, lng)) return null;
+    const region = (data.region_code ?? "").trim().toUpperCase();
+    return {
+      latitude: lat,
+      longitude: lng,
+      city: data.city || null,
+      state: /^[A-Z]{2}$/.test(region) ? region : null,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -148,6 +193,39 @@ export function useBrowserLocation(enabled = true): BrowserLocationState {
     setError(reason);
   }, []);
 
+  /**
+   * Prefer US IP / VPN when GPS is missing or overseas; Richmond only if IP is also unusable.
+   */
+  const applyIpOrRichmond = useCallback(
+    async (cancelled: () => boolean, gpsNote: string) => {
+      const ip = await ipGeolocateUsClient();
+      if (cancelled()) return;
+      if (ip) {
+        setLatitude(ip.latitude);
+        setLongitude(ip.longitude);
+        setCity(ip.city);
+        setStateCode(ip.state);
+        setStatus("ready");
+        setUsedAutoFallback(false);
+        setError(
+          `${gpsNote} Using browser IP / VPN location${ip.city ? ` (${ip.city}${ip.state ? `, ${ip.state}` : ""})` : ""}.`,
+        );
+        if (!ip.city || !ip.state) {
+          void reverseGeocodeClient(ip.latitude, ip.longitude).then((place) => {
+            if (cancelled()) return;
+            if (place.city) setCity(place.city);
+            if (place.state) setStateCode(place.state);
+          });
+        }
+        return;
+      }
+      applyRichmondFallback(
+        `${gpsNote} No US IP / VPN detected — using Richmond, VA test pin so nearby (~8 mi) can work.`,
+      );
+    },
+    [applyRichmondFallback],
+  );
+
   useEffect(() => {
     if (!enabled) {
       setStatus("idle");
@@ -188,17 +266,21 @@ export function useBrowserLocation(enabled = true): BrowserLocationState {
       };
     }
 
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      applyRichmondFallback(
-        "Location unsupported — using Richmond, VA test pin for nearby search.",
-      );
-      return;
-    }
-
     let cancelled = false;
+    const isCancelled = () => cancelled;
     setStatus("prompting");
     setError(null);
     setUsedAutoFallback(false);
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      void applyIpOrRichmond(
+        isCancelled,
+        "Location unsupported.",
+      );
+      return () => {
+        cancelled = true;
+      };
+    }
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -207,8 +289,9 @@ export function useBrowserLocation(enabled = true): BrowserLocationState {
         const lng = pos.coords.longitude;
 
         if (isLikelyOutsideUs(lat, lng)) {
-          applyRichmondFallback(
-            "Device GPS is outside the US — using Richmond, VA test pin so nearby (~8 mi) can work.",
+          void applyIpOrRichmond(
+            isCancelled,
+            "Device GPS is outside the US.",
           );
           return;
         }
@@ -229,11 +312,11 @@ export function useBrowserLocation(enabled = true): BrowserLocationState {
       },
       (err) => {
         if (cancelled) return;
-        const reason =
+        const note =
           err.code === err.PERMISSION_DENIED
-            ? "Location permission denied — using Richmond, VA test pin for nearby search."
-            : "Could not read GPS — using Richmond, VA test pin for nearby search.";
-        applyRichmondFallback(reason);
+            ? "Location permission denied."
+            : "Could not read GPS.";
+        void applyIpOrRichmond(isCancelled, note);
       },
       GEO_OPTIONS,
     );
@@ -241,7 +324,7 @@ export function useBrowserLocation(enabled = true): BrowserLocationState {
     return () => {
       cancelled = true;
     };
-  }, [enabled, token, override, applyRichmondFallback]);
+  }, [enabled, token, override, applyIpOrRichmond]);
 
   return {
     status,

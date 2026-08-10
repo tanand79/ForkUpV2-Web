@@ -182,6 +182,11 @@ export function stateFromBuilderCampaign(data: BuilderCampaignState): Partial<Ca
     cover: coverUrl
       ? { id: `cover-${data.slug}`, url: coverUrl, name: "cover.jpg" }
       : null,
+    /** Additive: hydrate featured YouTube from builder API when present. */
+    featuredYoutubeUrl:
+      typeof data.featuredYoutubeUrl === "string" && data.featuredYoutubeUrl.trim()
+        ? data.featuredYoutubeUrl.trim()
+        : null,
   };
 }
 

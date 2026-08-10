@@ -6,7 +6,7 @@
  * Outputs: editable review UI → Partners (if giveback/guest bartending) or Launch review.
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -26,6 +26,7 @@ import { UsDateInput } from "@/components/campaign/UsDateInput";
 import { dateFieldRequirements, campaignDateMin, campaignDateNotInPastError, todayDateOnly } from "@/lib/campaign-timing";
 import { formatDateUs, formatDateTimeUs, looksLikeIsoDateTime } from "@/lib/date-only";
 import { campaignPublicPath } from "@/lib/campaign-paths";
+import { parseFeaturedYoutubeUrl } from "@/lib/featured-youtube";
 
 const METHOD_LABELS = SUPPORT_METHOD_META;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -82,10 +83,18 @@ export function CampaignReview() {
   const [featuredOpen, setFeaturedOpen] = useState(false);
   const [featuredError, setFeaturedError] = useState<string | null>(null);
   const [featuredUploading, setFeaturedUploading] = useState(false);
+  const [ytDraft, setYtDraft] = useState("");
+  const [ytError, setYtError] = useState<string | null>(null);
   const imageRef = useRef<HTMLInputElement>(null);
   const basicsRef = useRef<HTMLDivElement>(null);
   const startDateRef = useRef<HTMLInputElement>(null);
   const eventDateRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!featuredOpen) return;
+    setYtDraft(state.featuredYoutubeUrl?.trim() || "");
+    setYtError(null);
+  }, [featuredOpen, state.featuredYoutubeUrl]);
 
   const orgName =
     state.nonprofitProfile?.organizationName?.trim() || "Your organization";
@@ -710,6 +719,72 @@ export function CampaignReview() {
               </button>
             </div>
             <div className="space-y-3 p-5">
+              <div className="space-y-2 rounded-xl border border-border bg-secondary/20 p-3">
+                <p className="text-xs font-semibold text-foreground">Featured YouTube video</p>
+                <p className="text-[11px] leading-snug text-muted-foreground">
+                  Optional. Plays first (muted) on the public campaign page, then gallery photos.
+                </p>
+                <input
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://www.youtube.com/watch?v=…"
+                  value={ytDraft}
+                  disabled={featuredUploading}
+                  onChange={(e) => {
+                    setYtDraft(e.target.value);
+                    setYtError(null);
+                  }}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none ring-primary focus:ring-2 disabled:opacity-50"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={featuredUploading}
+                    onClick={() => {
+                      setYtError(null);
+                      const raw = ytDraft.trim();
+                      if (!raw) {
+                        update({ featuredYoutubeUrl: null });
+                        setYtDraft("");
+                        return;
+                      }
+                      const parsed = parseFeaturedYoutubeUrl(raw);
+                      if (!parsed) {
+                        setYtError("Enter a valid YouTube watch or Shorts link.");
+                        return;
+                      }
+                      update({ featuredYoutubeUrl: parsed.url });
+                      setYtDraft(parsed.url);
+                    }}
+                    className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                  >
+                    Save video URL
+                  </button>
+                  {(state.featuredYoutubeUrl || ytDraft.trim()) ? (
+                    <button
+                      type="button"
+                      disabled={featuredUploading}
+                      onClick={() => {
+                        setYtDraft("");
+                        setYtError(null);
+                        update({ featuredYoutubeUrl: null });
+                      }}
+                      className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    >
+                      Clear video
+                    </button>
+                  ) : null}
+                </div>
+                {state.featuredYoutubeUrl ? (
+                  <p className="truncate text-[11px] font-medium text-primary">
+                    Saved: {state.featuredYoutubeUrl}
+                  </p>
+                ) : null}
+                {ytError ? (
+                  <p className="text-xs font-medium text-destructive">{ytError}</p>
+                ) : null}
+              </div>
+
               <button
                 type="button"
                 onClick={() => imageRef.current?.click()}

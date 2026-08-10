@@ -415,21 +415,6 @@ export function OrganizationLookupConfirm({
             latitude={browserLocation.latitude}
             longitude={browserLocation.longitude}
           />
-          {useNearbyFilter ? (
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {browserLocation.status === "ready"
-                ? browserLocation.usedAutoFallback || browserLocation.isOverride
-                  ? `Nearby on (${gpsNearby?.city ?? "Richmond"}, ${gpsNearby?.state ?? "VA"}${browserLocation.usedAutoFallback ? " — auto pin" : ""}).`
-                  : "Nearby on — using your browser location."
-                : browserLocation.status === "prompting"
-                  ? "Checking location…"
-                  : browserLocation.error ?? "Allow location to filter nearby nonprofits."}
-            </p>
-          ) : (
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              Nearby filter is off — normal search (all matches).
-            </p>
-          )}
           {error && (
             <p className="mt-2 flex items-center gap-1.5 text-sm text-destructive">
               <AlertTriangle className="size-4" /> {error}
