@@ -313,6 +313,35 @@ Thank you for helping our community succeed!`;
         </Section>
       )}
 
+      {/* Invite more businesses after live (giveback / guest bartending) */}
+      {isLive && (state.methods.giveback || state.methods.guestBartending) && (
+        <Section
+          delay={240}
+          icon={<Building2 className="size-4 text-primary" />}
+          title="Grow your business partners"
+        >
+          <p className="text-sm text-muted-foreground">
+            Invite another local business to join while your campaign is live.
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              goTo("businesses", {
+                query: { appendInvites: "1" },
+                statePatch: {
+                  selectedBusinessIds: [],
+                  invited: state.invited.filter((b) => b.persisted),
+                },
+              })
+            }
+            className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-dark"
+          >
+            <Building2 className="size-4" />
+            Invite another business
+          </button>
+        </Section>
+      )}
+
       {/* ── Pre-promotion sections (while partners confirm) ─────────────── */}
       {!isLive && (
         <>
@@ -359,7 +388,17 @@ Thank you for helping our community succeed!`;
                 title="Invite Another Business"
                 description="Add another local business to increase your chances of a strong launch."
                 buttonLabel="Invite Business"
-                onClick={() => goTo("businesses")}
+                onClick={() =>
+                  state.campaignSlug
+                    ? goTo("businesses", {
+                        query: { appendInvites: "1" },
+                        statePatch: {
+                          selectedBusinessIds: [],
+                          invited: state.invited.filter((b) => b.persisted),
+                        },
+                      })
+                    : goTo("businesses")
+                }
               />
             </div>
           </Section>

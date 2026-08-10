@@ -8,10 +8,13 @@
  * Date timing rules match AiCampaignDates (Needs ForkUp Review + CTAs).
  *
  * Inputs: campaign context (title, description, cover, logo, dates, methods, goal).
- * Output: preview / edit UI + Continue to signup (or review if logged in).
+ * Output: preview / edit UI + Continue to signup (or businesses/review if logged in).
  *
- * Changelog: Auto-load featured cover from AI session / social suggest when
- * missing; on image load error try the next gallery URL before clearing.
+ * Changelog:
+ * - Auto-load featured cover from AI session / social suggest when missing;
+ *   on image load error try the next gallery URL before clearing.
+ * - Continue routes to Launch review after Dates→Partners; business invite
+ *   happens on the Dates continue path (not again from Preview).
  */
 import { useEffect, useRef, useState } from "react";
 import {
@@ -34,14 +37,18 @@ import { formatCurrency } from "@/data/campaigns";
 import { formatDateUs } from "@/lib/date-only";
 import {
   ambassadorTimingCoachMessage,
+  campaignDateMin,
+  campaignDateNotInPastError,
   dateFieldRequirements,
   evaluateBusinessMethodTiming,
   hasBusinessMethod,
+  todayDateOnly,
   timingCtaLabel,
   type TimingCta,
 } from "@/lib/campaign-timing";
 import { fetchAiCampaignSession } from "@/lib/api-ai-campaign-flow";
 import { createFundraiserCampaignInvite } from "@/lib/api";
+import { campaignMethodsForApi } from "@/lib/builder-submit";
 import { loadAiFlowStore, loadAiFlowPendingOrg } from "@/lib/ai-campaign-flow-storage";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
 import {
@@ -277,6 +284,19 @@ export function AiCampaignPreview() {
       blocking: true,
     });
   }
+  const pastDateError = campaignDateNotInPastError({
+    startDate: state.startDate,
+    endDate: state.endDate,
+    eventDate: state.eventDate,
+  });
+  if (pastDateError) {
+    attention.push({
+      id: "past-date",
+      label: pastDateError,
+      action: "Fix Dates",
+      blocking: true,
+    });
+  }
   if (!hasCover) {
     attention.push({
       id: "cover",
@@ -396,6 +416,7 @@ export function AiCampaignPreview() {
       </label>
       <UsDateInput
         value={state.startDate}
+        min={todayDateOnly()}
         max={state.endDate || undefined}
         onChange={(startDate) => update({ startDate, ...clearTimingFlags })}
         className={fieldClass}
@@ -414,7 +435,7 @@ export function AiCampaignPreview() {
       </label>
       <UsDateInput
         value={state.endDate}
-        min={state.startDate || undefined}
+        min={campaignDateMin(state.startDate)}
         onChange={(endDate) => update({ endDate, ...clearTimingFlags })}
         className={fieldClass}
       />
@@ -603,6 +624,7 @@ export function AiCampaignPreview() {
                     </label>
                     <UsDateInput
                       value={state.eventDate}
+                      min={todayDateOnly()}
                       onChange={(eventDate) =>
                         update({ eventDate, ...clearTimingFlags })
                       }
@@ -839,11 +861,29 @@ export function AiCampaignPreview() {
                 return;
               }
               const pending = loadAiFlowPendingOrg();
+              const stored = loadAiFlowStore();
+              // Prefer invite-target id from AI flow storage — membership profile
+              // (e.g. Hear To Heal) must not hijack a Headstrong invite.
               const nonprofitId =
-                pending?.nonprofitId ?? state.nonprofitProfile?.id ?? null;
+                (typeof stored?.nonprofitId === "number" && stored.nonprofitId > 0
+                  ? stored.nonprofitId
+                  : null) ??
+                (typeof pending?.nonprofitId === "number" && pending.nonprofitId > 0
+                  ? pending.nonprofitId
+                  : null) ??
+                (state.nonprofitProfile?.id &&
+                !state.nonprofitMemberships.some((m) => m.id === state.nonprofitProfile?.id)
+                  ? state.nonprofitProfile.id
+                  : null);
               if (!nonprofitId) {
                 setInviteError(
-                  "This nonprofit must exist in ForkUp before you can send an invite. Pick an organization with a ForkUp profile.",
+                  "This nonprofit must exist in ForkUp before you can send an invite. Pick an organization with a ForkUp profile from Find a nonprofit.",
+                );
+                return;
+              }
+              if (state.nonprofitMemberships.some((m) => m.id === nonprofitId)) {
+                setInviteError(
+                  "You already belong to this nonprofit. Create the campaign from your nonprofit dashboard instead — or pick a different organization to invite.",
                 );
                 return;
               }
@@ -856,9 +896,12 @@ export function AiCampaignPreview() {
                 campaignGoal: Number(String(state.goal).replace(/[^0-9.]/g, "")) || 0,
                 startDate: state.startDate || null,
                 endDate: state.endDate || null,
+                eventDate: state.eventDate || null,
                 coverImage:
                   state.cover?.storedUrl || state.cover?.url || null,
                 message: null,
+                methods: campaignMethodsForApi(state),
+                submitForForkupReview: Boolean(state.submitForForkupReview),
               })
                 .then(() => goTo("fundraiser-dashboard"))
                 .catch((err) =>
@@ -869,12 +912,14 @@ export function AiCampaignPreview() {
                 .finally(() => setInviteSending(false));
               return;
             }
+            // Partners are collected after Dates; Preview Continue goes to Launch.
+            const nextStep = "review" as const;
             if (getAuthToken()) {
-              goTo("review");
+              goTo(nextStep);
               return;
             }
             stashAccountIntent("nonprofit");
-            stashAuthReturnStep("review");
+            stashAuthReturnStep(nextStep);
             sessionStorage.setItem("forkup-auth-initial-mode", "register");
             goTo("auth-login");
           }}

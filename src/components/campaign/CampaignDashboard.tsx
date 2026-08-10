@@ -276,16 +276,19 @@ export function CampaignDashboard() {
   })();
   const stage = stageOverride ?? serverStage ?? campaignStage;
   const stageMeta = CAMPAIGN_STAGE_META[stage];
-  // Pre-launch invitation tracking is the focus during draft/invitation/ready.
-  const showInvitationTracking = stage === "draft" || stage === "invitation" || stage === "ready";
+  // Invitation tracking stays available after go-live so organizers can add partners.
+  const showInvitationTracking =
+    stage === "draft" || stage === "invitation" || stage === "ready" || stage === "live";
   // Performance KPIs only make sense once supporters can act (live onward).
   const showPerformance = stage === "live" || stage === "closed" || stage === "settlement";
   // Success Engine messaging is generated once the business list is finalized.
   const showSuccessEngine = stage === "ready" || stage === "live";
   // Receipt & sales tracking activates at launch and drives settlement.
   const showReceiptTracking = stage === "live" || stage === "closed" || stage === "settlement";
-  // During Live, the business list is final — never show "none yet" messaging.
+  // Empty-state guidance is for pre-live only; live can still add partners via CTA.
   const allowBusinessEmptyState = stage !== "live";
+  const canAppendBusinessInvites =
+    stage === "live" || stage === "invitation" || stage === "ready";
   /** Current campaign slug for the live /campaign/{slug}/ public page link. */
   const publicSlug = state.campaignSlug ?? apiDashboard?.slug ?? "";
 
@@ -520,9 +523,11 @@ export function CampaignDashboard() {
             {stage === "ready" ? "Participating Businesses" : "Business Partners"}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {stage === "ready"
-              ? "Your business list is finalized for launch."
-              : "Track where your partner businesses stand."}
+            {stage === "live"
+              ? "Track partners and invite additional businesses while your campaign is live."
+              : stage === "ready"
+                ? "Your business list is set for launch — you can still invite more partners."
+                : "Track where your partner businesses stand."}
           </p>
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
             <Stat label="Invited" value={invited} />
@@ -651,28 +656,49 @@ export function CampaignDashboard() {
               ))}
             </div>
           )}
-          <button
-            onClick={() => {
-              const slug = state.campaignSlug ?? apiDashboard?.slug;
-              if (!slug) {
-                goTo("business-invite-flow");
-                return;
-              }
-              const changes = apiDashboard?.invitations.find(
-                (i) => i.acceptanceStatus === "changes_requested",
-              );
-              goTo("business-invite-flow", {
-                statePatch: { campaignSlug: slug },
-                query: {
-                  campaign: slug,
-                  invitation: changes ? String(changes.id) : undefined,
-                },
-              });
-            }}
-            className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-full border border-border bg-card px-5 text-sm font-semibold transition-colors hover:bg-secondary"
-          >
-            Track Business Partners <ArrowRight className="size-4" />
-          </button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {canAppendBusinessInvites && (
+              <button
+                type="button"
+                onClick={() => {
+                  const slug = state.campaignSlug ?? apiDashboard?.slug ?? "";
+                  goTo("businesses", {
+                    query: { appendInvites: "1" },
+                    statePatch: {
+                      selectedBusinessIds: [],
+                      invited: state.invited.filter((b) => b.persisted),
+                      ...(slug ? { campaignSlug: slug } : {}),
+                    },
+                  });
+                }}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-dark"
+              >
+                Invite another business <ArrowRight className="size-4" />
+              </button>
+            )}
+            <button
+              onClick={() => {
+                const slug = state.campaignSlug ?? apiDashboard?.slug;
+                if (!slug) {
+                  goTo("business-invite-flow");
+                  return;
+                }
+                const changes = apiDashboard?.invitations.find(
+                  (i) => i.acceptanceStatus === "changes_requested",
+                );
+                goTo("business-invite-flow", {
+                  statePatch: { campaignSlug: slug },
+                  query: {
+                    campaign: slug,
+                    invitation: changes ? String(changes.id) : undefined,
+                  },
+                });
+              }}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-border bg-card px-5 text-sm font-semibold transition-colors hover:bg-secondary"
+            >
+              Track Business Partners <ArrowRight className="size-4" />
+            </button>
+          </div>
         </section>
       )}
 

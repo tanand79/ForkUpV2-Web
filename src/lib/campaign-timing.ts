@@ -43,8 +43,54 @@ export type MethodTimingEvaluation = {
   anchorKind: "start" | "event" | "end" | null;
 };
 
-function todayDateOnly(): string {
+/**
+ * Today's calendar date as YYYY-MM-DD (local).
+ * Purpose: Floor for campaign date pickers and past-date validation.
+ */
+export function todayDateOnly(): string {
   return toDateOnlyString(new Date());
+}
+
+/**
+ * Returns an error when a provided campaign date is before today; null when OK or empty.
+ * Purpose: UI attention messages mirroring server past-date hard checks.
+ * Inputs: optional start/end/event YYYY-MM-DD. Outputs: first matching error string or null.
+ */
+export function campaignDateNotInPastError(input: {
+  startDate?: string | null;
+  endDate?: string | null;
+  eventDate?: string | null;
+}): string | null {
+  const today = todayDateOnly();
+  if (!today) return null;
+  const startDate = toDateOnlyString(input.startDate);
+  const endDate = toDateOnlyString(input.endDate);
+  const eventDate = toDateOnlyString(input.eventDate);
+  if (startDate && startDate < today) {
+    return "Campaign start date cannot be in the past";
+  }
+  if (endDate && endDate < today) {
+    return "Campaign end date cannot be in the past";
+  }
+  if (eventDate && eventDate < today) {
+    return "Event date cannot be in the past";
+  }
+  return null;
+}
+
+/**
+ * Earliest selectable day for a campaign date field (not before today;
+ * and not before any extra bound such as start date).
+ * Inputs: optional YYYY-MM-DD bounds. Outputs: YYYY-MM-DD min for UsDateInput.
+ */
+export function campaignDateMin(
+  ...bounds: Array<string | null | undefined>
+): string {
+  const today = todayDateOnly();
+  const candidates = [today, ...bounds.map((b) => toDateOnlyString(b))]
+    .filter((v): v is string => Boolean(v))
+    .sort();
+  return candidates[candidates.length - 1] ?? today;
 }
 
 /** Whole calendar days from today until target YYYY-MM-DD. */

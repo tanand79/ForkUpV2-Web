@@ -178,6 +178,39 @@ export function updateCampaign(slug: string, payload: CreateCampaignPayload) {
 }
 
 /**
+ * POST /api/builder/campaigns/:slug/business-invitations
+ * Purpose: Append business invites on invitation_phase / ready_to_launch / live
+ * without editing campaign fields.
+ * Inputs: slug + invitations / newBusinessInvites arrays.
+ * Outputs: { slug, campaignStatus, addedCount, message, invitationLinks }.
+ */
+export function appendCampaignBusinessInvitations(
+  slug: string,
+  body: {
+    invitations?: CreateCampaignPayload["invitations"];
+    newBusinessInvites?: CreateCampaignPayload["newBusinessInvites"];
+  },
+) {
+  return fetchJson<{
+    slug: string;
+    campaignStatus: string;
+    addedCount: number;
+    message: string;
+    invitationLinks: Array<{
+      businessName: string;
+      locationName: string;
+      token: string;
+      acceptanceStatus: string;
+      acceptPath: string;
+    }>;
+  }>(`/api/builder/campaigns/${encodeURIComponent(slug)}/business-invitations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
  * POST /api/builder/campaigns/:slug/resubmit-forkup-review
  * Inputs: campaign slug (must currently be forkup_review_status = denied).
  * Outputs: { success, slug, forkupReviewStatus: "pending" }
@@ -1093,6 +1126,8 @@ export function fetchFundraiserCampaignInvite(token: string) {
 /**
  * method: POST /api/fundraiser/invites
  * Creates draft campaign + emails nonprofit.
+ * Additive: methods / eventDate / submitForForkupReview so short-timeline
+ * business methods enter ForkUp review (not live) when NPO accepts.
  */
 export function createFundraiserCampaignInvite(body: {
   nonprofitId: number;
@@ -1101,8 +1136,11 @@ export function createFundraiserCampaignInvite(body: {
   campaignGoal?: number;
   startDate?: string | null;
   endDate?: string | null;
+  eventDate?: string | null;
   coverImage?: string | null;
   message?: string | null;
+  methods?: CreateCampaignPayload["methods"];
+  submitForForkupReview?: boolean;
 }) {
   return fetchJson<{
     token: string;
@@ -1117,10 +1155,15 @@ export function createFundraiserCampaignInvite(body: {
 }
 
 export function acceptFundraiserCampaignInvite(token: string) {
-  return fetchJson<{ success: boolean; invitationStatus: string; campaignSlug?: string }>(
-    `/api/fundraiser/invites/${encodeURIComponent(token)}/accept`,
-    { method: "POST", headers: { ...authHeaders() } },
-  );
+  return fetchJson<{
+    success: boolean;
+    invitationStatus: string;
+    campaignSlug?: string;
+    campaignStatus?: string;
+  }>(`/api/fundraiser/invites/${encodeURIComponent(token)}/accept`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+  });
 }
 
 export function declineFundraiserCampaignInvite(token: string, reason?: string) {

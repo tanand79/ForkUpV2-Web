@@ -18,7 +18,7 @@ import {
 } from "@/lib/api";
 import { OrganizationNameSuggest } from "@/components/campaign/OrganizationNameSuggest";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
-import { saveAiFlowPendingOrg } from "@/lib/ai-campaign-flow-storage";
+import { saveAiFlowPendingOrg, clearAiFlowStore } from "@/lib/ai-campaign-flow-storage";
 import { stashAccountIntent } from "@/lib/campaign-auth";
 import {
   nearbyQueryParams,
@@ -72,6 +72,8 @@ export function AiFindOrganization() {
     stashAccountIntent("fundraiser");
 
     try {
+      // Drop prior AI session so a previous membership org cannot be reused.
+      clearAiFlowStore();
       saveAiFlowPendingOrg({
         organizationName: selected.organizationName,
         ein: selected.ein,

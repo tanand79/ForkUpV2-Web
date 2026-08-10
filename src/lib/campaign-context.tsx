@@ -213,11 +213,15 @@ function loadDraft(): CampaignDraft | null {
         goalAiSuggested: !!savedState.goalAiSuggested,
         organizerMode: savedState.organizerMode ?? null,
         accountIntent: savedState.accountIntent ?? null,
-        nonprofitMemberships: Array.isArray(savedState.nonprofitMemberships)
-          ? savedState.nonprofitMemberships
-          : savedState.nonprofitProfile
-            ? [savedState.nonprofitProfile]
-            : [],
+        // Fundraiser invite-target profiles must never become fake memberships.
+        nonprofitMemberships:
+          savedState.accountIntent === "fundraiser"
+            ? []
+            : Array.isArray(savedState.nonprofitMemberships)
+              ? savedState.nonprofitMemberships
+              : savedState.nonprofitProfile
+                ? [savedState.nonprofitProfile]
+                : [],
         businessMemberships: Array.isArray(savedState.businessMemberships)
           ? savedState.businessMemberships
           : savedState.businessProfile
@@ -1271,7 +1275,17 @@ export function CampaignProvider({
         ) {
           return prev;
         }
-        return { ...prev, ...patch };
+        // Fundraiser invite target must not be replaced by a membership org (e.g. Hear To Heal).
+        const keepInviteTarget =
+          prev.accountIntent === "fundraiser" &&
+          prev.nonprofitProfile?.id != null &&
+          !patch.nonprofitMemberships.some((m) => m.id === prev.nonprofitProfile?.id);
+        return {
+          ...prev,
+          ...patch,
+          accountIntent: prev.accountIntent === "fundraiser" ? "fundraiser" : patch.accountIntent,
+          nonprofitProfile: keepInviteTarget ? prev.nonprofitProfile : patch.nonprofitProfile,
+        };
       });
     }
 
@@ -1281,12 +1295,23 @@ export function CampaignProvider({
     void syncAuthSession(undefined, { force: true }).then((session) => {
       if (!session) return;
       setState((prev) => {
-        if (sessionMatchesState(session, prev)) return prev;
+        if (sessionMatchesState(session, prev) && prev.accountIntent !== "fundraiser") {
+          return prev;
+        }
+        const patch = buildSessionPatch(session);
+        const keepInviteTarget =
+          prev.accountIntent === "fundraiser" &&
+          prev.nonprofitProfile?.id != null &&
+          !patch.nonprofitMemberships.some((m) => m.id === prev.nonprofitProfile?.id);
         return {
           ...prev,
-          ...buildSessionPatch(session),
+          ...patch,
+          accountIntent: prev.accountIntent === "fundraiser" ? "fundraiser" : patch.accountIntent,
+          nonprofitProfile: keepInviteTarget ? prev.nonprofitProfile : patch.nonprofitProfile,
           title:
-            !prev.title.trim() && session.nonprofitProfile?.organizationName
+            !prev.title.trim() &&
+            !keepInviteTarget &&
+            session.nonprofitProfile?.organizationName
               ? `Support ${session.nonprofitProfile.organizationName}`
               : prev.title,
         };
@@ -1588,6 +1613,7 @@ export function CampaignProvider({
         saveAiFlowStore({
           sessionToken: session.sessionToken,
           organizationName: profile.organizationName,
+          nonprofitId: profile.id ?? null,
           selectedIdeaId: null,
           guestContinued: false,
         });
@@ -1728,7 +1754,9 @@ export function CampaignProvider({
         prev.nonprofitProfile?.id === profile?.id &&
         prev.nonprofitProfile?.organizationName === profile?.organizationName &&
         prev.nonprofitProfile?.verificationStatus === profile?.verificationStatus &&
-        prev.nonprofitProfile?.accessRequestStatus === profile?.accessRequestStatus
+        prev.nonprofitProfile?.accessRequestStatus === profile?.accessRequestStatus &&
+        // Clearing must still run when profile is already null but memberships leaked.
+        (profile !== null || prev.nonprofitMemberships.length === 0)
       ) {
         return prev;
       }
@@ -1737,7 +1765,7 @@ export function CampaignProvider({
             ...prev.nonprofitMemberships.filter((n) => n.id !== profile.id),
             profile,
           ]
-        : prev.nonprofitMemberships;
+        : [];
       return {
         ...prev,
         nonprofitMemberships: memberships,
@@ -1773,19 +1801,19 @@ export function CampaignProvider({
 
   const switchActiveRole = useCallback((role: UserRole, organizationId?: number) => {
     setState((prev) => {
-      // Fall back to the in-progress profile when memberships are still empty
-      // (e.g. right after signup before create/claim links organization_users).
+      // Memberships only — do not fall back to invite-target nonprofitProfile
+      // (fundraiser/business pick an org to partner with, not to own).
       const nonprofitProfile =
         role === "nonprofit"
           ? prev.nonprofitMemberships.find((n) => n.id === organizationId) ??
             prev.nonprofitMemberships[0] ??
-            prev.nonprofitProfile
+            null
           : prev.nonprofitProfile;
       const businessProfile =
         role === "business"
           ? prev.businessMemberships.find((b) => b.id === organizationId) ??
             prev.businessMemberships[0] ??
-            prev.businessProfile
+            null
           : prev.businessProfile;
 
       const next = {

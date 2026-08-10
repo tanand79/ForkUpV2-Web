@@ -4,8 +4,10 @@ import { inferCapabilities, type Business, type BusinessStatus } from "@/data/bu
 import { useCampaign } from "@/lib/campaign-context";
 import { GIVEBACK_CATEGORY_LABEL, businessParticipationLine } from "@/lib/giveback-terminology";
 import { givebackMethodForBusiness, METHOD_TYPE_META } from "@/lib/method-timing";
-import { fetchBuilderBusinesses } from "@/lib/api";
+import { fetchBuilderBusinesses, appendCampaignBusinessInvitations, fetchBuilderCampaign } from "@/lib/api";
 import { mapApiBusinessesToUi } from "@/lib/api-businesses";
+import { buildAppendBusinessInvitationsPayload } from "@/lib/builder-submit";
+import { methodsFromApiList } from "@/lib/campaign-flow";
 import { LegacyInviteStatusBadge } from "@/components/campaign/BusinessStatusBadge";
 import {
   nearbyQueryParams,
@@ -36,7 +38,18 @@ const BUSINESS_TYPES = [
 ];
 
 export function ChooseBusinesses() {
-  const { state, update, toggleBusiness, addInvited, removeInvited, next, back, designMode } = useCampaign();
+  const {
+    state,
+    update,
+    toggleBusiness,
+    addInvited,
+    removeInvited,
+    next,
+    back,
+    designMode,
+    goTo,
+    selectedBusinesses: selectedFromState,
+  } = useCampaign();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [showForm, setShowForm] = useState(false);
@@ -46,8 +59,21 @@ export function ChooseBusinesses() {
   const [catalogError, setCatalogError] = useState<string | null>(null);
   /** When false, fetch the full catalog without GPS radius (user opted out). */
   const [nearbyOnly, setNearbyOnly] = useState(true);
+  const [sendingAppend, setSendingAppend] = useState(false);
+  const [appendError, setAppendError] = useState<string | null>(null);
   const browserLocation = useBrowserLocation(true);
   const nearby = nearbyQueryParams(browserLocation);
+
+  /** Post-launch invite mode (?appendInvites=1) — send via append API, not Review. */
+  const appendInvites =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("appendInvites") === "1";
+  /** AI create: opened from Dates — Next returns to Preview (not Launch). */
+  const returnToAiPreview =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("returnTo") ===
+      "ai-campaign-preview";
+  const [appendHydrating, setAppendHydrating] = useState(appendInvites);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +100,59 @@ export function ChooseBusinesses() {
       cancelled = true;
     };
   }, [update, nearbyOnly, nearby?.lat, nearby?.lng, nearby?.radiusMiles]);
+
+  /**
+   * Append mode often opens without a full builder hydrate — methods stay at
+   * Online/Ambassador defaults and the invite payload becomes empty. Load the
+   * campaign methods/dates (not partner selections) before sending.
+   */
+  useEffect(() => {
+    if (!appendInvites) {
+      setAppendHydrating(false);
+      return;
+    }
+    const slug = state.campaignSlug?.trim();
+    if (!slug) {
+      setAppendHydrating(false);
+      setAppendError("Campaign is missing. Open Invite from your campaign dashboard.");
+      return;
+    }
+    let cancelled = false;
+    setAppendHydrating(true);
+    void fetchBuilderCampaign(slug)
+      .then((data) => {
+        if (cancelled) return;
+        const methods = methodsFromApiList(data.methods);
+        update({
+          campaignSlug: data.slug,
+          title: data.campaignName || state.title,
+          description: data.campaignStory || state.description,
+          startDate: data.startDate ?? state.startDate,
+          endDate: data.endDate ?? state.endDate,
+          methods,
+        });
+        if (!methods.giveback && !methods.guestBartending) {
+          setAppendError(
+            "This campaign has no Dine & Donate or Guest Bartending methods to invite businesses for.",
+          );
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAppendError(
+            err instanceof Error ? err.message : "Could not load campaign for inviting businesses.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAppendHydrating(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Mount/append once per slug — avoid re-running on every state field change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appendInvites, state.campaignSlug]);
 
   const selectedCount = state.selectedBusinessIds.length;
   const invitedCount = state.invited.length;
@@ -109,6 +188,77 @@ export function ChooseBusinesses() {
 
   const canSkip = !givebackOnly && totalOnList === 0;
 
+  const newInviteCount =
+    state.selectedBusinessIds.length +
+    state.invited.filter((b) => !b.persisted).length;
+
+  /**
+   * Send newly selected/invited businesses on a live (or inviting) campaign,
+   * then return to the success dashboard.
+   */
+  const handleAppendInvites = async () => {
+    const slug = state.campaignSlug?.trim();
+    if (appendHydrating) {
+      setAppendError("Still loading campaign details — try again in a moment.");
+      return;
+    }
+    if (!slug) {
+      setAppendError("Campaign is missing. Open this from your dashboard.");
+      return;
+    }
+    if (!state.methods.giveback && !state.methods.guestBartending) {
+      setAppendError(
+        "This campaign has no Dine & Donate or Guest Bartending methods to invite businesses for.",
+      );
+      return;
+    }
+    if (newInviteCount === 0) {
+      setAppendError("Select or invite at least one new business.");
+      return;
+    }
+    setSendingAppend(true);
+    setAppendError(null);
+    try {
+      const nonprofit =
+        state.nonprofitProfile ??
+        ({
+          organizationName: "Nonprofit",
+          contactName: "",
+          contactEmail: "unknown@local",
+        } as const);
+      const payload = buildAppendBusinessInvitationsPayload(
+        state,
+        nonprofit,
+        selectedFromState.length > 0 ? selectedFromState : selectedBusinesses,
+      );
+      if (
+        (payload.invitations?.length ?? 0) === 0 &&
+        (payload.newBusinessInvites?.length ?? 0) === 0
+      ) {
+        setAppendError(
+          "Could not build invitation details for the selected businesses. Try Invite New Business with name and email.",
+        );
+        return;
+      }
+      const result = await appendCampaignBusinessInvitations(slug, payload);
+      update({
+        invited: state.invited.map((b) => ({ ...b, persisted: true })),
+        selectedBusinessIds: [],
+      });
+      if (result.addedCount === 0) {
+        setAppendError(result.message || "No new invitations added.");
+        return;
+      }
+      goTo("dashboard", { query: { appendInvites: undefined, token: undefined } });
+    } catch (err) {
+      setAppendError(
+        err instanceof Error ? err.message : "Failed to send business invitations",
+      );
+    } finally {
+      setSendingAppend(false);
+    }
+  };
+
   return (
     <>
       <main className="mx-auto max-w-3xl px-5 py-10 pb-32 sm:px-6 sm:py-12">
@@ -123,6 +273,14 @@ export function ChooseBusinesses() {
             Choose a business from the list or invite a new one. Businesses appear on your campaign
             page after they accept.
           </p>
+          {appendInvites && appendError ? (
+            <p className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive" role="alert">
+              {appendError}
+            </p>
+          ) : null}
+          {appendInvites && appendHydrating ? (
+            <p className="mt-2 text-sm text-muted-foreground">Loading campaign methods…</p>
+          ) : null}
           {nearbyOnly && browserLocation.status === "ready" ? (
             <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
@@ -360,17 +518,65 @@ export function ChooseBusinesses() {
 
       <ActionBar
         backLabel="Back"
-        onBack={back}
+        onBack={() => {
+          if (appendInvites) {
+            goTo("dashboard", { query: { appendInvites: undefined } });
+            return;
+          }
+          if (returnToAiPreview) {
+            goTo("ai-campaign-dates", {
+              query: { returnTo: undefined, appendInvites: undefined },
+            });
+            return;
+          }
+          back();
+        }}
         meta={
-          requireBusiness
-            ? "Select or invite at least one business to continue."
-            : canSkip
-              ? "Other active methods can continue while business invites are pending."
-              : `${totalOnList} business${totalOnList > 1 ? "es" : ""} on your invite list`
+          appendError
+            ? appendError
+            : appendInvites
+              ? newInviteCount > 0
+                ? `${newInviteCount} new business${newInviteCount > 1 ? "es" : ""} ready to invite`
+                : "Select or invite at least one business to send."
+              : requireBusiness
+                ? "Select or invite at least one business to continue."
+                : canSkip
+                  ? returnToAiPreview
+                    ? "You can continue to preview and invite more businesses later."
+                    : "Other active methods can continue while business invites are pending."
+                  : `${totalOnList} business${totalOnList > 1 ? "es" : ""} on your invite list`
         }
-        nextLabel={canSkip ? "Skip for now — back to Review" : "Next: Review & Launch"}
-        nextDisabled={requireBusiness && !designMode}
-        onNext={next}
+        nextLabel={
+          appendInvites
+            ? sendingAppend
+              ? "Sending…"
+              : "Send Invites"
+            : returnToAiPreview
+              ? canSkip
+                ? "Skip for now — continue to preview"
+                : "Next: Campaign Preview"
+              : canSkip
+                ? "Skip for now — back to Review"
+                : "Next: Review & Launch"
+        }
+        nextDisabled={
+          appendInvites
+            ? sendingAppend || appendHydrating || newInviteCount === 0
+            : requireBusiness && !designMode
+        }
+        onNext={() => {
+          if (appendInvites) {
+            void handleAppendInvites();
+            return;
+          }
+          if (returnToAiPreview) {
+            goTo("ai-campaign-preview", {
+              query: { returnTo: undefined, appendInvites: undefined },
+            });
+            return;
+          }
+          next();
+        }}
       />
 
       {profileBusiness && (

@@ -13,6 +13,8 @@ const AI_FLOW_PENDING_KEY = "forkup-ai-campaign-flow-pending";
 export type AiFlowBrowserStore = {
   sessionToken: string;
   organizationName: string;
+  /** Invite-target nonprofit id — must survive auth sync membership overwrites. */
+  nonprofitId?: number | null;
   selectedIdeaId?: number | null;
   guestContinued?: boolean;
 };
@@ -56,6 +58,10 @@ export function loadAiFlowStore(): AiFlowBrowserStore | null {
     return {
       sessionToken: String(parsed.sessionToken),
       organizationName: String(parsed.organizationName),
+      nonprofitId:
+        typeof parsed.nonprofitId === "number" && Number.isFinite(parsed.nonprofitId)
+          ? parsed.nonprofitId
+          : null,
       selectedIdeaId: parsed.selectedIdeaId ?? null,
       guestContinued: Boolean(parsed.guestContinued),
     };

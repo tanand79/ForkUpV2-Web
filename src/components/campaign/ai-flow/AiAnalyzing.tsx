@@ -73,12 +73,19 @@ export function AiAnalyzing() {
         saveAiFlowStore({
           sessionToken: session.sessionToken,
           organizationName: pending.organizationName,
+          nonprofitId:
+            pending.nonprofitId && pending.nonprofitId > 0
+              ? pending.nonprofitId
+              : null,
           selectedIdeaId: null,
           guestContinued: false,
         });
 
         update({
-          accountIntent: "nonprofit",
+          // Preserve fundraiser partnership path set by AiFindOrganization.
+          // Overwriting to "nonprofit" forced create/launch instead of invite.
+          accountIntent:
+            state.accountIntent === "fundraiser" ? "fundraiser" : "nonprofit",
           nonprofitProfile: {
             id: pending.nonprofitId && pending.nonprofitId > 0 ? pending.nonprofitId : undefined,
             organizationName: pending.organizationName,
@@ -112,7 +119,7 @@ export function AiAnalyzing() {
         setApiFinished(true);
       }
     })();
-  }, [goTo, state.promotion.facebookUrl, state.promotion.instagramHandle, state.promotion.newsletter, state.promotion.websiteUrl, update]);
+  }, [goTo, state.accountIntent, state.promotion.facebookUrl, state.promotion.instagramHandle, state.promotion.newsletter, state.promotion.websiteUrl, update]);
 
   useEffect(() => {
     if (error) return;

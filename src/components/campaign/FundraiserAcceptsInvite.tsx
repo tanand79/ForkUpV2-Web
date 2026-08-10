@@ -29,6 +29,7 @@ export function FundraiserAcceptsInvite() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<"accepted" | "declined" | null>(null);
+  const [acceptedStatus, setAcceptedStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -54,7 +55,8 @@ export function FundraiserAcceptsInvite() {
     setBusy(true);
     setError(null);
     try {
-      await acceptFundraiserCampaignInvite(token);
+      const result = await acceptFundraiserCampaignInvite(token);
+      setAcceptedStatus(result.campaignStatus ?? null);
       setDone("accepted");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to accept");
@@ -94,13 +96,17 @@ export function FundraiserAcceptsInvite() {
   }
 
   if (done === "accepted") {
+    const inReview = (acceptedStatus || "").toLowerCase() === "in_review";
     return (
       <main className="mx-auto max-w-lg px-5 py-10 text-center">
         <CheckCircle2 className="mx-auto size-12 text-primary" />
         <h1 className="mt-4 text-2xl font-extrabold">Partnership confirmed</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           You accepted the campaign proposal from{" "}
-          <strong>{invite?.fundraiser.name}</strong>. Continue setup when you are ready.
+          <strong>{invite?.fundraiser.name}</strong>.{" "}
+          {inReview
+            ? "This campaign remains in ForkUp review and is not live yet."
+            : "Continue setup when you are ready."}
         </p>
         <button
           type="button"

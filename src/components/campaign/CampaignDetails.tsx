@@ -9,9 +9,12 @@ import {
 } from "@/lib/story-validation";
 import {
   ambassadorTimingCoachMessage,
+  campaignDateMin,
+  campaignDateNotInPastError,
   dateFieldRequirements,
   evaluateBusinessMethodTiming,
   hasBusinessMethod,
+  todayDateOnly,
   timingCtaLabel,
   type TimingCta,
 } from "@/lib/campaign-timing";
@@ -121,13 +124,20 @@ export function CampaignDetails() {
   const storyValid = storyMet;
 
   // Date requirements follow selected methods (online/ambassador: end only; giveback: start+end).
+  const pastDateError = campaignDateNotInPastError({
+    startDate: state.startDate,
+    endDate: state.endDate,
+    eventDate: state.eventDate,
+  });
   const remaining =
     (state.title.trim() ? 0 : 1) +
     (dateReqs.requireStartDate && !state.startDate ? 1 : 0) +
     (dateReqs.requireEndDate && !state.endDate ? 1 : 0) +
     (dateReqs.requireEventDate && !state.eventDate ? 1 : 0) +
+    (pastDateError ? 1 : 0) +
     (storyValid ? 0 : 1);
   const valid = remaining === 0;
+  const todayMin = todayDateOnly();
   const remainingMeta =
     !storyMet && remaining === 1
       ? "Add a few more details to your story"
@@ -255,7 +265,7 @@ export function CampaignDetails() {
                   <UsDateInput
                     className={field}
                     value={state.endDate}
-                    min={state.startDate || undefined}
+                    min={campaignDateMin(state.startDate)}
                     onChange={(endDate) =>
                       update({
                         endDate,
@@ -282,6 +292,7 @@ export function CampaignDetails() {
                     <UsDateInput
                       className={field}
                       value={state.startDate}
+                      min={todayMin}
                       max={state.endDate || undefined}
                       onChange={(startDate) =>
                         update({
@@ -313,6 +324,7 @@ export function CampaignDetails() {
                 <UsDateInput
                   className={field}
                   value={state.eventDate}
+                  min={todayMin}
                   onChange={(eventDate) =>
                     update({
                       eventDate,
@@ -328,6 +340,9 @@ export function CampaignDetails() {
               </div>
             )}
           </div>
+          {pastDateError ? (
+            <p className="text-xs font-medium text-destructive">{pastDateError}</p>
+          ) : null}
           <p className="text-xs text-muted-foreground">
             {dateReqs.startOptional
               ? "Online donations and ambassador sharing mainly need an end date. A start date is optional."

@@ -143,13 +143,25 @@ export function NonprofitDashboard() {
   const nonprofitId = state.nonprofitProfile?.id;
 
   // Refresh verification / access-request status from the server on each visit.
+  // If the account has no real nonprofit membership, clear leaked invite-target
+  // profiles (e.g. fundraiser selected Headstrong then opened this dashboard).
   useEffect(() => {
     if (!getAuthToken()) return;
     void syncAuthSession(undefined, { force: true }).then((session) => {
-      if (!session?.nonprofitProfile) return;
-      setNonprofitProfile(session.nonprofitProfile);
+      if (!session) return;
+      if ((session.nonprofitMemberships?.length ?? 0) === 0) {
+        setNonprofitProfile(null);
+        update({
+          nonprofitMemberships: [],
+          nonprofitProfile: null,
+        });
+        return;
+      }
+      if (session.nonprofitProfile) {
+        setNonprofitProfile(session.nonprofitProfile);
+      }
     });
-  }, [setNonprofitProfile]);
+  }, [setNonprofitProfile, update]);
 
   const refreshCampaigns = useCallback(() => {
     if (!nonprofitId) return;

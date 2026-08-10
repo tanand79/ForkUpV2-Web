@@ -108,6 +108,16 @@ function selectedMethods(state: CampaignState): ApiMethodType[] {
   return [...methods];
 }
 
+/**
+ * API method types for the current support-method toggles.
+ * Purpose: Shared by create/update campaign and fundraiser invite payloads.
+ */
+export function campaignMethodsForApi(
+  state: Pick<CampaignState, "methods">,
+): ApiMethodType[] {
+  return selectedMethods(state as CampaignState);
+}
+
 function givebackMethodForSelection(business: Business): ApiMethodType {
   const uiType = givebackMethodForBusiness(business);
   const map: Record<string, ApiMethodType> = {
@@ -336,6 +346,25 @@ export function buildCreateCampaignPayload(
     existingSlug: state.campaignSlug ?? undefined,
     submitForForkupReview: state.submitForForkupReview || undefined,
     continueWithoutBusinessMethods: state.continueWithoutBusinessMethods || undefined,
+  };
+}
+
+/**
+ * Invitation arrays only — for POST append after campaign is live / inviting.
+ * Inputs: campaign state + selected catalog businesses + nonprofit profile.
+ * Outputs: { invitations, newBusinessInvites } for appendCampaignBusinessInvitations.
+ */
+export function buildAppendBusinessInvitationsPayload(
+  state: CampaignState,
+  nonprofit: NonprofitProfileInput,
+  selectedBusinesses: Business[],
+): Pick<CreateCampaignPayload, "invitations" | "newBusinessInvites"> {
+  const full = buildCreateCampaignPayload(state, nonprofit, selectedBusinesses, {
+    launch: false,
+  });
+  return {
+    invitations: full.invitations,
+    newBusinessInvites: full.newBusinessInvites,
   };
 }
 

@@ -5,12 +5,53 @@
  *
  * Purpose: Fundraisers partner with many nonprofits (invite-based), unlike nonprofit
  * organizers who only create for their own org.
+ *
+ * Changelog (Pass B): Show invitation + campaign status; link to public campaign page
+ * when the campaign is live / scheduled / in invitation phase.
  */
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Loader2, Megaphone } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchMyFundraiserInvites, type FundraiserMyInvite } from "@/lib/api";
 import { stashAccountIntent } from "@/lib/campaign-auth";
+import { campaignPublicPath } from "@/lib/campaign-paths";
+
+/**
+ * Human-readable invite + campaign status for the fundraiser list.
+ * Inputs: invite from GET /api/fundraiser/my-invites.
+ * Output: short status label for the card.
+ */
+function fundraiserInviteStatusLabel(inv: FundraiserMyInvite): string {
+  const invite = (inv.invitationStatus || "").toLowerCase();
+  const campaign = (inv.campaignStatus || "").toLowerCase();
+
+  if (invite === "declined") return "Declined";
+  if (invite === "pending") return "Pending — waiting for nonprofit";
+
+  if (campaign === "live") return "Accepted · Live";
+  if (campaign === "ready_to_launch") return "Accepted · Scheduled";
+  if (campaign === "invitation_phase") return "Accepted · Invitation phase";
+  if (campaign === "in_review") return "Accepted · In review";
+  if (campaign === "closed" || campaign === "completed") return `Accepted · ${campaign}`;
+  if (invite === "accepted") return "Accepted · Nonprofit preparing";
+
+  return `${inv.invitationStatus}${inv.campaignStatus ? ` · ${inv.campaignStatus}` : ""}`;
+}
+
+/**
+ * Whether the public campaign page is useful to open from the fundraiser list.
+ * Inputs: campaign_status from my-invites.
+ * Output: true when supporters can (or soon can) view the public page.
+ */
+function canViewPublicCampaign(campaignStatus: string): boolean {
+  const s = (campaignStatus || "").toLowerCase();
+  return (
+    s === "live" ||
+    s === "ready_to_launch" ||
+    s === "invitation_phase" ||
+    s === "in_review"
+  );
+}
 
 export function FundraiserDashboard() {
   const { goTo, update } = useCampaign();
@@ -62,7 +103,7 @@ export function FundraiserDashboard() {
       </button>
 
       <section className="mt-10">
-        <h2 className="font-display text-lg font-bold">Your invitations</h2>
+        <h2 className="font-display text-lg font-bold">Your invitations &amp; campaigns</h2>
         {loading ? (
           <div className="mt-6 flex justify-center">
             <Loader2 className="size-6 animate-spin text-primary" />
@@ -75,17 +116,31 @@ export function FundraiserDashboard() {
           </p>
         ) : (
           <ul className="mt-4 space-y-3">
-            {invites.map((inv) => (
-              <li
-                key={inv.token}
-                className="rounded-2xl border border-border bg-card p-4"
-              >
-                <p className="font-semibold">{inv.campaignName}</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {inv.nonprofitName} · {inv.invitationStatus}
-                </p>
-              </li>
-            ))}
+            {invites.map((inv) => {
+              const showPublic = canViewPublicCampaign(inv.campaignStatus);
+              return (
+                <li
+                  key={inv.token}
+                  className="rounded-2xl border border-border bg-card p-4"
+                >
+                  <p className="font-semibold">{inv.campaignName}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {inv.nonprofitName}
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-foreground/80">
+                    {fundraiserInviteStatusLabel(inv)}
+                  </p>
+                  {showPublic && inv.campaignSlug ? (
+                    <a
+                      href={campaignPublicPath(inv.campaignSlug)}
+                      className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-primary transition-colors hover:text-primary-dark"
+                    >
+                      View public campaign <ArrowRight className="size-3.5" />
+                    </a>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

@@ -123,8 +123,9 @@ function AuthLoginScreen() {
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000)),
       ]);
 
-      // Guest-created campaign: link its nonprofit to this account so dashboard lists it.
-      if (role === "nonprofit" || pendingNonprofitId || pendingCampaignSlug) {
+      // Guest-created nonprofit only — never attach an invite-target org when the
+      // user signs in as fundraiser/business (that leaked Headstrong onto screen9).
+      if (role === "nonprofit" && (pendingNonprofitId || pendingCampaignSlug)) {
         try {
           const linkedId = await ensureGuestNonprofitLinked({
             nonprofitId: pendingNonprofitId,
@@ -148,9 +149,12 @@ function AuthLoginScreen() {
       }
 
       const patch = buildSessionPatch(session);
-      // Keep the org picked during build/claim when the new account has no memberships yet.
-      // (Previously required id/slug — wiped website-only / pre-create profiles on signup.)
-      if (!patch.nonprofitProfile && pendingNonprofitProfile) {
+      // Keep in-progress claim profile only for nonprofit role (not invite targets).
+      if (
+        role === "nonprofit" &&
+        !patch.nonprofitProfile &&
+        pendingNonprofitProfile
+      ) {
         update({
           ...patch,
           nonprofitProfile: pendingNonprofitProfile,
@@ -189,7 +193,9 @@ function AuthLoginScreen() {
             initialMode={initialMode}
             onSuccess={finishAuth}
             linkOrganization={
-              state.nonprofitProfile?.id
+              // Only register→link when intentionally claiming as nonprofit.
+              // Fundraiser/business invite targets must not become memberships.
+              roleHint === "nonprofit" && state.nonprofitProfile?.id
                 ? {
                     organizationType: "nonprofit",
                     organizationId: state.nonprofitProfile.id,

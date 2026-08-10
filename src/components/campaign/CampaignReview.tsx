@@ -23,7 +23,7 @@ import { useCampaign, SUPPORT_METHOD_META, type SupportMethod } from "@/lib/camp
 import { uploadImage } from "@/lib/api";
 import { CampaignGalleryPicker } from "@/components/campaign/CampaignGalleryPicker";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
-import { dateFieldRequirements } from "@/lib/campaign-timing";
+import { dateFieldRequirements, campaignDateMin, campaignDateNotInPastError, todayDateOnly } from "@/lib/campaign-timing";
 import { formatDateUs, formatDateTimeUs, looksLikeIsoDateTime } from "@/lib/date-only";
 
 const METHOD_LABELS = SUPPORT_METHOD_META;
@@ -142,6 +142,24 @@ export function CampaignReview() {
         setTimeout(() => {
           basicsRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
           eventDateRef.current?.focus();
+        }, 80);
+      },
+    });
+  }
+  const pastDateError = campaignDateNotInPastError({
+    startDate: state.startDate,
+    endDate: state.endDate,
+    eventDate: state.eventDate,
+  });
+  if (pastDateError) {
+    attention.push({
+      label: pastDateError,
+      action: "Fix Dates",
+      onClick: () => {
+        setEditBasics(true);
+        setTimeout(() => {
+          basicsRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+          startDateRef.current?.focus();
         }, 80);
       },
     });
@@ -275,6 +293,8 @@ export function CampaignReview() {
                           <UsDateInput
                             ref={startDateRef}
                             value={state.startDate}
+                            min={todayDateOnly()}
+                            max={state.endDate || undefined}
                             onChange={(startDate) =>
                               update({
                                 startDate,
@@ -293,7 +313,7 @@ export function CampaignReview() {
                           </label>
                           <UsDateInput
                             value={state.endDate}
-                            min={state.startDate || undefined}
+                            min={campaignDateMin(state.startDate)}
                             onChange={(endDate) =>
                               update({
                                 endDate,
@@ -313,6 +333,7 @@ export function CampaignReview() {
                           <UsDateInput
                             ref={eventDateRef}
                             value={state.eventDate}
+                            min={todayDateOnly()}
                             onChange={(eventDate) =>
                               update({
                                 eventDate,

@@ -9,14 +9,23 @@
  * Business methods with under 30 days lead: Needs ForkUp Review banner + CTAs
  * (same evaluation/labels as classic CampaignDetails; backend enforces on launch).
  *
+ * Continue: Dine & Donate / Guest Bartending → Choose/Invite Businesses, then Preview.
+ * Online/ambassador-only → Preview directly.
+ *
  * Layout: side-by-side on sm+ (aligned short labels), stacked on mobile.
+ *
+ * Changelog: After dates, route business-method campaigns to the invite screen
+ * before AI preview (ForkUp review does not skip partner selection).
  */
 import { useCampaign } from "@/lib/campaign-context";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
 import {
   ambassadorTimingCoachMessage,
+  campaignDateMin,
+  campaignDateNotInPastError,
   dateFieldRequirements,
   evaluateBusinessMethodTiming,
+  todayDateOnly,
   timingCtaLabel,
   type TimingCta,
 } from "@/lib/campaign-timing";
@@ -29,10 +38,17 @@ export function AiCampaignDates() {
   const { state, update, goTo } = useCampaign();
   const dateReqs = dateFieldRequirements(state.methods);
   const timingEval = evaluateBusinessMethodTiming(state);
+  const pastDateError = campaignDateNotInPastError({
+    startDate: state.startDate,
+    endDate: state.endDate,
+    eventDate: state.eventDate,
+  });
+  const todayMin = todayDateOnly();
   const canContinue =
     (!dateReqs.requireEndDate || Boolean(state.endDate.trim())) &&
     (!dateReqs.requireStartDate || Boolean(state.startDate.trim())) &&
-    (!dateReqs.requireEventDate || Boolean(state.eventDate.trim()));
+    (!dateReqs.requireEventDate || Boolean(state.eventDate.trim())) &&
+    !pastDateError;
   const ambassadorCoach = state.methods.ambassador
     ? ambassadorTimingCoachMessage(state.endDate)
     : null;
@@ -103,7 +119,7 @@ export function AiCampaignDates() {
             : "Campaign end date"
         }
         value={state.endDate}
-        min={state.startDate || undefined}
+        min={campaignDateMin(state.startDate)}
         onChange={(endDate) => update({ endDate, ...clearTimingFlags })}
         className={fieldClass}
       />
@@ -129,6 +145,7 @@ export function AiCampaignDates() {
             : "Campaign start date"
         }
         value={state.startDate}
+        min={todayMin}
         max={state.endDate || undefined}
         onChange={(startDate) => update({ startDate, ...clearTimingFlags })}
         className={fieldClass}
@@ -174,10 +191,15 @@ export function AiCampaignDates() {
             <UsDateInput
               aria-label="Guest Bartending event date"
               value={state.eventDate}
+              min={todayMin}
               onChange={(eventDate) => update({ eventDate, ...clearTimingFlags })}
               className={fieldClass}
             />
           </div>
+        ) : null}
+
+        {pastDateError ? (
+          <p className="mt-4 text-xs font-medium text-destructive">{pastDateError}</p>
         ) : null}
 
         {ambassadorCoach ? (
@@ -222,10 +244,22 @@ export function AiCampaignDates() {
       <button
         type="button"
         disabled={!canContinue}
-        onClick={() => goTo("ai-campaign-preview")}
+        onClick={() => {
+          // Business methods collect partners after dates, before Preview —
+          // including when short timeline needs ForkUp review (emails deferred).
+          const needsBusinessInvite =
+            state.methods.giveback || state.methods.guestBartending;
+          if (needsBusinessInvite) {
+            goTo("businesses", { query: { returnTo: "ai-campaign-preview" } });
+            return;
+          }
+          goTo("ai-campaign-preview");
+        }}
         className="mt-8 inline-flex w-full items-center justify-center rounded-full bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark disabled:opacity-40"
       >
-        That&apos;s it! Continue to preview
+        {state.methods.giveback || state.methods.guestBartending
+          ? "Continue to invite businesses"
+          : "That's it! Continue to preview"}
       </button>
     </AiFlowShell>
   );
