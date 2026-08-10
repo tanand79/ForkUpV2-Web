@@ -1,5 +1,6 @@
 import { Building2, MapPin, Globe, Phone, Tag, History, BarChart3, ImageIcon, ExternalLink } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
+import { campaignPublicPath } from "@/lib/campaign-paths";
 
 /**
  * ⚠️ DESIGN MODE placeholder — Business Profile.
@@ -24,7 +25,7 @@ const SECTIONS: { icon: typeof Building2; label: string; note: string }[] = [
 ];
 
 export function BusinessProfile() {
-  const { goTo } = useCampaign();
+  const { state, goTo } = useCampaign();
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-10 sm:px-6">
@@ -32,9 +33,17 @@ export function BusinessProfile() {
         <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           Design placeholder
         </span>
-        {/* Business dashboard → View Campaign → Public Campaign Page */}
+        {/* Open live /campaign/{slug}/ (PublicCampaignView), not the legacy wizard step. */}
         <button
-          onClick={() => goTo("campaign-page")}
+          type="button"
+          onClick={() => {
+            const slug = state.campaignSlug?.trim() ?? "";
+            if (slug) {
+              window.open(campaignPublicPath(slug), "_blank", "noopener,noreferrer");
+              return;
+            }
+            goTo("campaign-page");
+          }}
           className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold transition-colors hover:bg-secondary"
         >
           <ExternalLink className="size-4 text-primary" />

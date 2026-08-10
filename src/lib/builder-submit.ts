@@ -2,6 +2,7 @@ import type { CampaignState, InvitedBusiness, SupportMethod } from "@/lib/campai
 import type { Business } from "@/data/businesses";
 import { givebackMethodForBusiness } from "@/lib/method-timing";
 import { subtractCalendarDays, toDateOnlyString } from "@/lib/date-only";
+import { loadUserSession } from "@/lib/auth-session";
 
 export type ApiMethodType =
   | "dine_and_donate"
@@ -214,10 +215,10 @@ export function durableCampaignImageUrl(img: {
   return "";
 }
 
-export const MAX_CAMPAIGN_GALLERY_IMAGES = 6;
+export const MAX_CAMPAIGN_GALLERY_IMAGES = 8;
 
 /**
- * Builds PUT /api/campaign-images/:slug payload from wizard state (max 6).
+ * Builds PUT /api/campaign-images/:slug payload from wizard state (max 8).
  * Cover is marked isCover; gallery images from state.images fill the rest.
  */
 export function buildCampaignGalleryPayload(state: CampaignState): {
@@ -323,11 +324,20 @@ export function buildCreateCampaignPayload(
     }
   }
 
+  // Brand-new AI/guest drafts often omit contactEmail; Launch requires @.
+  // Prefer profile email, else signed-in account email.
+  const sessionEmail = loadUserSession()?.email?.trim() ?? "";
+  const contactEmail = nonprofit.contactEmail?.includes("@")
+    ? nonprofit.contactEmail
+    : sessionEmail.includes("@")
+      ? sessionEmail
+      : nonprofit.contactEmail;
+
   return {
     nonprofit: {
       organizationName: nonprofit.organizationName,
       contactName: nonprofit.contactName,
-      contactEmail: nonprofit.contactEmail,
+      contactEmail,
       mission: nonprofit.mission,
       causeCategory: nonprofit.causeCategory,
     },

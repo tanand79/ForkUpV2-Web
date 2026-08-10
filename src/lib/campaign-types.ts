@@ -59,6 +59,8 @@ export interface CampaignDetail extends CampaignListItem {
   description: string;
   methods: CampaignMethod[];
   participatingLocations: ParticipatingLocation[];
+  /** Guest Bartending event date (YYYY-MM-DD) from public API. Additive; optional for older payloads. */
+  eventDate?: string | null;
 }
 
 /** Public donation row for campaign page feed. */

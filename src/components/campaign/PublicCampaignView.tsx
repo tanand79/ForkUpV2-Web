@@ -21,8 +21,14 @@ import { DonationModal } from "@/components/campaign/DonationModal";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
 import { PublicCampaignDonationsFeed } from "@/components/campaign/PublicCampaignDonationsFeed";
 import { PublicCampaignFundraisingPanel } from "@/components/campaign/PublicCampaignFundraisingPanel";
+import { PublicCampaignGuestBartendingSection } from "@/components/campaign/PublicCampaignGuestBartendingSection";
+import { PublicCampaignImageSlider } from "@/components/campaign/PublicCampaignImageSlider";
 import { HeaderPillLink, SiteHeader } from "@/components/campaign/SiteHeader";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+
+function isGuestBartendingLocation(loc: ParticipatingLocation): boolean {
+  return loc.cta === "attend" || loc.participationMethod === "Guest Bartender";
+}
 
 function ctaLabel(loc: ParticipatingLocation): string {
   if (loc.cta === "reserve") return loc.reservationUrl ? "Reserve a table" : "Plan your visit";
@@ -308,12 +314,19 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
   const [donateOpen, setDonateOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [donationRefreshKey, setDonationRefreshKey] = useState(0);
-  const [activeImageIdx, setActiveImageIdx] = useState(0);
 
   /** Scheduled approved campaign — show preview, block donate/participate. */
   const isPreviewNotLive = campaign.campaignStatus === "ready_to_launch";
   const showDonations = campaign.methods.some((m) => m.methodType === "virtual_donations");
-  const showLocations = campaign.participatingLocations.length > 0;
+  const showGuestBartending = campaign.methods.some(
+    (m) => m.methodType === "guest_bartending_event",
+  );
+  const guestVenues = campaign.participatingLocations.filter(isGuestBartendingLocation);
+  const givebackVenues = campaign.participatingLocations.filter(
+    (loc) => !isGuestBartendingLocation(loc),
+  );
+  const showLocations = givebackVenues.length > 0;
+  const showParticipateTarget = showLocations || guestVenues.length > 0;
 
   const { data: donationsData } = useQuery({
     queryKey: ["campaign-donations", campaign.slug, donationRefreshKey],
@@ -328,17 +341,23 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
     staleTime: 60_000,
   });
 
+  const imagePlaceholder = resolveCampaignImage(null);
+
+  /**
+   * Resolve every gallery / cover URL so /uploads/… targets the API host
+   * (not Amplify), and known seed filenames map to bundled assets.
+   */
   const galleryUrls = (() => {
     const fromApi = (galleryData?.images ?? [])
-      .map((i) => i.imageUrl)
+      .map((i) => resolveCampaignImage(i.imageUrl))
       .filter(Boolean);
     if (fromApi.length > 0) return fromApi;
     return [resolveCampaignImage(campaign.image)];
   })();
-  const heroSrc = galleryUrls[Math.min(activeImageIdx, galleryUrls.length - 1)] ?? resolveCampaignImage(campaign.image);
 
   const scrollToLocations = () => {
-    document.getElementById("locations")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const targetId = showLocations ? "locations" : showGuestBartending ? "guest-bartending" : "locations";
+    document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const handleShare = async () => {
@@ -372,7 +391,7 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
     participatingLocationCount: campaign.participatingLocationCount,
     donationCount: donationsData?.totalCount,
     showDonate: showDonations && !isPreviewNotLive,
-    showLocations: showLocations && !isPreviewNotLive,
+    showLocations: showParticipateTarget && !isPreviewNotLive,
     copied,
     onDonate: () => setDonateOpen(true),
     onShare: () => void handleShare(),
@@ -409,29 +428,11 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-10 xl:grid-cols-[minmax(0,1fr)_380px]">
           {/* Main column — GoFundMe-style content flow */}
           <div className="min-w-0">
-            <div className="overflow-hidden rounded-2xl border border-border bg-muted">
-              <img
-                src={heroSrc}
-                alt={campaign.name}
-                className="aspect-[16/10] w-full object-cover"
-              />
-            </div>
-            {galleryUrls.length > 1 && (
-              <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                {galleryUrls.map((src, idx) => (
-                  <button
-                    key={`${src}-${idx}`}
-                    type="button"
-                    onClick={() => setActiveImageIdx(idx)}
-                    className={`size-16 shrink-0 overflow-hidden rounded-lg ring-2 transition-shadow ${
-                      idx === activeImageIdx ? "ring-primary" : "ring-transparent opacity-80 hover:opacity-100"
-                    }`}
-                  >
-                    <img src={src} alt="" className="size-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            )}
+            <PublicCampaignImageSlider
+              urls={galleryUrls}
+              alt={campaign.name}
+              placeholderSrc={imagePlaceholder}
+            />
 
             <h1 className="font-display mt-6 text-2xl font-bold leading-tight tracking-tight text-foreground sm:text-3xl md:text-4xl">
               {campaign.name}
@@ -472,6 +473,23 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
               </section>
             )}
 
+            {showGuestBartending && (
+              <PublicCampaignGuestBartendingSection
+                eventDate={campaign.eventDate}
+                nonprofitName={campaign.nonprofit}
+                hasVenues={guestVenues.length > 0}
+              >
+                {guestVenues.map((loc) => (
+                  <LocationCard
+                    key={`gb-${loc.businessId}-${loc.locationId}-${loc.methodId}`}
+                    loc={loc}
+                    campaignSlug={campaign.slug}
+                    previewOnly={isPreviewNotLive}
+                  />
+                ))}
+              </PublicCampaignGuestBartendingSection>
+            )}
+
             {showLocations && (
               <section id="locations" className="mt-10 scroll-mt-24">
                 <h2 className="text-xl font-bold">Participating businesses</h2>
@@ -480,7 +498,7 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
                   supports {campaign.nonprofit}.
                 </p>
                 <ul className="mt-6 space-y-4">
-                  {campaign.participatingLocations.map((loc) => (
+                  {givebackVenues.map((loc) => (
                     <LocationCard
                       key={`${loc.businessId}-${loc.locationId}-${loc.methodId}`}
                       loc={loc}
@@ -542,7 +560,7 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
       </main>
 
       {/* Mobile sticky donate bar — GoFundMe pattern (hidden in not-yet-live preview) */}
-      {!isPreviewNotLive && (showDonations || showLocations) && (
+      {!isPreviewNotLive && (showDonations || showParticipateTarget) && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 p-4 backdrop-blur-md lg:hidden">
           <div className="mx-auto flex max-w-lg gap-2">
             {showDonations && (
@@ -555,7 +573,7 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
                 Donate
               </button>
             )}
-            {showLocations && !showDonations && (
+            {showParticipateTarget && !showDonations && (
               <button
                 type="button"
                 onClick={scrollToLocations}

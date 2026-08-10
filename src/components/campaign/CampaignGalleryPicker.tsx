@@ -1,20 +1,26 @@
 "use client";
 
 /**
- * Campaign gallery picker (up to 6 images) for create/review flow.
+ * Campaign gallery picker (up to 8 images) for create/review flow.
  *
  * Purpose: Load preview images from Facebook / Instagram / website handles,
  * let the organizer pick a featured cover, remove/replace slots, or upload manually.
+ * Uploads are auto-downscaled (~1600px) before save.
  *
  * Inputs: promotion channels + current cover/images from campaign state
  * Outputs: single onChange({ cover, images }) so cover/images stay in sync
+ *
+ * Changelog: Max raised to 8; upload path uses resizeCampaignImageFile.
+ * Changelog: Visible Resize dialog per thumbnail (zoom/pan crop).
  */
 
 import { useRef, useState } from "react";
-import { ImagePlus, Loader2, Sparkles, Star, X } from "lucide-react";
+import { Crop, ImagePlus, Loader2, Sparkles, Star, X } from "lucide-react";
 import type { CampaignImage, PromotionChannels } from "@/lib/campaign-context";
 import { suggestCampaignImages, uploadImage } from "@/lib/api";
 import { MAX_CAMPAIGN_GALLERY_IMAGES } from "@/lib/builder-submit";
+import { resizeCampaignImageFile } from "@/lib/resize-campaign-image";
+import { CampaignImageResizeDialog } from "@/components/campaign/CampaignImageResizeDialog";
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
@@ -55,6 +61,7 @@ export function CampaignGalleryPicker({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
+  const [resizeTarget, setResizeTarget] = useState<CampaignImage | null>(null);
 
   const slots: CampaignImage[] = [];
   if (cover) slots.push(cover);
@@ -173,17 +180,20 @@ export function CampaignGalleryPicker({
 
     setUploading(true);
     try {
-      const imageBase64 = await readFileAsDataUrl(file);
+      const resized = await resizeCampaignImageFile(file);
+      const imageBase64 = await readFileAsDataUrl(resized);
       const { url: storedUrl } = await uploadImage({
         imageBase64,
-        imageMimeType: file.type,
+        imageMimeType: resized.type || file.type,
         kind: "cover",
       });
       next = next.map((i) =>
         i.id === id ? { ...i, storedUrl, source: "manual" as const } : i,
       );
       applySlots(next, cover?.id ?? id);
-      setHint("Image uploaded. It’s set as featured unless you pick another.");
+      setHint(
+        `Image uploaded (large files auto-resized). ${Math.min(next.length, MAX_CAMPAIGN_GALLERY_IMAGES)}/${MAX_CAMPAIGN_GALLERY_IMAGES} photos — tap a star to change featured.`,
+      );
     } catch {
       setError("We couldn't save that image. Please try again.");
       applySlots(
@@ -212,13 +222,51 @@ export function CampaignGalleryPicker({
     setHint("Removed a photo that couldn’t be loaded. Try Upload or Load from social again.");
   };
 
+  /**
+   * Applies a cropped File from CampaignImageResizeDialog to one gallery slot.
+   * Inputs: target image id, cropped File
+   * Outputs: updates cover/images via onChange after upload
+   */
+  const handleResizeApply = async (targetId: string, file: File) => {
+    setError(null);
+    setUploading(true);
+    try {
+      const previewUrl = URL.createObjectURL(file);
+      const imageBase64 = await readFileAsDataUrl(file);
+      const { url: storedUrl } = await uploadImage({
+        imageBase64,
+        imageMimeType: file.type || "image/jpeg",
+        kind: "cover",
+      });
+      const next = slots.map((i) =>
+        i.id === targetId
+          ? {
+              ...i,
+              url: previewUrl,
+              storedUrl,
+              name: file.name,
+              source: "manual" as const,
+            }
+          : i,
+      );
+      applySlots(next, cover?.id);
+      setHint("Image resized and saved.");
+    } catch {
+      setError("Could not save the resized image. Try again.");
+      throw new Error("resize upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-xs font-semibold text-muted-foreground">Campaign photos</p>
           <p className="text-xs text-muted-foreground">
-            Up to {MAX_CAMPAIGN_GALLERY_IMAGES} · load from social or upload
+            {slots.length}/{MAX_CAMPAIGN_GALLERY_IMAGES} · tap Resize on a photo · large uploads
+            auto-shrink
           </p>
         </div>
       </div>
@@ -264,7 +312,7 @@ export function CampaignGalleryPicker({
                   Featured
                 </span>
               )}
-              <div className="absolute inset-x-0 bottom-0 flex justify-between gap-1 bg-gradient-to-t from-foreground/80 to-transparent p-1.5">
+              <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-between gap-1 bg-gradient-to-t from-foreground/80 to-transparent p-1.5">
                 {!isFeatured && (
                   <button
                     type="button"
@@ -274,6 +322,15 @@ export function CampaignGalleryPicker({
                     Set featured
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setResizeTarget(img)}
+                  className="inline-flex items-center gap-0.5 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold"
+                  aria-label="Resize image"
+                >
+                  <Crop className="size-2.5" />
+                  Resize
+                </button>
                 <button
                   type="button"
                   onClick={() => removeAt(img.id)}
@@ -317,6 +374,17 @@ export function CampaignGalleryPicker({
 
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       {error && <p className="text-xs font-medium text-destructive">{error}</p>}
+
+      <CampaignImageResizeDialog
+        open={Boolean(resizeTarget)}
+        imageSrc={resizeTarget ? previewSrc(resizeTarget) : null}
+        imageName={resizeTarget?.name}
+        onClose={() => setResizeTarget(null)}
+        onApply={async (file) => {
+          if (!resizeTarget) return;
+          await handleResizeApply(resizeTarget.id, file);
+        }}
+      />
     </div>
   );
 }

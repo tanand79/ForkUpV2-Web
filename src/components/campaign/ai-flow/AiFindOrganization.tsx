@@ -22,6 +22,7 @@ import { saveAiFlowPendingOrg, clearAiFlowStore } from "@/lib/ai-campaign-flow-s
 import { stashAccountIntent } from "@/lib/campaign-auth";
 import {
   nearbyQueryParams,
+  TEST_LOCATION_RICHMOND_VA,
   useBrowserLocation,
 } from "@/hooks/use-browser-location";
 import { AiFlowShell } from "./AiFlowShell";
@@ -32,8 +33,10 @@ export function AiFindOrganization() {
   const [selected, setSelected] = useState<OrganizationSearchCandidate | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const browserLocation = useBrowserLocation(true);
-  const nearby = nearbyQueryParams(browserLocation);
+  /** Off by default — normal national/name search. On = ~8 mile filter. */
+  const [useNearbyFilter, setUseNearbyFilter] = useState(false);
+  const browserLocation = useBrowserLocation(useNearbyFilter);
+  const nearby = useNearbyFilter ? nearbyQueryParams(browserLocation) : undefined;
 
   useEffect(() => {
     // Nonprofit organizers (membership) only create for their own org.
@@ -163,12 +166,68 @@ export function AiFindOrganization() {
         />
       </div>
 
-      {browserLocation.status === "ready" ? (
-        <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <MapPin className="size-3.5" />
-          Preferring matches near you (~8 mi). Unmapped orgs still appear.
+      <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-foreground">
+        <input
+          type="checkbox"
+          checked={useNearbyFilter}
+          onChange={(e) => {
+            const on = e.target.checked;
+            setUseNearbyFilter(on);
+            setSelected(null);
+            if (!on) browserLocation.setLocationOverride(null);
+          }}
+          className="size-4 rounded border-border"
+        />
+        <span className="inline-flex items-center gap-1.5">
+          <MapPin className="size-3.5 text-muted-foreground" />
+          Search within ~8 miles of my location
+        </span>
+      </label>
+
+      {useNearbyFilter ? (
+        <div className="mt-2 space-y-1">
+          {browserLocation.status === "ready" ? (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                {browserLocation.isOverride
+                  ? `Using test pin: ${TEST_LOCATION_RICHMOND_VA.label}.`
+                  : "Using your browser location."}
+              </span>
+              {browserLocation.isOverride ? (
+                <button
+                  type="button"
+                  onClick={() => browserLocation.setLocationOverride(null)}
+                  className="font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  Clear test pin
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    browserLocation.setLocationOverride({
+                      latitude: TEST_LOCATION_RICHMOND_VA.latitude,
+                      longitude: TEST_LOCATION_RICHMOND_VA.longitude,
+                    });
+                    setSelected(null);
+                  }}
+                  className="font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  Test as Richmond, VA
+                </button>
+              )}
+            </p>
+          ) : browserLocation.status === "prompting" ? (
+            <p className="text-xs text-muted-foreground">Checking location…</p>
+          ) : browserLocation.error ? (
+            <p className="text-xs text-muted-foreground">{browserLocation.error}</p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Nearby filter is off — normal search (all US matches).
         </p>
-      ) : null}
+      )}
 
       {selected && (
         <div className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm">

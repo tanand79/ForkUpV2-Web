@@ -57,11 +57,11 @@ export function ChooseBusinesses() {
   const [catalog, setCatalog] = useState<Business[]>(state.businessCatalog);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  /** When false, fetch the full catalog without GPS radius (user opted out). */
-  const [nearbyOnly, setNearbyOnly] = useState(true);
+  /** When true, fetch catalog within ~8 miles. Off by default = normal full list. */
+  const [nearbyOnly, setNearbyOnly] = useState(false);
   const [sendingAppend, setSendingAppend] = useState(false);
   const [appendError, setAppendError] = useState<string | null>(null);
-  const browserLocation = useBrowserLocation(true);
+  const browserLocation = useBrowserLocation(nearbyOnly);
   const nearby = nearbyQueryParams(browserLocation);
 
   /** Post-launch invite mode (?appendInvites=1) — send via append API, not Review. */
@@ -281,41 +281,31 @@ export function ChooseBusinesses() {
           {appendInvites && appendHydrating ? (
             <p className="mt-2 text-sm text-muted-foreground">Loading campaign methods…</p>
           ) : null}
-          {nearbyOnly && browserLocation.status === "ready" ? (
-            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <MapPin className="size-3.5" />
-                Showing businesses within ~8 miles (unmapped locations still included).
-              </span>
-              <button
-                type="button"
-                onClick={() => setNearbyOnly(false)}
-                className="font-medium text-primary underline-offset-2 hover:underline"
-              >
-                Show all
-              </button>
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={nearbyOnly}
+              onChange={(e) => setNearbyOnly(e.target.checked)}
+              className="size-4 rounded border-border"
+            />
+            <span className="inline-flex items-center gap-1.5">
+              <MapPin className="size-3.5 text-muted-foreground" />
+              Show businesses within ~8 miles of my location
+            </span>
+          </label>
+          {nearbyOnly ? (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {browserLocation.status === "ready"
+                ? "Nearby filter on — unmapped locations still included."
+                : browserLocation.status === "prompting"
+                  ? "Checking location…"
+                  : browserLocation.error ?? "Allow location to filter nearby businesses."}
             </p>
-          ) : nearbyOnly && browserLocation.status === "prompting" ? (
-            <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-              <MapPin className="size-3.5" />
-              Checking your location for nearby businesses…
+          ) : (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Nearby filter is off — showing all businesses.
             </p>
-          ) : nearbyOnly && browserLocation.error ? (
-            <p className="mt-2 text-sm text-muted-foreground">{browserLocation.error}</p>
-          ) : !nearbyOnly ? (
-            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-              Showing all businesses.
-              {browserLocation.status === "ready" ? (
-                <button
-                  type="button"
-                  onClick={() => setNearbyOnly(true)}
-                  className="font-medium text-primary underline-offset-2 hover:underline"
-                >
-                  Within ~8 miles
-                </button>
-              ) : null}
-            </p>
-          ) : null}
+          )}
         </div>
 
         {/* Search + compact filters */}

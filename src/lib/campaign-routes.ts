@@ -19,6 +19,7 @@ export const ALL_STEP_IDS: StepId[] = [
   "fundraiser-dashboard",
   "nonprofit-dashboard",
   "business-dashboard",
+  "ach-settings",
   "supporter-dashboard",
   "auth-login",
   "account-hub",

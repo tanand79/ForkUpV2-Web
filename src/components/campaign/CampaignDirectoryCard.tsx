@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { MapPin, Sparkles, Store, Users } from "lucide-react";
 import { formatCurrency } from "@/data/campaigns";
@@ -8,6 +11,13 @@ import { campaignPublicPath } from "@/lib/campaign-paths";
 export function CampaignDirectoryCard({ campaign }: { campaign: CampaignListItem }) {
   const pct =
     campaign.goal > 0 ? Math.min(100, Math.round((campaign.raised / campaign.goal) * 100)) : 0;
+  const resolvedSrc = resolveCampaignImage(campaign.image);
+  const placeholderSrc = resolveCampaignImage(null);
+  const [imgSrc, setImgSrc] = useState(resolvedSrc);
+
+  useEffect(() => {
+    setImgSrc(resolvedSrc);
+  }, [resolvedSrc]);
 
   return (
     <Link
@@ -16,12 +26,15 @@ export function CampaignDirectoryCard({ campaign }: { campaign: CampaignListItem
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
         <img
-          src={resolveCampaignImage(campaign.image)}
+          src={imgSrc}
           alt={campaign.name}
           loading="lazy"
           width={1024}
           height={768}
           className="h-full w-full object-contain object-center transition-transform duration-500 group-hover:scale-[1.02]"
+          onError={() => {
+            if (imgSrc !== placeholderSrc) setImgSrc(placeholderSrc);
+          }}
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-foreground/35" />
         {campaign.topEvent && (

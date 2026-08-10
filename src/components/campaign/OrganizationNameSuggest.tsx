@@ -105,7 +105,13 @@ interface OrganizationNameSuggestProps {
   enabled?: boolean;
   onSelect: (candidate: OrganizationSearchCandidate) => void;
   /** Optional browser GPS for ~8 mile nearby bias on local + IRS suggest. */
-  nearby?: { lat: number; lng: number; radiusMiles?: number } | null;
+  nearby?: {
+    lat: number;
+    lng: number;
+    radiusMiles?: number;
+    state?: string;
+    city?: string;
+  } | null;
 }
 
 export function OrganizationNameSuggest({
@@ -147,7 +153,7 @@ export function OrganizationNameSuggest({
         try {
           const params = detectOrganizationSearchParams(trimmed);
           const usQuery = params.q || params.ein || params.location || trimmed;
-          const state = stateFromQuery(trimmed);
+          const state = stateFromQuery(trimmed) || nearby?.state;
           const geo =
             nearby != null
               ? {
@@ -162,8 +168,15 @@ export function OrganizationNameSuggest({
             suggestUsNonprofits({
               q: usQuery,
               state,
+              city: nearby?.city,
               limit: MAX_SUGGESTIONS,
-              ...(nearby != null ? { lat: nearby.lat, lng: nearby.lng } : {}),
+              ...(nearby != null
+                ? {
+                    lat: nearby.lat,
+                    lng: nearby.lng,
+                    radiusMiles: nearby.radiusMiles,
+                  }
+                : {}),
             }).catch(() => null),
           ]);
           if (reqId !== requestIdRef.current) return;
@@ -187,7 +200,7 @@ export function OrganizationNameSuggest({
     }, DEBOUNCE_MS);
 
     return () => window.clearTimeout(timer);
-  }, [query, enabled, nearby?.lat, nearby?.lng, nearby?.radiusMiles]);
+  }, [query, enabled, nearby?.lat, nearby?.lng, nearby?.radiusMiles, nearby?.state, nearby?.city]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

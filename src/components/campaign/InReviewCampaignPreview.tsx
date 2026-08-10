@@ -7,6 +7,8 @@
  * Outputs: UI only. Does not publish, invite, or expose the campaign publicly.
  *
  * Changelog: Added owner preview for campaign_status = in_review / forkup pending.
+ * Changelog: Mounted InReviewCampaignPhotosEditor (crop/resize + save) on this screen.
+ * Changelog: Resize on the open cover image (not only in Change photo / panel).
  */
 "use client";
 
@@ -31,12 +33,17 @@ import {
 import {
   fetchBuilderCampaign,
   fetchCampaignDashboard,
+  fetchCampaignImages,
+  putCampaignImages,
+  uploadImage,
   type BuilderCampaignState,
   type CampaignDashboardData,
 } from "@/lib/api";
 import { useCampaign } from "@/lib/campaign-context";
 import { formatDateUs } from "@/lib/date-only";
 import { assetSrc } from "@/lib/utils";
+import { InReviewCampaignPhotosEditor } from "@/components/campaign/InReviewCampaignPhotosEditor";
+import { OpenCoverResizeControl } from "@/components/campaign/OpenCoverResizeControl";
 
 type StoryTab = "story" | "impact" | "funds" | "updates";
 
@@ -151,6 +158,73 @@ export function InReviewCampaignPreview() {
     });
   };
 
+  /**
+   * Apply open-cover crop: upload file, merge into gallery, PUT campaign-images.
+   * Inputs: cropped File from OpenCoverResizeControl
+   * Outputs: updates builder cover preview + server gallery
+   */
+  const handleOpenCoverResize = async (file: File) => {
+    if (!slug) return;
+    const imageBase64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("Could not read resized image"));
+      reader.readAsDataURL(file);
+    });
+    const { url: storedUrl } = await uploadImage({
+      imageBase64,
+      imageMimeType: file.type || "image/jpeg",
+      kind: "cover",
+    });
+    const previewUrl = URL.createObjectURL(file);
+
+    let galleryPayload: {
+      imageUrl: string;
+      source?: string;
+      sourceUrl?: string | null;
+      isCover?: boolean;
+    }[] = [];
+    try {
+      const { images: existing } = await fetchCampaignImages(slug);
+      galleryPayload = existing.map((g) => ({
+        imageUrl: g.storedUrl || g.imageUrl,
+        source: g.source,
+        sourceUrl: g.sourceUrl,
+        isCover: false,
+      }));
+    } catch {
+      /* empty gallery — cover only */
+    }
+    if (galleryPayload.length === 0 && builder?.coverImageUrl) {
+      galleryPayload.push({
+        imageUrl: builder.coverImageUrl,
+        source: "manual",
+        isCover: false,
+      });
+    }
+    const withoutDup = galleryPayload.filter(
+      (g) => g.imageUrl !== storedUrl && g.imageUrl !== builder?.coverImageUrl,
+    );
+    const next = [
+      { imageUrl: storedUrl, source: "manual", isCover: true },
+      ...withoutDup.map((g) => ({ ...g, isCover: false })),
+    ].slice(0, 8);
+
+    await putCampaignImages(slug, next);
+    setBuilder((prev) =>
+      prev ? { ...prev, coverImageUrl: storedUrl } : prev,
+    );
+    update({
+      cover: {
+        id: `cover-${slug}-resized`,
+        url: previewUrl,
+        name: file.name,
+        storedUrl,
+        source: "manual",
+      },
+    });
+  };
+
   if (loading) {
     return (
       <main className="mx-auto flex min-h-[50vh] max-w-6xl items-center justify-center px-5 py-16">
@@ -262,14 +336,22 @@ export function InReviewCampaignPreview() {
             </div>
 
             <div className="relative grid gap-0 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-              <div className="aspect-[16/11] bg-secondary md:aspect-auto md:min-h-[260px]">
+              <div className="relative z-[1] aspect-[16/11] bg-secondary md:aspect-auto md:min-h-[260px]">
                 {coverUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={coverUrl}
-                    alt=""
-                    className="size-full object-cover"
-                  />
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={coverUrl}
+                      alt=""
+                      className="size-full object-cover"
+                    />
+                    <OpenCoverResizeControl
+                      imageSrc={coverUrl}
+                      imageName="campaign-cover"
+                      className="absolute bottom-3 left-3 z-20 inline-flex items-center gap-1.5 rounded-full bg-background/95 px-3.5 py-2 text-xs font-semibold shadow-md ring-1 ring-border"
+                      onApply={handleOpenCoverResize}
+                    />
+                  </>
                 ) : (
                   <div className="flex size-full items-center justify-center text-sm text-muted-foreground">
                     No cover image
@@ -326,6 +408,17 @@ export function InReviewCampaignPreview() {
               </div>
             </div>
           </section>
+
+          <InReviewCampaignPhotosEditor
+            slug={slug}
+            initialCoverUrl={builder?.coverImageUrl ?? null}
+            onSaved={(coverUrl) => {
+              if (!coverUrl) return;
+              setBuilder((prev) =>
+                prev ? { ...prev, coverImageUrl: coverUrl } : prev,
+              );
+            }}
+          />
 
           {/* Story + methods */}
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">

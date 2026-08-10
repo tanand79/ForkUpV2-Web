@@ -47,10 +47,11 @@ import {
   type TimingCta,
 } from "@/lib/campaign-timing";
 import { fetchAiCampaignSession } from "@/lib/api-ai-campaign-flow";
-import { createFundraiserCampaignInvite } from "@/lib/api";
+import { createFundraiserCampaignInvite, uploadImage } from "@/lib/api";
 import { campaignMethodsForApi } from "@/lib/builder-submit";
 import { loadAiFlowStore, loadAiFlowPendingOrg } from "@/lib/ai-campaign-flow-storage";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
+import { OpenCoverResizeControl } from "@/components/campaign/OpenCoverResizeControl";
 import {
   AiCampaignCoverPicker,
   AiCoverChangeButton,
@@ -80,6 +81,15 @@ function formatDate(d: string) {
   if (!d) return "";
   const label = formatDateUs(d);
   return label === "—" ? "" : label;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Could not read the selected image"));
+    reader.readAsDataURL(file);
+  });
 }
 
 type AttentionItem = {
@@ -525,6 +535,28 @@ export function AiCampaignPreview() {
                   return;
                 }
                 update({ cover: null });
+              }}
+            />
+            <OpenCoverResizeControl
+              imageSrc={coverSrc}
+              imageName={state.cover?.name}
+              onApply={async (file) => {
+                const previewUrl = URL.createObjectURL(file);
+                const coverId = `cover-resized-${Date.now()}`;
+                const pending = {
+                  id: coverId,
+                  url: previewUrl,
+                  name: file.name,
+                  source: "manual" as const,
+                };
+                update({ cover: pending });
+                const imageBase64 = await readFileAsDataUrl(file);
+                const { url: storedUrl } = await uploadImage({
+                  imageBase64,
+                  imageMimeType: file.type || "image/jpeg",
+                  kind: "cover",
+                });
+                update({ cover: { ...pending, storedUrl } });
               }}
             />
             {editing ? (

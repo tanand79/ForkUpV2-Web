@@ -153,8 +153,11 @@ export function OrganizationLookupConfirm({
   const [suppressSuggest, setSuppressSuggest] = useState(false);
   /** Ignores stale AI/search responses when the user searches again quickly. */
   const requestIdRef = useRef(0);
-  const browserLocation = useBrowserLocation(true);
-  const nearby = nearbyQueryParams(browserLocation);
+  /** Off by default — normal search. On = ~8 mile GPS filter. */
+  const [useNearbyFilter, setUseNearbyFilter] = useState(false);
+  const browserLocation = useBrowserLocation(useNearbyFilter);
+  const gpsNearby = nearbyQueryParams(browserLocation);
+  const nearby = useNearbyFilter ? gpsNearby : undefined;
 
   useEffect(() => {
     onReviewActiveChange?.(Boolean(aiDraft) && !aiBusy);
@@ -282,10 +285,15 @@ export function OrganizationLookupConfirm({
           const stateMatch = trimmed.match(/,\s*([A-Za-z]{2})\s*$/);
           const us = await suggestUsNonprofits({
             q: usQuery,
-            state: stateMatch?.[1]?.toUpperCase(),
+            state: stateMatch?.[1]?.toUpperCase() || nearby?.state,
+            city: nearby?.city,
             limit: 25,
             ...(nearby
-              ? { lat: nearby.lat, lng: nearby.lng }
+              ? {
+                  lat: nearby.lat,
+                  lng: nearby.lng,
+                  radiusMiles: nearby.radiusMiles,
+                }
               : {}),
           });
           if (reqId !== requestIdRef.current) return;
@@ -381,22 +389,37 @@ export function OrganizationLookupConfirm({
               nearby={nearby ?? null}
             />
           </div>
-          {browserLocation.status === "ready" ? (
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <MapPin className="size-3.5" />
-              Using your location (~8 mi). Orgs without a mapped address still appear.
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={useNearbyFilter}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setUseNearbyFilter(on);
+                if (!on) browserLocation.setLocationOverride(null);
+              }}
+              className="size-4 rounded border-border"
+            />
+            <span className="inline-flex items-center gap-1.5">
+              <MapPin className="size-3.5 text-muted-foreground" />
+              Search within ~8 miles of my location
+            </span>
+          </label>
+          {useNearbyFilter ? (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {browserLocation.status === "ready"
+                ? browserLocation.isOverride
+                  ? `Using test pin: ${gpsNearby?.city ?? "location"} (${gpsNearby?.state ?? ""}).`
+                  : "Using your browser location for nearby matches."
+                : browserLocation.status === "prompting"
+                  ? "Checking location…"
+                  : browserLocation.error ?? "Allow location to filter nearby nonprofits."}
             </p>
-          ) : browserLocation.status === "prompting" ? (
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <MapPin className="size-3.5" />
-              Checking your location for nearby matches…
+          ) : (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Nearby filter is off — normal search (all matches).
             </p>
-          ) : browserLocation.error ? (
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <MapPin className="size-3.5" />
-              {browserLocation.error}
-            </p>
-          ) : null}
+          )}
           {error && (
             <p className="mt-2 flex items-center gap-1.5 text-sm text-destructive">
               <AlertTriangle className="size-4" /> {error}
@@ -577,8 +600,34 @@ export function OrganizationLookupConfirm({
           {!aiBusy && !aiDraft && (
             <div className="flex flex-col items-center gap-2 pt-2 text-center">
               <p className="text-sm text-muted-foreground">
-                No directory match for <span className="font-medium">{value}</span>.
+                {nearby
+                  ? (
+                    <>
+                      No nonprofits within ~8 miles matched{" "}
+                      <span className="font-medium">{value}</span>.
+                      {" "}
+                      VPN does not change GPS — use Chrome Sensors for a US city, or search everywhere.
+                    </>
+                  )
+                  : (
+                    <>
+                      No directory match for <span className="font-medium">{value}</span>.
+                    </>
+                  )}
               </p>
+              {nearby ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseNearbyFilter(false);
+                    setSearched(false);
+                    setSuppressSuggest(false);
+                  }}
+                  className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  Turn off nearby and search again
+                </button>
+              ) : null}
               {looksLikeWebsite(value) && (
                 <button
                   type="button"

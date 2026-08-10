@@ -266,6 +266,7 @@ export type StepId =
   | "fundraiser-dashboard"
   | "nonprofit-dashboard"
   | "business-dashboard"
+  | "ach-settings"
   | "supporter-dashboard"
   | "auth-login"
   | "account-hub"
@@ -1801,13 +1802,18 @@ export function CampaignProvider({
 
   const switchActiveRole = useCallback((role: UserRole, organizationId?: number) => {
     setState((prev) => {
-      // Memberships only — do not fall back to invite-target nonprofitProfile
-      // (fundraiser/business pick an org to partner with, not to own).
+      // Prefer memberships for owned orgs. Do not adopt fundraiser/business
+      // invite-target nonprofitProfile as ownership. Guest→signup mid-draft
+      // (accountIntent already nonprofit, memberships still empty until Launch)
+      // must keep the in-progress profile so ReviewLaunch can create the org.
+      const fromMembership =
+        prev.nonprofitMemberships.find((n) => n.id === organizationId) ??
+        prev.nonprofitMemberships[0] ??
+        null;
       const nonprofitProfile =
         role === "nonprofit"
-          ? prev.nonprofitMemberships.find((n) => n.id === organizationId) ??
-            prev.nonprofitMemberships[0] ??
-            null
+          ? fromMembership ??
+            (prev.accountIntent === "nonprofit" ? prev.nonprofitProfile : null)
           : prev.nonprofitProfile;
       const businessProfile =
         role === "business"

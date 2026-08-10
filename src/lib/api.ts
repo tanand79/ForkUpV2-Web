@@ -400,17 +400,23 @@ export interface UsNonprofitSuggestResult {
 export function suggestUsNonprofits(params: {
   q: string;
   state?: string;
+  city?: string;
   limit?: number;
   lat?: number;
   lng?: number;
+  radiusMiles?: number;
 }) {
   const search = new URLSearchParams();
   search.set("q", params.q.trim());
   if (params.state?.trim()) search.set("state", params.state.trim());
+  if (params.city?.trim()) search.set("city", params.city.trim());
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.lat != null && params.lng != null) {
     search.set("lat", String(params.lat));
     search.set("lng", String(params.lng));
+    if (params.radiusMiles != null) {
+      search.set("radiusMiles", String(params.radiusMiles));
+    }
   }
   search.set("_", String(Date.now()));
   return fetchJson<UsNonprofitSuggestResult>(
@@ -904,7 +910,7 @@ export interface BusinessCollaboration {
     nonprofit: string;
   };
   business: { id: number; name: string; email: string | null };
-  location: { name: string; city: string; state: string };
+  location: { id: number | null; name: string; city: string; state: string };
   method: { type: string; name: string };
 }
 
@@ -1793,7 +1799,7 @@ export function uploadImage(body: {
   });
 }
 
-// ─── Campaign gallery images (max 6) ─────────────────────────────────────────
+// ─── Campaign gallery images (max 8) ─────────────────────────────────────────
 
 export interface SuggestedCampaignImage {
   url: string;

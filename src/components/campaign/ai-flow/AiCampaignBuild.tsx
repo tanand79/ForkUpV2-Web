@@ -7,6 +7,7 @@
  * Layout is intentionally compact so goal + methods fit with less scrolling.
  * Method toggles use themed checkmarks (primary), not native blue checkboxes.
  * Cover preview includes Change photo → AiCampaignCoverPicker (suggested + upload).
+ * Open cover also has Resize (crop + save) via OpenCoverResizeControl.
  *
  * Changelog: If cover is missing on mount, hydrate via social suggest first then
  * AI analysis images (same resolver as Purpose / Ideas / Preview).
@@ -14,8 +15,10 @@
 import { useEffect, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { useCampaign, type SupportMethod } from "@/lib/campaign-context";
+import { uploadImage } from "@/lib/api";
 import { fetchAiCampaignSession } from "@/lib/api-ai-campaign-flow";
 import { loadAiFlowStore, loadAiFlowPendingOrg } from "@/lib/ai-campaign-flow-storage";
+import { OpenCoverResizeControl } from "@/components/campaign/OpenCoverResizeControl";
 import {
   AiCampaignCoverPicker,
   AiCoverChangeButton,
@@ -26,6 +29,15 @@ import {
   ideaThumbnailFallbackUrls,
   resolveAiFlowImages,
 } from "./resolve-ai-flow-images";
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Could not read the selected image"));
+    reader.readAsDataURL(file);
+  });
+}
 
 const GOAL_PRESETS = [10000, 25000, 50000] as const;
 
@@ -247,6 +259,28 @@ export function AiCampaignBuild() {
               src={state.cover.url}
               alt=""
               className="block max-h-48 w-full object-contain sm:max-h-56"
+            />
+            <OpenCoverResizeControl
+              imageSrc={state.cover.url || state.cover.storedUrl}
+              imageName={state.cover.name}
+              onApply={async (file) => {
+                const previewUrl = URL.createObjectURL(file);
+                const coverId = `cover-resized-${Date.now()}`;
+                const pending = {
+                  id: coverId,
+                  url: previewUrl,
+                  name: file.name,
+                  source: "manual" as const,
+                };
+                update({ cover: pending });
+                const imageBase64 = await readFileAsDataUrl(file);
+                const { url: storedUrl } = await uploadImage({
+                  imageBase64,
+                  imageMimeType: file.type || "image/jpeg",
+                  kind: "cover",
+                });
+                update({ cover: { ...pending, storedUrl } });
+              }}
             />
             <AiCoverChangeButton onClick={() => setCoverPickerOpen(true)} />
           </div>

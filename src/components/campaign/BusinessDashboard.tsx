@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Clock,
   XCircle,
+  Landmark,
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { campaignPublicPath } from "@/lib/campaign-paths";
@@ -248,6 +249,14 @@ export function BusinessDashboard() {
           >
             <Settings2 className="size-4" />
             Edit business profile
+          </button>
+          <button
+            type="button"
+            onClick={() => goTo("ach-settings")}
+            className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary-dark"
+          >
+            <Landmark className="size-4" />
+            ACH settings
           </button>
         </div>
         <button

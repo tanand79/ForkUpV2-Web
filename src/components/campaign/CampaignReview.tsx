@@ -25,6 +25,7 @@ import { CampaignGalleryPicker } from "@/components/campaign/CampaignGalleryPick
 import { UsDateInput } from "@/components/campaign/UsDateInput";
 import { dateFieldRequirements, campaignDateMin, campaignDateNotInPastError, todayDateOnly } from "@/lib/campaign-timing";
 import { formatDateUs, formatDateTimeUs, looksLikeIsoDateTime } from "@/lib/date-only";
+import { campaignPublicPath } from "@/lib/campaign-paths";
 
 const METHOD_LABELS = SUPPORT_METHOD_META;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -658,7 +659,14 @@ export function CampaignReview() {
           </button>
           <button
             type="button"
-            onClick={() => goTo("campaign-page")}
+            onClick={() => {
+              const slug = state.campaignSlug?.trim() ?? "";
+              if (slug) {
+                window.open(campaignPublicPath(slug), "_blank", "noopener,noreferrer");
+                return;
+              }
+              goTo("campaign-page");
+            }}
             className="order-2 inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-secondary"
           >
             <Eye className="size-4" />

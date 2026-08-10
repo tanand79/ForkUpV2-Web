@@ -19,12 +19,14 @@
  *
  * Changelog: Additive live refetch of social post images on open (YT/LI/FB/IG).
  * Additive: referrerPolicy=no-referrer so social CDN images can render in browser.
+ * Changelog: Resize moved to open cover (OpenCoverResizeControl) — not in this sheet.
  */
 import { useEffect, useRef, useState } from "react";
 import { ImageIcon, Loader2, Replace } from "lucide-react";
 import type { CampaignImage } from "@/lib/campaign-context";
 import { suggestCampaignImages, uploadImage } from "@/lib/api";
 import { aiFlowCoverSourceLabel } from "./resolve-ai-flow-images";
+import { resizeCampaignImageFile } from "@/lib/resize-campaign-image";
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
@@ -177,10 +179,11 @@ export function AiCampaignCoverPicker({
     onSelectCover(pending);
     setUploading(true);
     try {
-      const imageBase64 = await readFileAsDataUrl(file);
+      const resized = await resizeCampaignImageFile(file);
+      const imageBase64 = await readFileAsDataUrl(resized);
       const { url: storedUrl } = await uploadImage({
         imageBase64,
-        imageMimeType: file.type,
+        imageMimeType: resized.type || file.type,
         kind: "cover",
       });
       onSelectCover({ ...pending, storedUrl });

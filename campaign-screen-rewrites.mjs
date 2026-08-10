@@ -45,6 +45,7 @@ const ALL_STEP_IDS = [
   "business-profile",
   "campaign-page",
   "business-acceptance",
+  "ach-settings",
   "reporting",
   "analytics",
   "nonprofit-profile",

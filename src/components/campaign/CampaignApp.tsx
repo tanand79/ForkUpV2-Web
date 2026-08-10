@@ -33,7 +33,7 @@ import { CampaignCreated } from "@/components/campaign/CampaignCreated";
 import { CampaignDashboard } from "@/components/campaign/CampaignDashboard";
 import { InReviewCampaignPreview } from "@/components/campaign/InReviewCampaignPreview";
 import { BusinessProfile } from "@/components/campaign/BusinessProfile";
-import { CampaignPage } from "@/components/campaign/CampaignPage";
+import { PublicCampaignStepGate } from "@/components/campaign/PublicCampaignStepGate";
 import { BusinessAcceptance } from "@/components/campaign/BusinessAcceptance";
 import { ReportingSettlement } from "@/components/campaign/ReportingSettlement";
 import { CampaignAnalytics } from "@/components/campaign/CampaignAnalytics";
@@ -68,6 +68,7 @@ import { PastCampaigns } from "@/components/campaign/PastCampaigns";
 import { SuccessStories } from "@/components/campaign/SuccessStories";
 import { NonprofitDashboard } from "@/components/campaign/NonprofitDashboard";
 import { BusinessDashboard } from "@/components/campaign/BusinessDashboard";
+import { BusinessAchSettings } from "@/components/campaign/BusinessAchSettings";
 import { SupporterDashboard } from "@/components/campaign/SupporterDashboard";
 import { AccountHub } from "@/components/campaign/AccountHub";
 import { SuccessState } from "@/components/campaign/SuccessStates";
@@ -86,6 +87,32 @@ import {
   AiCampaignPreview,
   AiContinueGuest,
 } from "@/components/campaign/ai-flow";
+
+/**
+ * Purpose: Detect post-auth return into an in-progress campaign builder/launch path.
+ * Inputs: optional StepId from stashAuthReturnStep.
+ * Outputs: true when the user should keep draft org context after signup/login.
+ */
+function isCampaignContinuationStep(step: StepId | null): boolean {
+  if (!step) return false;
+  return (
+    step === "review" ||
+    step === "businesses" ||
+    step === "invite" ||
+    step === "edit-invite" ||
+    step === "business-invite-flow" ||
+    step === "methods" ||
+    step === "details" ||
+    step === "media" ||
+    step === "ai-campaign-preview" ||
+    step === "ai-campaign-dates" ||
+    step === "ai-campaign-build" ||
+    step === "ai-campaign-purpose" ||
+    step === "ai-campaign-ideas" ||
+    step === "quick-start" ||
+    step === "campaign-review"
+  );
+}
 
 function AuthLoginScreen() {
   const { goTo, switchActiveRole, update, state } = useCampaign();
@@ -110,12 +137,29 @@ function AuthLoginScreen() {
     try {
       consumeRoleHint();
       const returnStep = consumeAuthReturnStep();
-      const role = selectedRole;
 
       // Capture guest ownership clues before session patch can clear local profile.
       const pendingNonprofitId = state.nonprofitProfile?.id ?? null;
       const pendingCampaignSlug = state.campaignSlug ?? null;
       const pendingNonprofitProfile = state.nonprofitProfile;
+      const isBrandNewOrgDraft =
+        !!pendingNonprofitProfile?.organizationName?.trim() &&
+        !(
+          typeof pendingNonprofitProfile.id === "number" &&
+          pendingNonprofitProfile.id > 0
+        );
+
+      // Same email, all roles: picking Fundraiser at signup while continuing a
+      // brand-new NPO campaign draft should proceed as Nonprofit Organizer.
+      // Real fundraiser invites target an existing ForkUp nonprofit id — unchanged.
+      let role = selectedRole;
+      if (
+        role === "fundraiser" &&
+        isBrandNewOrgDraft &&
+        isCampaignContinuationStep(returnStep)
+      ) {
+        role = "nonprofit";
+      }
 
       // Bound wait so a stuck /auth/context cannot leave the spinner forever.
       let session = await Promise.race([
@@ -163,6 +207,17 @@ function AuthLoginScreen() {
         update(patch);
       }
       switchActiveRole(role);
+
+      // Guest→signup: org is often created only at Launch, so memberships are
+      // still empty. Re-apply the draft profile after switchActiveRole so Launch
+      // does not bounce to nonprofit-claim.
+      if (
+        role === "nonprofit" &&
+        pendingNonprofitProfile &&
+        (session.nonprofitMemberships?.length ?? 0) === 0
+      ) {
+        update({ nonprofitProfile: pendingNonprofitProfile });
+      }
 
       goTo(
         resolvePostAuthStep(
@@ -281,6 +336,8 @@ function WizardBody() {
       return <NonprofitDashboard />;
     case "business-dashboard":
       return <BusinessDashboard />;
+    case "ach-settings":
+      return <BusinessAchSettings />;
     case "supporter-dashboard":
       return <SupporterDashboard />;
     case "auth-login":
@@ -380,7 +437,7 @@ function WizardBody() {
     case "business-profile":
       return <BusinessProfile />;
     case "campaign-page":
-      return <CampaignPage />;
+      return <PublicCampaignStepGate />;
     case "business-acceptance":
       return (
         <Suspense

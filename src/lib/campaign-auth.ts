@@ -15,7 +15,12 @@ const DASHBOARD_RETURN_KEY = "forkup-dashboard-return-step";
 /** @deprecated Use UserRole from user-roles.ts */
 export type AccountIntent = UserRole;
 
-const BUSINESS_STEPS: StepId[] = ["business-claim", "business-invites-nonprofit", "business-dashboard"];
+const BUSINESS_STEPS: StepId[] = [
+  "business-claim",
+  "business-invites-nonprofit",
+  "business-dashboard",
+  "ach-settings",
+];
 
 const DASHBOARD_STEPS: StepId[] = [
   "nonprofit-dashboard",
@@ -34,6 +39,7 @@ export const CAMPAIGN_AUTH_STEPS: StepId[] = [
   "nonprofit-dashboard",
   "fundraiser-dashboard",
   "business-dashboard",
+  "ach-settings",
   "supporter-dashboard",
   "business-claim",
   "business-invites-nonprofit",

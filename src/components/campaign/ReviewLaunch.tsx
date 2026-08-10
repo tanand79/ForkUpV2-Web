@@ -17,7 +17,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useCampaign, SUPPORT_METHOD_META, type SupportMethod } from "@/lib/campaign-context";
-import { createCampaign, updateCampaign, putCampaignImages } from "@/lib/api";
+import { createCampaign, updateCampaign, putCampaignImages, uploadImage } from "@/lib/api";
 import { buildCreateCampaignPayload, buildCampaignGalleryPayload, durableCoverImageUrl } from "@/lib/builder-submit";
 import {
   deriveCampaignReadiness,
@@ -25,6 +25,8 @@ import {
 } from "@/lib/campaign-readiness";
 import { dateFieldRequirements } from "@/lib/campaign-timing";
 import { formatDateUs } from "@/lib/date-only";
+import { campaignPublicPath } from "@/lib/campaign-paths";
+import { OpenCoverResizeControl } from "@/components/campaign/OpenCoverResizeControl";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +39,15 @@ function formatDate(d: string) {
   if (!d) return "";
   const label = formatDateUs(d);
   return label === "—" ? "" : label;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Could not read the selected image"));
+    reader.readAsDataURL(file);
+  });
 }
 
 const PREP_STEPS = [
@@ -284,10 +295,51 @@ export function ReviewLaunch() {
           </p>
 
           <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
-            {/* Featured photo */}
+            {/* Featured photo — contain autofit + open Resize (all-sides crop) */}
             {hasCover ? (
-              <div className="aspect-[16/9] overflow-hidden bg-secondary">
-                <img src={state.cover!.url} alt="Featured campaign photo" className="size-full object-cover" />
+              <div className="relative aspect-[16/9] overflow-hidden bg-secondary">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={state.cover!.url || state.cover!.storedUrl || ""}
+                  alt="Featured campaign photo"
+                  className="size-full object-contain"
+                />
+                <OpenCoverResizeControl
+                  imageSrc={state.cover!.url || state.cover!.storedUrl}
+                  imageName={state.cover!.name}
+                  onApply={async (file) => {
+                    const previewUrl = URL.createObjectURL(file);
+                    const coverId = `cover-resized-${Date.now()}`;
+                    const pending = {
+                      id: coverId,
+                      url: previewUrl,
+                      name: file.name,
+                      source: "manual" as const,
+                    };
+                    update({ cover: pending });
+                    const imageBase64 = await readFileAsDataUrl(file);
+                    const { url: storedUrl } = await uploadImage({
+                      imageBase64,
+                      imageMimeType: file.type || "image/jpeg",
+                      kind: "cover",
+                    });
+                    update({ cover: { ...pending, storedUrl } });
+                    const slug = state.campaignSlug?.trim();
+                    if (slug) {
+                      try {
+                        const gallery = buildCampaignGalleryPayload({
+                          ...state,
+                          cover: { ...pending, storedUrl },
+                        });
+                        if (gallery.length > 0) {
+                          await putCampaignImages(slug, gallery);
+                        }
+                      } catch {
+                        /* cover state still updated; gallery sync best-effort */
+                      }
+                    }
+                  }}
+                />
               </div>
             ) : (
               <PreviewPrompt
@@ -382,9 +434,17 @@ export function ReviewLaunch() {
           </div>
         </div>
 
-        {/* Open the full canonical Public Campaign Page supporters will see. */}
+        {/* Open the live /campaign/{slug}/ page (PublicCampaignView), not the legacy wizard step. */}
         <button
-          onClick={() => goTo("campaign-page")}
+          type="button"
+          onClick={() => {
+            const slug = state.campaignSlug?.trim() ?? "";
+            if (slug) {
+              window.open(campaignPublicPath(slug), "_blank", "noopener,noreferrer");
+              return;
+            }
+            goTo("campaign-page");
+          }}
           className="animate-rise mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-card px-5 py-3 text-sm font-semibold transition-colors hover:bg-secondary [animation-delay:50ms]"
         >
           <Eye className="size-4 text-primary" />
