@@ -3,7 +3,7 @@
 /**
  * Platform Super Admin UI
  * — Login / Forgot / Reset password
- * — Dashboard tabs: Verification, ForkUp Review, Profile, AI Engine, Charges, SMTP
+ * — Dashboard tabs: Verification, ForkUp Review, Live Campaigns, Profile, AI Engine, Charges, SMTP
  *
  * Inputs: campaign goTo / URL token for reset.
  * Outputs: superadmin session + settings updates via /api/superadmin/*.
@@ -21,6 +21,7 @@ import {
   Save,
   Shield,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -31,6 +32,7 @@ import {
   approveSuperAdminAccessRequest,
   approveSuperAdminForkupReview,
   changeSuperAdminPassword,
+  deleteSuperAdminLiveCampaign,
   denySuperAdminAccessRequest,
   denySuperAdminForkupReview,
   fetchSuperAdminAccessRequests,
@@ -38,6 +40,7 @@ import {
   fetchSuperAdminCharges,
   fetchSuperAdminForkupReviewDetail,
   fetchSuperAdminForkupReviewQueue,
+  fetchSuperAdminLiveCampaigns,
   fetchSuperAdminMe,
   fetchSuperAdminOrganizationDetails,
   fetchSuperAdminSmtp,
@@ -54,6 +57,7 @@ import {
   type ForkupReviewQueueItem,
   type SuperAdminCampaignActivity,
   type SuperAdminForkupReviewDetail,
+  type SuperAdminLiveCampaign,
   type SuperAdminOrganizationDetails,
   type SuperAdminUser,
 } from "@/lib/api";
@@ -65,7 +69,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-type Tab = "verification" | "forkup-review" | "profile" | "ai" | "charges" | "smtp";
+type Tab =
+  | "verification"
+  | "forkup-review"
+  | "live-campaigns"
+  | "profile"
+  | "ai"
+  | "charges"
+  | "smtp";
 type VerificationFilter = "pending" | "approved" | "denied";
 
 const fieldClass =
@@ -331,6 +342,7 @@ export function SuperAdminDashboard() {
   const tabs: { id: Tab; label: string }[] = [
     { id: "verification", label: "Verification" },
     { id: "forkup-review", label: "ForkUp Review" },
+    { id: "live-campaigns", label: "Live Campaigns" },
     { id: "profile", label: "Profile" },
     { id: "ai", label: "AI Engine" },
     { id: "charges", label: "Charges" },
@@ -386,6 +398,7 @@ export function SuperAdminDashboard() {
       <div className="mt-6">
         {tab === "verification" && <VerificationTab />}
         {tab === "forkup-review" && <ForkupReviewTab />}
+        {tab === "live-campaigns" && <LiveCampaignsTab />}
         {tab === "profile" && <ProfileTab user={user} onUpdated={setUser} />}
         {tab === "ai" && <AiTab />}
         {tab === "charges" && <ChargesTab />}
@@ -808,6 +821,161 @@ function ForkupReviewDetailsView({
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * Live campaigns tab for superadmin.
+ * Lists campaign_status = 'live' rows with View (public page) and hard Delete.
+ * Inputs: none (uses superadmin session via auth headers).
+ * Outputs: opens /campaign/[slug]; calls DELETE /api/superadmin/live-campaigns/:slug.
+ */
+function LiveCampaignsTab() {
+  const [rows, setRows] = useState<SuperAdminLiveCampaign[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [acting, setActing] = useState<string | null>(null);
+  const [deleteSlug, setDeleteSlug] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setRows(await fetchSuperAdminLiveCampaigns());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const confirmDelete = async () => {
+    if (!deleteSlug) return;
+    setActing(deleteSlug);
+    setError(null);
+    try {
+      await deleteSuperAdminLiveCampaign(deleteSlug);
+      setDeleteSlug(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete campaign");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5">
+      <h2 className="text-lg font-bold">Live campaigns</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        All campaigns currently live on the platform. View opens the public page; Delete
+        permanently removes the campaign and related activity.
+      </p>
+      {loading && (
+        <div className="mt-8 flex justify-center">
+          <Loader2 className="size-6 animate-spin text-primary" />
+        </div>
+      )}
+      {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
+      {!loading && rows.length === 0 && (
+        <p className="mt-6 text-sm text-muted-foreground">No live campaigns right now.</p>
+      )}
+      <ul className="mt-4 space-y-2">
+        {rows.map((r) => (
+          <li
+            key={r.slug}
+            className="rounded-2xl border border-border bg-background px-4 py-3 text-sm"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{r.name}</p>
+                <p className="text-muted-foreground">{r.nonprofit}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Raised ${Number(r.raised).toLocaleString()} / ${Number(r.goal).toLocaleString()}
+                  {r.startDate ? ` · start ${r.startDate}` : ""}
+                  {r.endDate ? ` · end ${r.endDate}` : ""}
+                </p>
+                <p className="mt-1 text-xs font-medium">/{r.slug}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.open(`/campaign/${encodeURIComponent(r.slug)}`, "_blank", "noopener,noreferrer")
+                  }
+                  className={btnSecondary}
+                >
+                  <Eye className="size-3.5" /> View
+                </button>
+                <button
+                  type="button"
+                  disabled={acting === r.slug}
+                  onClick={() => setDeleteSlug(r.slug)}
+                  className="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-800 disabled:opacity-40 dark:bg-rose-950/40 dark:text-rose-200"
+                >
+                  <Trash2 className="size-3.5" /> Delete
+                </button>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={() => void load()}
+        className="mt-4 text-xs font-semibold text-primary underline-offset-2 hover:underline"
+      >
+        Refresh
+      </button>
+
+      <Dialog
+        open={deleteSlug != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteSlug(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete live campaign?</DialogTitle>
+            <DialogDescription>
+              This permanently removes{" "}
+              <span className="font-semibold text-foreground">
+                {rows.find((r) => r.slug === deleteSlug)?.name ?? deleteSlug}
+              </span>{" "}
+              and related data. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className={btnSecondary}
+              onClick={() => setDeleteSlug(null)}
+              disabled={acting === deleteSlug}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={acting === deleteSlug}
+              onClick={() => void confirmDelete()}
+              className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40"
+            >
+              {acting === deleteSlug ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              Delete permanently
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

@@ -165,6 +165,7 @@ export function stateFromBuilderCampaign(data: BuilderCampaignState): Partial<Ca
 
   return {
     campaignSlug: data.slug,
+    serverCampaignStatus: data.status ?? null,
     campaignOrigin: origin,
     organizerMode: "guided",
     title: data.campaignName,

@@ -666,6 +666,20 @@ export function NonprofitDashboard() {
                   : "View dashboard"}{" "}
             <ArrowRight className="size-4" />
           </button>
+          {/* Edit campaign — NPO can reopen builder for Live / Invitation / Scheduled. */}
+          {!options.isDraftTab &&
+            !options.isCompleted &&
+            (c.status === "live" ||
+              c.status === "invitation_phase" ||
+              c.status === "ready_to_launch") && (
+              <button
+                type="button"
+                onClick={() => openCampaign(c.slug, "builder")}
+                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-border bg-card px-5 text-sm font-semibold text-foreground transition-all hover:bg-secondary active:scale-95"
+              >
+                Edit campaign
+              </button>
+            )}
         </div>
       </div>
     );

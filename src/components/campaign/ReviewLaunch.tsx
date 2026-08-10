@@ -121,6 +121,15 @@ export function ReviewLaunch() {
   /** Shown after Launch when campaign entered ForkUp review (short timeline only). */
   const [reviewSentOpen, setReviewSentOpen] = useState(false);
 
+  /**
+   * Active campaigns opened via Edit — save fields only; do not re-launch.
+   * Inputs: serverCampaignStatus from builder hydrate. Outputs: boolean flag.
+   */
+  const isPostLaunchEdit =
+    state.serverCampaignStatus === "live" ||
+    state.serverCampaignStatus === "invitation_phase" ||
+    state.serverCampaignStatus === "ready_to_launch";
+
   const handleReviewPopupClose = (open: boolean) => {
     setReviewSentOpen(open);
     if (!open) {
@@ -159,7 +168,7 @@ export function ReviewLaunch() {
         state,
         state.nonprofitProfile,
         selectedBusinesses,
-        { launch: true },
+        { launch: !isPostLaunchEdit },
       );
       const result = state.campaignSlug
         ? await updateCampaign(state.campaignSlug, payload)
@@ -174,6 +183,7 @@ export function ReviewLaunch() {
       }
       update({
         campaignSlug: result.slug,
+        serverCampaignStatus: result.campaignStatus ?? state.serverCampaignStatus,
         invited: state.invited.map((b) => ({ ...b, persisted: true })),
         // Keep nonprofit id from create/update so guest→signup can link ownership.
         nonprofitProfile:
@@ -182,6 +192,17 @@ export function ReviewLaunch() {
             : state.nonprofitProfile,
       });
       discardLocalDraft({ force: true });
+      // Post-launch Edit: persist fields and return home — never re-run launch UX.
+      if (isPostLaunchEdit) {
+        timers.current.push(
+          setTimeout(() => {
+            setLaunching(false);
+            setPrepDone(0);
+            goTo("nonprofit-dashboard");
+          }, 700 * (PREP_STEPS.length + 1)),
+        );
+        return;
+      }
       const sentForReview =
         result.campaignStatus === "in_review" ||
         result.forkupReviewStatus === "pending";
@@ -199,7 +220,13 @@ export function ReviewLaunch() {
     } catch (err) {
       setLaunching(false);
       setPrepDone(0);
-      setLaunchError(err instanceof Error ? err.message : "Failed to launch campaign");
+      setLaunchError(
+        err instanceof Error
+          ? err.message
+          : isPostLaunchEdit
+            ? "Failed to save campaign"
+            : "Failed to launch campaign",
+      );
     }
   };
 
@@ -212,9 +239,15 @@ export function ReviewLaunch() {
         <div className="animate-pop flex size-16 items-center justify-center rounded-full bg-primary/10">
           <Loader2 className="size-7 animate-spin text-primary" />
         </div>
-        <h1 className="mt-6 text-2xl font-bold tracking-tight">Preparing your campaign&hellip;</h1>
+        <h1 className="mt-6 text-2xl font-bold tracking-tight">
+          {isPostLaunchEdit
+            ? "Saving your changes\u2026"
+            : "Preparing your campaign\u2026"}
+        </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Hang tight — ForkUp is getting everything ready.
+          {isPostLaunchEdit
+            ? "Hang tight — ForkUp is saving your updates."
+            : "Hang tight — ForkUp is getting everything ready."}
         </p>
         <ul className="mt-8 w-full space-y-3 text-left">
           {PREP_STEPS.map((label, i) => {
@@ -685,7 +718,11 @@ export function ReviewLaunch() {
               onChange={(e) => update({ termsAccepted: e.target.checked })}
               className="size-5 shrink-0 cursor-pointer rounded border-border accent-primary"
             />
-            <span className="text-sm font-semibold">I&rsquo;m ready to launch this campaign.</span>
+            <span className="text-sm font-semibold">
+              {isPostLaunchEdit
+                ? "I confirm these campaign updates."
+                : "I\u2019m ready to launch this campaign."}
+            </span>
           </label>
           {businessInviteMissing && (
             <p className="mt-3 text-sm font-medium text-destructive" role="alert">
@@ -713,17 +750,30 @@ export function ReviewLaunch() {
             <span className="hidden max-w-[16rem] text-xs text-muted-foreground sm:inline">
               {businessInviteMissing
                 ? "Please invite a business."
-                : canLaunch
-                  ? "Your campaign is ready to launch."
-                  : "Almost there. Complete the remaining items above and we\u2019ll prepare your campaign for launch."}
+                : isPostLaunchEdit
+                  ? canLaunch
+                    ? "Your changes will be saved without re-launching."
+                    : "Almost there. Complete the remaining items above, then save."
+                  : canLaunch
+                    ? "Your campaign is ready to launch."
+                    : "Almost there. Complete the remaining items above and we\u2019ll prepare your campaign for launch."}
             </span>
             <button
               onClick={handleLaunch}
               disabled={!canLaunch}
               className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary-dark active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-primary"
             >
-              <Rocket className="size-4" />
-              Launch Campaign
+              {isPostLaunchEdit ? (
+                <>
+                  <CheckCircle2 className="size-4" />
+                  Save changes
+                </>
+              ) : (
+                <>
+                  <Rocket className="size-4" />
+                  Launch Campaign
+                </>
+              )}
             </button>
           </div>
         </div>

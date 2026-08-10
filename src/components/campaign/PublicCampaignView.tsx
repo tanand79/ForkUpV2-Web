@@ -23,6 +23,7 @@ import { PublicCampaignDonationsFeed } from "@/components/campaign/PublicCampaig
 import { PublicCampaignFundraisingPanel } from "@/components/campaign/PublicCampaignFundraisingPanel";
 import { PublicCampaignGuestBartendingSection } from "@/components/campaign/PublicCampaignGuestBartendingSection";
 import { PublicCampaignImageSlider } from "@/components/campaign/PublicCampaignImageSlider";
+import { PublicCampaignLeaderboard } from "@/components/campaign/PublicCampaignLeaderboard";
 import { HeaderPillLink, SiteHeader } from "@/components/campaign/SiteHeader";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
@@ -462,6 +463,13 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
             </div>
 
             <CampaignStory description={campaign.description} />
+
+            {!isPreviewNotLive && (
+              <PublicCampaignLeaderboard
+                slug={campaign.slug}
+                refreshKey={donationRefreshKey}
+              />
+            )}
 
             {showDonations && !isPreviewNotLive && (
               <section className="mt-10">

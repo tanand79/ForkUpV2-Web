@@ -75,3 +75,30 @@ export interface CampaignDonationsResponse {
   totalCount: number;
   donations: CampaignDonation[];
 }
+
+/** Public campaign leaderboard row — Top Fundraisers. */
+export interface CampaignLeaderboardFundraiser {
+  name: string;
+  raised: number;
+  donationCount: number;
+}
+
+/** Public campaign leaderboard row — Top Donors. */
+export interface CampaignLeaderboardDonor {
+  donorName: string;
+  totalAmount: number;
+  donationCount: number;
+  anonymous: boolean;
+}
+
+/**
+ * Response for GET /api/campaigns/:slug/leaderboard
+ * Inputs: fundraisersLimit?, donorsLimit?
+ * Outputs: ranked lists + totals for View-all expand
+ */
+export interface CampaignLeaderboardResponse {
+  fundraisers: CampaignLeaderboardFundraiser[];
+  donors: CampaignLeaderboardDonor[];
+  fundraisersTotalCount: number;
+  donorsTotalCount: number;
+}

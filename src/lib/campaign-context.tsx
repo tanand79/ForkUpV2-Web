@@ -566,6 +566,11 @@ export interface CampaignState {
   /** Accepted business partners from a business-initiated invite (skip re-inviting). */
   lockedBusinessPartners: LockedBusinessPartner[];
   campaignSlug: string | null;
+  /**
+   * Server campaign_status when resumed from the builder API.
+   * Used so post-launch Edit saves without re-launching.
+   */
+  serverCampaignStatus: string | null;
   title: string;
   startDate: string;
   endDate: string;
@@ -675,6 +680,7 @@ const initialState: CampaignState = {
   campaignOrigin: "nonprofit",
   lockedBusinessPartners: [],
   campaignSlug: null,
+  serverCampaignStatus: null,
   title: "",
   startDate: "",
   endDate: "",

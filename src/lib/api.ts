@@ -1544,6 +1544,22 @@ export function fetchCampaignDonations(slug: string, limit = 20) {
   );
 }
 
+/**
+ * Fetch public Top Fundraisers + Top Donors for a campaign page.
+ * Inputs: slug, optional per-list limits (1–50, default 5)
+ * Outputs: CampaignLeaderboardResponse
+ */
+export function fetchCampaignLeaderboard(
+  slug: string,
+  opts?: { fundraisersLimit?: number; donorsLimit?: number },
+) {
+  const fundraisersLimit = opts?.fundraisersLimit ?? 5;
+  const donorsLimit = opts?.donorsLimit ?? 5;
+  return fetchJson<import("@/lib/campaign-types").CampaignLeaderboardResponse>(
+    `/api/campaigns/${slug}/leaderboard?fundraisersLimit=${fundraisersLimit}&donorsLimit=${donorsLimit}`,
+  );
+}
+
 export function submitVirtualDonation(
   slug: string,
   body: {
@@ -2425,6 +2441,37 @@ export function requestChangesSuperAdminForkupReview(slug: string, notes?: strin
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ notes: notes?.trim() || undefined }),
   });
+}
+
+/**
+ * Live campaigns list for superadmin console.
+ * Method: GET /api/superadmin/live-campaigns
+ */
+export type SuperAdminLiveCampaign = {
+  slug: string;
+  name: string;
+  nonprofit: string;
+  status: string;
+  goal: number;
+  raised: number;
+  startDate: string | null;
+  endDate: string | null;
+  updatedAt: string | null;
+};
+
+export function fetchSuperAdminLiveCampaigns() {
+  return fetchJson<SuperAdminLiveCampaign[]>("/api/superadmin/live-campaigns");
+}
+
+/**
+ * Hard-delete a live campaign (superadmin).
+ * Method: DELETE /api/superadmin/live-campaigns/:slug
+ */
+export function deleteSuperAdminLiveCampaign(slug: string) {
+  return fetchJson<{ success: boolean; slug: string }>(
+    `/api/superadmin/live-campaigns/${encodeURIComponent(slug)}`,
+    { method: "DELETE" },
+  );
 }
 
 /** Nick V2 Layer 4 — campaign AI guidance (rules first, AI polish optional). */
