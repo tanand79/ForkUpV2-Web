@@ -407,11 +407,14 @@ export function suggestUsNonprofits(params: {
   lat?: number;
   lng?: number;
   radiusMiles?: number;
+  /** US ZIP — server geocodes and scopes IRS suggest near that ZIP. */
+  zip?: string;
 }) {
   const search = new URLSearchParams();
   search.set("q", params.q.trim());
   if (params.state?.trim()) search.set("state", params.state.trim());
   if (params.city?.trim()) search.set("city", params.city.trim());
+  if (params.zip?.trim()) search.set("zip", params.zip.trim());
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.lat != null && params.lng != null) {
     search.set("lat", String(params.lat));

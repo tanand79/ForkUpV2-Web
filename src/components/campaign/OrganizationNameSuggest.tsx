@@ -43,6 +43,18 @@ function looksLikeLocation(raw: string) {
   return /^[A-Za-z][A-Za-z\s.'-]+,\s*[A-Za-z]{2}\s*$/.test(t);
 }
 
+/**
+ * Split a single search box into org name + optional trailing US ZIP.
+ * Examples: "YMCA - 23220", "YMCA 23220", "helping paws, 23220-1234"
+ */
+export function parseOrgNameAndZip(raw: string): { name: string; zip: string | null } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { name: "", zip: null };
+  const m = trimmed.match(/^(.*?)(?:\s*[-–,]\s*|\s+)(\d{5})(?:-\d{4})?\s*$/);
+  if (!m?.[1]?.trim() || !m[2]) return { name: trimmed, zip: null };
+  return { name: m[1].trim(), zip: m[2] };
+}
+
 /** Map free text to the existing unified search params (one list, not four modes). */
 export function detectOrganizationSearchParams(raw: string): {
   q?: string;
@@ -54,6 +66,11 @@ export function detectOrganizationSearchParams(raw: string): {
   if (!trimmed) return {};
   if (looksLikeWebsite(trimmed)) return { website: trimmed };
   if (looksLikeEin(trimmed)) return { ein: trimmed };
+
+  const { name, zip } = parseOrgNameAndZip(trimmed);
+  if (zip && name) {
+    return { q: name, location: zip };
+  }
   if (looksLikeLocation(trimmed)) return { location: trimmed };
   return { q: trimmed };
 }
@@ -153,7 +170,11 @@ export function OrganizationNameSuggest({
         try {
           const params = detectOrganizationSearchParams(trimmed);
           const usQuery = params.q || params.ein || params.location || trimmed;
-          const state = stateFromQuery(trimmed) || nearby?.state;
+          const zipForSuggest =
+            params.location && /^\d{5}$/.test(params.location)
+              ? params.location
+              : undefined;
+          const state = stateFromQuery(params.q || trimmed) || nearby?.state;
           const geo =
             nearby != null
               ? {
@@ -170,6 +191,7 @@ export function OrganizationNameSuggest({
               state,
               city: nearby?.city,
               limit: MAX_SUGGESTIONS,
+              zip: zipForSuggest,
               ...(nearby != null
                 ? {
                     lat: nearby.lat,

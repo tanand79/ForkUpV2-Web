@@ -59,7 +59,8 @@ export function PublicCampaignGuestBartendingSection({
         )}
       </div>
 
-      {hasVenues ? <ul className="mt-6 space-y-4">{children}</ul> : null}
+      {/* Optional inline venue list; parent may render venues in the carousel instead. */}
+      {hasVenues && children ? <ul className="mt-6 space-y-4">{children}</ul> : null}
     </section>
   );
 }

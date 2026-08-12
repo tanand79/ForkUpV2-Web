@@ -4,10 +4,12 @@
  * AI flow Step 3 — Review AI-found website / social links (guest allowed).
  *
  * Purpose: AI discovers official website + social URLs; organizer confirms
- * (Continue) or skips. Typing is not required.
+ * (Continue) or skips. Typing is not required; Edit lets them correct or add URLs.
  *
  * Inputs: pending org from ai-campaign-flow-storage (set on find-org confirm).
  * Outputs: updated pending org + promotion; navigates to ai-analyzing.
+ *
+ * Changelog: Additive Edit/Done toggle so AI-found links can be corrected before Continue.
  */
 import { useEffect, useRef, useState } from "react";
 import {
@@ -20,6 +22,7 @@ import {
   Instagram,
   Youtube,
   Sparkles,
+  Pencil,
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { resolveAiCampaignSources } from "@/lib/api-ai-campaign-flow";
@@ -34,10 +37,16 @@ function LinkRow({
   icon,
   label,
   value,
+  onChange,
+  editing,
+  placeholder,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
+  onChange?: (next: string) => void;
+  editing?: boolean;
+  placeholder?: string;
 }) {
   const found = Boolean(value.trim());
   return (
@@ -49,17 +58,27 @@ function LinkRow({
       <span className="mt-0.5 text-primary">{icon}</span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold">{label}</p>
-        {found ? (
+        {editing && onChange ? (
+          <input
+            type="url"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+          />
+        ) : found ? (
           <p className="mt-1 break-all text-sm text-foreground/90">{value}</p>
         ) : (
           <p className="mt-1 text-sm text-muted-foreground">Not found yet</p>
         )}
       </div>
-      {found ? (
-        <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
-      ) : (
-        <Circle className="size-4 shrink-0 text-muted-foreground/40" />
-      )}
+      {!editing ? (
+        found ? (
+          <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
+        ) : (
+          <Circle className="size-4 shrink-0 text-muted-foreground/40" />
+        )
+      ) : null}
     </div>
   );
 }
@@ -74,6 +93,8 @@ export function AiConnectSocial() {
   const [ready, setReady] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
+  /** Additive: Edit/Done for correcting AI-found website / social URLs. */
+  const [editing, setEditing] = useState(false);
   const resolveStartedRef = useRef(false);
 
   useEffect(() => {
@@ -227,7 +248,7 @@ export function AiConnectSocial() {
   return (
     <AiFlowShell
       title={resolving ? "Finding your links" : "Review what AI found"}
-      subtitle="ForkUp looks up your official website and public social profiles. You don’t need to type URLs."
+      subtitle="ForkUp looks up your official website and public social profiles. Edit any link if something looks wrong."
       backStep={backStep}
     >
       {resolving ? (
@@ -246,33 +267,59 @@ export function AiConnectSocial() {
             </p>
           ) : null}
 
-          {!anyFound ? (
-            <p className="mb-4 rounded-xl border border-border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground">
-              No public website or social profiles were confirmed. You can skip and continue — campaign
-              ideas can still use your organization name and mission.
-            </p>
-          ) : (
-            <p className="mb-4 text-sm text-muted-foreground">
-              Confirm these official links, then continue. Images prefer social when available.
-            </p>
-          )}
+          <div className="mb-4 flex items-start justify-between gap-3">
+            {!anyFound ? (
+              <p className="rounded-xl border border-border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground">
+                No public website or social profiles were confirmed. You can edit links below, skip, or
+                continue — campaign ideas can still use your organization name and mission.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Confirm these official links, then continue. Images prefer social when available.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => setEditing((v) => !v)}
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              <Pencil className="size-3" />
+              {editing ? "Done" : "Edit"}
+            </button>
+          </div>
 
           <div className="space-y-3">
-            <LinkRow icon={<Globe className="size-4" />} label="Website" value={websiteUrl} />
+            <LinkRow
+              icon={<Globe className="size-4" />}
+              label="Website"
+              value={websiteUrl}
+              editing={editing}
+              onChange={setWebsiteUrl}
+              placeholder="https://yourorganization.org"
+            />
             <LinkRow
               icon={<Facebook className="size-4" />}
               label="Facebook"
               value={facebookUrl}
+              editing={editing}
+              onChange={setFacebookUrl}
+              placeholder="https://facebook.com/yourorganization"
             />
             <LinkRow
               icon={<Instagram className="size-4" />}
               label="Instagram"
               value={instagramUrl}
+              editing={editing}
+              onChange={setInstagramUrl}
+              placeholder="https://instagram.com/yourorganization"
             />
             <LinkRow
               icon={<Youtube className="size-4" />}
               label="YouTube"
               value={youtubeUrl}
+              editing={editing}
+              onChange={setYoutubeUrl}
+              placeholder="https://youtube.com/@yourorganization"
             />
           </div>
 

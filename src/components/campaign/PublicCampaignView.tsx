@@ -24,6 +24,7 @@ import { PublicCampaignFundraisingPanel } from "@/components/campaign/PublicCamp
 import { PublicCampaignGuestBartendingSection } from "@/components/campaign/PublicCampaignGuestBartendingSection";
 import { PublicCampaignImageSlider } from "@/components/campaign/PublicCampaignImageSlider";
 import { PublicCampaignLeaderboard } from "@/components/campaign/PublicCampaignLeaderboard";
+import { PublicCampaignLocationsSection } from "@/components/campaign/PublicCampaignLocationsSection";
 import { HeaderPillLink, SiteHeader } from "@/components/campaign/SiteHeader";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
@@ -43,6 +44,21 @@ function ctaLabel(loc: ParticipatingLocation): string {
 const ctaButtonClass =
   "mt-4 inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90";
 
+const PARTY_SIZES = [1, 2, 3, 4, "5+"] as const;
+
+const CAPTURE_COPY = {
+  header: "Let us know you're supporting this campaign",
+  subtext:
+    "This helps ForkUp track participation and show participating businesses the community support they helped create.",
+  takes: "It only takes a few seconds.",
+  cta: "Continue to Reservation",
+  helper:
+    "You'll be redirected to complete your reservation or booking directly with the business.",
+};
+
+const inputClassName =
+  "w-full h-12 px-4 rounded-xl bg-secondary/60 border border-border focus:bg-card focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-base placeholder:text-muted-foreground transition-all";
+
 function ParticipateModal({
   open,
   onOpenChange,
@@ -56,8 +72,8 @@ function ParticipateModal({
 }) {
   const [firstName, setFirstName] = useState("");
   const [email, setEmail] = useState("");
-  const [partySize, setPartySize] = useState("2");
-  const [isFirstVisit, setIsFirstVisit] = useState(true);
+  const [partySize, setPartySize] = useState<number | string | null>(null);
+  const [returning, setReturning] = useState<boolean | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -66,8 +82,8 @@ function ParticipateModal({
   const reset = () => {
     setFirstName("");
     setEmail("");
-    setPartySize("2");
-    setIsFirstVisit(true);
+    setPartySize(null);
+    setReturning(null);
     setError(null);
     setSuccess(false);
     setReservationUrl(null);
@@ -78,20 +94,45 @@ function ParticipateModal({
     onOpenChange(next);
   };
 
-  const handleSubmit = async () => {
-    const guests = Number(partySize);
-    if (!firstName.trim() || !email.includes("@") || !Number.isFinite(guests) || guests < 1) {
-      setError("Enter your name, email, and party size.");
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = firstName.trim();
+    const trimmedEmail = email.trim();
+    if (!trimmedName) {
+      setError("Please enter your first name.");
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    if (trimmedName.length > 50 || trimmedEmail.length > 100) {
+      setError("Input too long.");
+      return;
+    }
+    if (partySize === null) {
+      setError("Please select your party size.");
+      return;
+    }
+    if (returning === null) {
+      setError("Please let us know if this is your first visit.");
+      return;
+    }
+
+    const guests = partySize === "5+" ? 5 : Number(partySize);
+    if (!Number.isFinite(guests) || guests < 1) {
+      setError("Please select your party size.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
       const result = await submitParticipation(campaignSlug, {
-        firstName: firstName.trim(),
-        email: email.trim(),
+        firstName: trimmedName,
+        email: trimmedEmail,
         partySize: guests,
-        isFirstVisit,
+        isFirstVisit: !returning,
         businessId: loc.businessId,
         locationId: loc.locationId,
         methodId: loc.methodId,
@@ -155,56 +196,104 @@ function ParticipateModal({
             </a>
           </div>
         ) : (
-          <>
-            <DialogTitle className="text-xl font-bold">{ctaLabel(loc)}</DialogTitle>
-            <DialogDescription>
-              {loc.businessName} · {loc.locationName} · {loc.participationMethod}
-              {loc.reservationUrl && (
-                <span className="mt-1 block text-xs">
-                  After confirming, you&apos;ll be directed to the business booking platform.
-                </span>
-              )}
-            </DialogDescription>
-            <div className="mt-5 space-y-3">
-              <input
-                type="text"
-                placeholder="Your first name"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm"
-              />
-              <input
-                type="email"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm"
-              />
-              <input
-                type="number"
-                min={1}
-                max={50}
-                placeholder="Party size"
-                value={partySize}
-                onChange={(e) => setPartySize(e.target.value)}
-                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm"
-              />
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={isFirstVisit}
-                  onChange={(e) => setIsFirstVisit(e.target.checked)}
-                  className="rounded border-border"
-                />
-                This is my first visit to this business
-              </label>
+          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
+            <div className="text-center space-y-1.5">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary mb-1">
+                <Heart size={18} />
+              </div>
+              <DialogTitle className="font-serif text-xl text-foreground leading-tight text-balance">
+                {CAPTURE_COPY.header}
+              </DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground text-pretty">
+                {CAPTURE_COPY.subtext}
+              </DialogDescription>
+              <p className="text-xs text-muted-foreground/70">{CAPTURE_COPY.takes}</p>
             </div>
-            {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="capture-first-name" className="sr-only">
+                  First name
+                </label>
+                <input
+                  id="capture-first-name"
+                  type="text"
+                  autoComplete="given-name"
+                  placeholder="First name"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  maxLength={50}
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <label htmlFor="capture-email" className="sr-only">
+                  Email address
+                </label>
+                <input
+                  id="capture-email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="Email address"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  maxLength={100}
+                  className={inputClassName}
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-semibold text-foreground mb-3">Party size</p>
+              <div className="flex gap-2">
+                {PARTY_SIZES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setPartySize(s)}
+                    className={`w-11 h-11 rounded-xl text-sm font-medium transition-all duration-200 active:scale-95 ${
+                      partySize === s
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "bg-secondary text-secondary-foreground hover:bg-warm-sand"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-semibold text-foreground mb-3">
+                Is this your first visit to {loc.businessName}?
+              </p>
+              <div className="flex gap-2">
+                {[
+                  { label: "First Time", value: false },
+                  { label: "Returning Guest", value: true },
+                ].map((opt) => (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    onClick={() => setReturning(opt.value)}
+                    className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 active:scale-95 ${
+                      returning === opt.value
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "bg-secondary text-secondary-foreground hover:bg-warm-sand"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {error && <p className="text-xs text-destructive text-center">{error}</p>}
+
             <button
-              type="button"
-              onClick={() => void handleSubmit()}
+              type="submit"
               disabled={submitting}
-              className="btn-primary mt-5 flex w-full items-center justify-center gap-2 disabled:opacity-60"
+              className="w-full btn-primary text-base py-4 rounded-2xl flex items-center justify-center gap-2 disabled:opacity-60"
             >
               {submitting ? (
                 <>
@@ -212,10 +301,12 @@ function ParticipateModal({
                   Saving…
                 </>
               ) : (
-                "Count me in"
+                CAPTURE_COPY.cta
               )}
             </button>
-          </>
+
+            <p className="text-[11px] text-muted-foreground/70 text-center">{CAPTURE_COPY.helper}</p>
+          </form>
         )}
       </DialogContent>
     </Dialog>
@@ -487,55 +578,7 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
                 eventDate={campaign.eventDate}
                 nonprofitName={campaign.nonprofit}
                 hasVenues={guestVenues.length > 0}
-              >
-                {guestVenues.map((loc) => (
-                  <LocationCard
-                    key={`gb-${loc.businessId}-${loc.locationId}-${loc.methodId}`}
-                    loc={loc}
-                    campaignSlug={campaign.slug}
-                    previewOnly={isPreviewNotLive}
-                  />
-                ))}
-              </PublicCampaignGuestBartendingSection>
-            )}
-
-            {showLocations && (
-              <section id="locations" className="mt-10 scroll-mt-24">
-                <h2 className="text-xl font-bold">Participating businesses</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Visit these locations during the campaign window. A portion of eligible sales
-                  supports {campaign.nonprofit}.
-                </p>
-                <ul className="mt-6 space-y-4">
-                  {givebackVenues.map((loc) => (
-                    <LocationCard
-                      key={`${loc.businessId}-${loc.locationId}-${loc.methodId}`}
-                      loc={loc}
-                      campaignSlug={campaign.slug}
-                      previewOnly={isPreviewNotLive}
-                    />
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            {campaign.methods.length > 0 && (
-              <section className="mt-10 border-t border-border pt-8">
-                <ul className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
-                  <li className="inline-flex items-center gap-1.5">
-                    <Calendar className="size-4" />
-                    {campaign.dateRange}
-                  </li>
-                  {campaign.methods.map((m) => (
-                    <li
-                      key={m.id}
-                      className="rounded-full border border-border bg-secondary/40 px-3 py-1 text-xs font-medium text-foreground"
-                    >
-                      {m.methodName}
-                    </li>
-                  ))}
-                </ul>
-              </section>
+              />
             )}
           </div>
 
@@ -566,6 +609,36 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
             </div>
           </aside>
         </div>
+
+        {(givebackVenues.length > 0 || guestVenues.length > 0) && (
+          <PublicCampaignLocationsSection
+            id="locations"
+            locations={[...givebackVenues, ...guestVenues]}
+            nonprofitName={campaign.nonprofit}
+            campaignSlug={campaign.slug}
+            supportersGoing={campaign.supportersGoing}
+            previewOnly={isPreviewNotLive}
+          />
+        )}
+
+        {campaign.methods.length > 0 && (
+          <section className="mt-4 border-t border-border pt-4">
+            <ul className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+              <li className="inline-flex items-center gap-1.5">
+                <Calendar className="size-4" />
+                {campaign.dateRange}
+              </li>
+              {campaign.methods.map((m) => (
+                <li
+                  key={m.id}
+                  className="rounded-full border border-border bg-secondary/40 px-3 py-1 text-xs font-medium text-foreground"
+                >
+                  {m.methodName}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </main>
 
       {/* Mobile sticky donate bar — GoFundMe pattern (hidden in not-yet-live preview) */}

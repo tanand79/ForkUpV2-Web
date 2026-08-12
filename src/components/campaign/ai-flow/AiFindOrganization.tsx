@@ -16,7 +16,10 @@ import {
   enrichUsNonprofit,
   type OrganizationSearchCandidate,
 } from "@/lib/api";
-import { OrganizationNameSuggest } from "@/components/campaign/OrganizationNameSuggest";
+import {
+  OrganizationNameSuggest,
+  parseOrgNameAndZip,
+} from "@/components/campaign/OrganizationNameSuggest";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
 import { saveAiFlowPendingOrg, clearAiFlowStore } from "@/lib/ai-campaign-flow-storage";
 import { stashAccountIntent } from "@/lib/campaign-auth";
@@ -26,6 +29,33 @@ import {
 } from "@/hooks/use-browser-location";
 import { SearchRadiusControl } from "@/components/campaign/SearchRadiusControl";
 import { AiFlowShell } from "./AiFlowShell";
+
+/**
+ * Geocode a US ZIP via Zippopotam (no key) so nearby search can center on it.
+ * Returns null when the ZIP is invalid or the lookup fails.
+ */
+async function geocodeUsZipClient(
+  zip: string,
+): Promise<{ latitude: number; longitude: number } | null> {
+  const z = zip.replace(/\D/g, "").slice(0, 5);
+  if (z.length !== 5) return null;
+  try {
+    const res = await fetch(`https://api.zippopotam.us/us/${z}`, {
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      places?: Array<{ latitude?: string; longitude?: string }>;
+    };
+    const place = data.places?.[0];
+    const latitude = Number(place?.latitude);
+    const longitude = Number(place?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    return { latitude, longitude };
+  } catch {
+    return null;
+  }
+}
 
 export function AiFindOrganization() {
   const { update, goTo, state, startNewCampaign } = useCampaign();
@@ -40,6 +70,7 @@ export function AiFindOrganization() {
   const nearby = useNearbyFilter
     ? nearbyQueryParams(browserLocation, radiusMiles)
     : undefined;
+  const parsedZip = parseOrgNameAndZip(query).zip;
 
   useEffect(() => {
     // Nonprofit organizers (membership) only create for their own org.
@@ -48,6 +79,20 @@ export function AiFindOrganization() {
       startNewCampaign();
     }
   }, [state.accountIntent, state.nonprofitMemberships.length, startNewCampaign]);
+
+  // When query includes a ZIP (e.g. "YMCA - 23220"), center nearby on that ZIP.
+  useEffect(() => {
+    if (!useNearbyFilter) return;
+    if (!parsedZip || parsedZip.length !== 5) return;
+    let cancelled = false;
+    void geocodeUsZipClient(parsedZip).then((coords) => {
+      if (cancelled || !coords) return;
+      browserLocation.setLocationOverride(coords);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [parsedZip, useNearbyFilter, browserLocation.setLocationOverride]);
 
   const onSelect = async (candidate: OrganizationSearchCandidate) => {
     setSelected(candidate);
@@ -157,7 +202,7 @@ export function AiFindOrganization() {
             setQuery(e.target.value);
             setSelected(null);
           }}
-          placeholder="Helping Paws Rescue"
+          placeholder="YMCA - 23220"
           className="w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm outline-none ring-primary/30 focus:ring-2"
           disabled={busy}
         />
