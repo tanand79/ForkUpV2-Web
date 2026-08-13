@@ -35,7 +35,12 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const contentType = res.headers.get("content-type") ?? "";
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    const message = typeof body.error === "string" ? body.error : `API error: ${res.status}`;
+    const message =
+      typeof body.error === "string"
+        ? body.error
+        : typeof body.message === "string"
+          ? body.message
+          : `API error: ${res.status}`;
     /** Additive: status helps clients clear stale tokens after db:reset. */
     const err = new Error(message) as Error & { status?: number };
     err.status = res.status;
@@ -2476,6 +2481,209 @@ export function deleteSuperAdminLiveCampaign(slug: string) {
   return fetchJson<{ success: boolean; slug: string }>(
     `/api/superadmin/live-campaigns/${encodeURIComponent(slug)}`,
     { method: "DELETE" },
+  );
+}
+
+/** v1-parity directory endpoints (list/view). */
+export type SuperAdminOverview = {
+  users: number;
+  nonprofits: number;
+  businesses: number;
+  campaigns: number;
+  fundraisers: number;
+  donations: number;
+};
+
+export function fetchSuperAdminOverview() {
+  return fetchJson<SuperAdminOverview>("/api/superadmin/overview");
+}
+
+export type SuperAdminDirectoryUser = {
+  id: number;
+  email: string;
+  fullName: string | null;
+  username: string | null;
+  isPlatformAdmin: boolean;
+  memberships: { organizationType: string; organizationId: number; role: string }[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function fetchSuperAdminUsers(opts?: { search?: string; limit?: number; offset?: number }) {
+  const q = new URLSearchParams();
+  if (opts?.search) q.set("search", opts.search);
+  if (opts?.limit != null) q.set("limit", String(opts.limit));
+  if (opts?.offset != null) q.set("offset", String(opts.offset));
+  const qs = q.toString();
+  return fetchJson<{ totalCount: number; users: SuperAdminDirectoryUser[] }>(
+    `/api/superadmin/users${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export type SuperAdminRoleRow = {
+  id: string;
+  roleName: string;
+  description: string;
+  userCount: number;
+};
+
+export function fetchSuperAdminRoles() {
+  return fetchJson<{ roles: SuperAdminRoleRow[] }>("/api/superadmin/roles");
+}
+
+export type SuperAdminNonprofitRow = {
+  id: number;
+  organizationName: string;
+  slug: string;
+  logoUrl: string | null;
+  website: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  city: string | null;
+  state: string | null;
+  ein: string | null;
+  verificationStatus: string | null;
+  claimStatus: string | null;
+  profileStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function fetchSuperAdminNonprofits(opts?: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const q = new URLSearchParams();
+  if (opts?.search) q.set("search", opts.search);
+  if (opts?.limit != null) q.set("limit", String(opts.limit));
+  if (opts?.offset != null) q.set("offset", String(opts.offset));
+  const qs = q.toString();
+  return fetchJson<{ totalCount: number; nonprofits: SuperAdminNonprofitRow[] }>(
+    `/api/superadmin/nonprofits${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export type SuperAdminBusinessLocationRow = {
+  id: number;
+  locationName: string;
+  city: string | null;
+  state: string | null;
+  achBankName: string | null;
+  achAccountLast4: string | null;
+  achAuthorizationStatus: string | null;
+  hasAchData: boolean;
+  hasSignature: boolean;
+};
+
+export type SuperAdminBusinessRow = {
+  id: number;
+  businessName: string;
+  slug: string;
+  businessType: string | null;
+  logoUrl: string | null;
+  website: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  businessStatus: string | null;
+  claimStatus: string | null;
+  profileStatus: string | null;
+  locationCount: number;
+  achLocationCount: number;
+  locations: SuperAdminBusinessLocationRow[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function fetchSuperAdminBusinesses(opts?: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const q = new URLSearchParams();
+  if (opts?.search) q.set("search", opts.search);
+  if (opts?.limit != null) q.set("limit", String(opts.limit));
+  if (opts?.offset != null) q.set("offset", String(opts.offset));
+  const qs = q.toString();
+  return fetchJson<{ totalCount: number; businesses: SuperAdminBusinessRow[] }>(
+    `/api/superadmin/businesses${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export type SuperAdminCampaignRow = {
+  id: number;
+  slug: string;
+  name: string;
+  nonprofit: string | null;
+  status: string | null;
+  goal: number | null;
+  raised: number;
+  startDate: string | null;
+  endDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function fetchSuperAdminCampaigns(opts?: {
+  search?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const q = new URLSearchParams();
+  if (opts?.search) q.set("search", opts.search);
+  if (opts?.status) q.set("status", opts.status);
+  if (opts?.limit != null) q.set("limit", String(opts.limit));
+  if (opts?.offset != null) q.set("offset", String(opts.offset));
+  const qs = q.toString();
+  return fetchJson<{ totalCount: number; campaigns: SuperAdminCampaignRow[] }>(
+    `/api/superadmin/campaigns${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export type SuperAdminFundraiserRow = {
+  id: number;
+  email: string;
+  fullName: string | null;
+  campaignCount: number;
+  status: string | null;
+  createdAt: string;
+};
+
+export function fetchSuperAdminFundraisers(opts?: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const q = new URLSearchParams();
+  if (opts?.search) q.set("search", opts.search);
+  if (opts?.limit != null) q.set("limit", String(opts.limit));
+  if (opts?.offset != null) q.set("offset", String(opts.offset));
+  const qs = q.toString();
+  return fetchJson<{ totalCount: number; fundraisers: SuperAdminFundraiserRow[] }>(
+    `/api/superadmin/fundraisers${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export type SuperAdminDonationRow = {
+  id: number;
+  amount: number;
+  donationType: string | null;
+  paymentStatus: string | null;
+  campaignName: string | null;
+  campaignSlug: string | null;
+  createdAt: string;
+};
+
+export function fetchSuperAdminDonations(opts?: { limit?: number; offset?: number }) {
+  const q = new URLSearchParams();
+  if (opts?.limit != null) q.set("limit", String(opts.limit));
+  if (opts?.offset != null) q.set("offset", String(opts.offset));
+  const qs = q.toString();
+  return fetchJson<{ totalCount: number; donations: SuperAdminDonationRow[] }>(
+    `/api/superadmin/donations${qs ? `?${qs}` : ""}`,
   );
 }
 

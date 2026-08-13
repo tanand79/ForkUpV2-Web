@@ -526,10 +526,6 @@ export function InReviewCampaignPreview() {
                 onClick={openEdit}
               />
               <NextStepRow
-                label="Complete Payment Setup"
-                onClick={() => goTo("nonprofit-profile")}
-              />
-              <NextStepRow
                 label="View AI Recommendations"
                 onClick={() => {
                   update({ campaignSlug: slug });

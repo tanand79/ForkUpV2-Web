@@ -47,12 +47,19 @@ function uniqueLocationsFromCollabs(collabs: BusinessCollaboration[]): AchLocati
 export function BusinessAchSettings() {
   const { goTo, state } = useCampaign();
   const biz = state.businessProfile;
-  const [loading, setLoading] = useState(Boolean(biz?.id && getAuthToken()));
+  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collabLocations, setCollabLocations] = useState<AchLocationRow[]>([]);
 
   useEffect(() => {
-    if (!biz?.id || !getAuthToken()) {
+    setMounted(true);
+  }, []);
+
+  const isSignedIn = mounted && Boolean(getAuthToken());
+
+  useEffect(() => {
+    if (!mounted || !biz?.id || !getAuthToken()) {
       setLoading(false);
       setCollabLocations([]);
       return;
@@ -76,7 +83,7 @@ export function BusinessAchSettings() {
     return () => {
       cancelled = true;
     };
-  }, [biz?.id]);
+  }, [biz?.id, mounted]);
 
   const locations = useMemo(() => {
     if (collabLocations.length > 0) return collabLocations;
@@ -93,7 +100,20 @@ export function BusinessAchSettings() {
     return [];
   }, [collabLocations, biz?.locationId, biz?.locationName]);
 
-  if (!getAuthToken()) {
+  if (!mounted) {
+    return (
+      <main className="mx-auto max-w-xl px-5 py-10 sm:px-6">
+        <div className="mb-6 h-5 w-40 animate-pulse rounded bg-muted" />
+        <div className="h-8 w-48 animate-pulse rounded bg-muted" />
+        <div className="mt-3 h-4 w-full max-w-md animate-pulse rounded bg-muted" />
+        <div className="mt-10 flex justify-center">
+          <Loader2 className="size-8 animate-spin text-primary" />
+        </div>
+      </main>
+    );
+  }
+
+  if (!isSignedIn) {
     return (
       <main className="mx-auto max-w-xl px-5 py-10 sm:px-6">
         <button

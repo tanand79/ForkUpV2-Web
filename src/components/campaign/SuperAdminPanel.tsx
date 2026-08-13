@@ -3,7 +3,9 @@
 /**
  * Platform Super Admin UI
  * — Login / Forgot / Reset password
- * — Dashboard tabs: Verification, ForkUp Review, Live Campaigns, Profile, AI Engine, Charges, SMTP
+ * — Dashboard: sidebar Platform Console layout
+ *   Overview | Organizations | Fundraising | Users & Reviews | Finance | Settings
+ *   (all previous screens kept; navigation regrouped)
  *
  * Inputs: campaign goTo / URL token for reset.
  * Outputs: superadmin session + settings updates via /api/superadmin/*.
@@ -68,15 +70,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  SuperAdminBusinessesTab,
+  SuperAdminCampaignsDirectoryTab,
+  SuperAdminDonationsTab,
+  SuperAdminFundraisersTab,
+  SuperAdminNonprofitsTab,
+  SuperAdminOverviewTab,
+  SuperAdminUsersTab,
+} from "@/components/campaign/SuperAdminDirectory";
+import {
+  SuperAdminShell,
+  type SuperAdminTabId,
+} from "@/components/campaign/SuperAdminShell";
 
-type Tab =
-  | "verification"
-  | "forkup-review"
-  | "live-campaigns"
-  | "profile"
-  | "ai"
-  | "charges"
-  | "smtp";
+type Tab = SuperAdminTabId;
 type VerificationFilter = "pending" | "approved" | "denied";
 
 const fieldClass =
@@ -303,7 +311,7 @@ export function SuperAdminResetPassword() {
 
 export function SuperAdminDashboard() {
   const { goTo } = useCampaign();
-  const [tab, setTab] = useState<Tab>("verification");
+  const [tab, setTab] = useState<Tab>("overview");
   const [user, setUser] = useState<SuperAdminUser | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -339,72 +347,31 @@ export function SuperAdminDashboard() {
     );
   }
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "verification", label: "Verification" },
-    { id: "forkup-review", label: "ForkUp Review" },
-    { id: "live-campaigns", label: "Live Campaigns" },
-    { id: "profile", label: "Profile" },
-    { id: "ai", label: "AI Engine" },
-    { id: "charges", label: "Charges" },
-    { id: "smtp", label: "SMTP" },
-  ];
-
   return (
-    <main className="mx-auto max-w-5xl px-5 py-8 sm:px-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-rose-800">
-            <Shield className="size-3" /> Super Admin
-          </span>
-          <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">Platform console</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Signed in as {user.username || user.email}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button type="button" className={btnGhost} onClick={() => goTo("website-landing")}>
-            Home
-          </button>
-          <button
-            type="button"
-            className={btnGhost}
-            onClick={() => {
-              setAuthToken(null);
-              goTo("super-admin-login");
-            }}
-          >
-            Sign out
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-6 flex flex-wrap gap-2">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
-              tab === t.id
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-6">
-        {tab === "verification" && <VerificationTab />}
-        {tab === "forkup-review" && <ForkupReviewTab />}
-        {tab === "live-campaigns" && <LiveCampaignsTab />}
-        {tab === "profile" && <ProfileTab user={user} onUpdated={setUser} />}
-        {tab === "ai" && <AiTab />}
-        {tab === "charges" && <ChargesTab />}
-        {tab === "smtp" && <SmtpTab />}
-      </div>
-    </main>
+    <SuperAdminShell
+      tab={tab}
+      onTabChange={setTab}
+      signedInAs={user.username || user.email}
+      onHome={() => goTo("website-landing")}
+      onSignOut={() => {
+        setAuthToken(null);
+        goTo("super-admin-login");
+      }}
+    >
+      {tab === "overview" && <SuperAdminOverviewTab />}
+      {tab === "verification" && <VerificationTab />}
+      {tab === "forkup-review" && <ForkupReviewTab />}
+      {tab === "users" && <SuperAdminUsersTab />}
+      {tab === "nonprofits" && <SuperAdminNonprofitsTab />}
+      {tab === "businesses" && <SuperAdminBusinessesTab />}
+      {tab === "campaigns" && <SuperAdminCampaignsDirectoryTab />}
+      {tab === "fundraisers" && <SuperAdminFundraisersTab />}
+      {tab === "donations" && <SuperAdminDonationsTab />}
+      {tab === "profile" && <ProfileTab user={user} onUpdated={setUser} />}
+      {tab === "ai" && <AiTab />}
+      {tab === "charges" && <ChargesTab />}
+      {tab === "smtp" && <SmtpTab />}
+    </SuperAdminShell>
   );
 }
 
