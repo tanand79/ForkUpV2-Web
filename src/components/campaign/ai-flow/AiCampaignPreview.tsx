@@ -4,10 +4,11 @@
  * AI flow Step 8 — Campaign preview with in-place editing and attention messages.
  *
  * Purpose: Show how supporters will see the draft; let organizers edit title,
- * story, goal, dates, methods, and cover on this screen (no step navigation).
+ * story, goal, dates, methods, cover, and extracted website/social links
+ * on this screen (no step navigation).
  * Date timing rules match AiCampaignDates (Needs ForkUp Review + CTAs).
  *
- * Inputs: campaign context (title, description, cover, logo, dates, methods, goal).
+ * Inputs: campaign context (title, description, cover, logo, dates, methods, goal, promotion).
  * Output: preview / edit UI + Continue to signup (or businesses/review if logged in).
  *
  * Changelog:
@@ -15,6 +16,7 @@
  *   on image load error try the next gallery URL before clearing.
  * - Continue routes to Launch review after Dates→Partners; business invite
  *   happens on the Dates continue path (not again from Preview).
+ * - Additive: display + edit AI-extracted website / social links on preview.
  */
 import { useEffect, useRef, useState } from "react";
 import {
@@ -23,8 +25,12 @@ import {
   Check,
   CheckCircle2,
   Eye,
+  Facebook,
+  Globe,
   ImageIcon,
+  Instagram,
   Pencil,
+  Youtube,
 } from "lucide-react";
 import {
   useCampaign,
@@ -49,7 +55,11 @@ import {
 import { fetchAiCampaignSession } from "@/lib/api-ai-campaign-flow";
 import { createFundraiserCampaignInvite, uploadImage } from "@/lib/api";
 import { campaignMethodsForApi } from "@/lib/builder-submit";
-import { loadAiFlowStore, loadAiFlowPendingOrg } from "@/lib/ai-campaign-flow-storage";
+import {
+  loadAiFlowStore,
+  loadAiFlowPendingOrg,
+  saveAiFlowPendingOrg,
+} from "@/lib/ai-campaign-flow-storage";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
 import { OpenCoverResizeControl } from "@/components/campaign/OpenCoverResizeControl";
 import {
@@ -81,6 +91,23 @@ function formatDate(d: string) {
   if (!d) return "";
   const label = formatDateUs(d);
   return label === "—" ? "" : label;
+}
+
+/** Turn a stored website/social value into a clickable href (handles handles + bare hosts). */
+function socialHref(raw: string, kind: "website" | "facebook" | "instagram" | "youtube"): string {
+  const v = raw.trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return v;
+  if (kind === "instagram") {
+    const handle = v.replace(/^@/, "");
+    return `https://instagram.com/${handle}`;
+  }
+  if (kind === "facebook") return `https://facebook.com/${v.replace(/^@/, "")}`;
+  if (kind === "youtube") {
+    const handle = v.replace(/^@/, "");
+    return handle.includes("/") ? `https://${handle}` : `https://youtube.com/@${handle}`;
+  }
+  return v.includes(".") ? `https://${v}` : `https://${v}`;
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -254,6 +281,34 @@ export function AiCampaignPreview() {
     ? `${formatDate(state.startDate)} → ${formatDate(state.endDate)}`
     : formatDate(state.endDate);
   const goal = Number(String(state.goal).replace(/[^0-9.]/g, "")) || 0;
+  /** AI-extracted (or edited) org links shown on this preview. */
+  const previewSocialLinks = [
+    {
+      id: "website" as const,
+      label: "Website",
+      icon: <Globe className="size-3.5" />,
+      value: state.promotion.websiteUrl.trim(),
+    },
+    {
+      id: "facebook" as const,
+      label: "Facebook",
+      icon: <Facebook className="size-3.5" />,
+      value: state.promotion.facebookUrl.trim(),
+    },
+    {
+      id: "instagram" as const,
+      label: "Instagram",
+      icon: <Instagram className="size-3.5" />,
+      value: state.promotion.instagramHandle.trim(),
+    },
+    {
+      id: "youtube" as const,
+      label: "YouTube",
+      icon: <Youtube className="size-3.5" />,
+      value: youtubeUrl.trim(),
+    },
+  ];
+  const foundPreviewSocial = previewSocialLinks.filter((l) => l.value);
   const ambassadorCoach = state.methods.ambassador
     ? ambassadorTimingCoachMessage(state.endDate)
     : null;
@@ -711,6 +766,92 @@ export function AiCampaignPreview() {
                   })}
                 </div>
               </div>
+
+              <div>
+                <p className="mb-2 text-xs font-semibold text-muted-foreground">
+                  Website & social
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Website URL
+                    </label>
+                    <input
+                      type="url"
+                      value={state.promotion.websiteUrl}
+                      onChange={(e) =>
+                        update({
+                          promotion: {
+                            ...state.promotion,
+                            websiteUrl: e.target.value,
+                          },
+                        })
+                      }
+                      className={fieldClass}
+                      placeholder="https://yourorganization.org"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Facebook Page URL
+                    </label>
+                    <input
+                      type="url"
+                      value={state.promotion.facebookUrl}
+                      onChange={(e) =>
+                        update({
+                          promotion: {
+                            ...state.promotion,
+                            facebookUrl: e.target.value,
+                          },
+                        })
+                      }
+                      className={fieldClass}
+                      placeholder="https://facebook.com/yourorganization"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Instagram
+                    </label>
+                    <input
+                      value={state.promotion.instagramHandle}
+                      onChange={(e) =>
+                        update({
+                          promotion: {
+                            ...state.promotion,
+                            instagramHandle: e.target.value,
+                          },
+                        })
+                      }
+                      className={fieldClass}
+                      placeholder="https://instagram.com/yourorganization"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      YouTube
+                    </label>
+                    <input
+                      type="url"
+                      value={youtubeUrl}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setYoutubeUrl(next);
+                        const pending = loadAiFlowPendingOrg();
+                        if (pending) {
+                          saveAiFlowPendingOrg({
+                            ...pending,
+                            youtubeUrl: next.trim() || null,
+                          });
+                        }
+                      }}
+                      className={fieldClass}
+                      placeholder="https://youtube.com/@yourorganization"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <>
@@ -796,6 +937,38 @@ export function AiCampaignPreview() {
                   Set your fundraising goal →
                 </button>
               )}
+
+              {foundPreviewSocial.length > 0 ? (
+                <div className="mt-5 border-t border-border pt-4">
+                  <p className="mb-2 text-xs font-semibold text-muted-foreground">
+                    Website & social
+                  </p>
+                  <ul className="space-y-2">
+                    {foundPreviewSocial.map((link) => (
+                      <li key={link.id}>
+                        <a
+                          href={socialHref(link.value, link.id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-start gap-2 text-sm text-primary hover:underline"
+                        >
+                          <span className="mt-0.5 shrink-0 text-foreground/70">
+                            {link.icon}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="font-semibold text-foreground">
+                              {link.label}
+                            </span>
+                            <span className="mt-0.5 block break-all text-xs text-muted-foreground">
+                              {link.value}
+                            </span>
+                          </span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </>
           )}
         </div>
