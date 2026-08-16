@@ -6,27 +6,26 @@
  * Online Donations / Ambassador: end date required; start optional.
  * All methods: Start first, then End (same visual order).
  * Ambassador soft coaching when end window is under 14 days (no hard block).
- * Business methods with under 30 days lead: Needs ForkUp Review banner + CTAs
- * (same evaluation/labels as classic CampaignDetails; backend enforces on launch).
+ * Business methods: Timeline Check bands (30+ / 21–29 / 8–20 / 0–7) with CTAs.
  *
  * Continue: Dine & Donate / Guest Bartending → Choose/Invite Businesses, then Preview.
  * Online/ambassador-only → Preview directly.
  *
  * Layout: side-by-side on sm+ (aligned short labels), stacked on mobile.
- *
- * Changelog: After dates, route business-method campaigns to the invite screen
- * before AI preview (ForkUp review does not skip partner selection).
  */
 import { useCampaign } from "@/lib/campaign-context";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
+import { TimelineCheckCard } from "@/components/campaign/TimelineCheckCard";
 import {
   ambassadorTimingCoachMessage,
   campaignDateMin,
   campaignDateNotInPastError,
+  CLEAR_TIMING_FLAGS,
   dateFieldRequirements,
   evaluateBusinessMethodTiming,
+  isBusinessConfirmationComplete,
+  timingAllowsContinue,
   todayDateOnly,
-  timingCtaLabel,
   type TimingCta,
 } from "@/lib/campaign-timing";
 import { AiFlowShell } from "./AiFlowShell";
@@ -44,11 +43,12 @@ export function AiCampaignDates() {
     eventDate: state.eventDate,
   });
   const todayMin = todayDateOnly();
-  const canContinue =
+  const datesOk =
     (!dateReqs.requireEndDate || Boolean(state.endDate.trim())) &&
     (!dateReqs.requireStartDate || Boolean(state.startDate.trim())) &&
     (!dateReqs.requireEventDate || Boolean(state.eventDate.trim())) &&
     !pastDateError;
+  const canContinue = datesOk && timingAllowsContinue(state, timingEval);
   const ambassadorCoach = state.methods.ambassador
     ? ambassadorTimingCoachMessage(state.endDate)
     : null;
@@ -61,14 +61,14 @@ export function AiCampaignDates() {
     : "Tell us your campaign dates. Business methods need a start and end date.";
 
   /**
-   * Handles short-timeline CTAs (change date / drop business methods / submit for review).
-   * Mirrors CampaignDetails — state only; launch enforcement remains on the server.
+   * Handles Timeline Check CTAs (change date / drop business / confirm / review).
+   * State only; launch enforcement remains on the server.
    */
   const handleTimingCta = (cta: TimingCta) => {
     if (cta === "change_date") {
       update({
-        submitForForkupReview: false,
-        continueWithoutBusinessMethods: false,
+        ...CLEAR_TIMING_FLAGS,
+        businessTimingStatus: timingEval.status,
       });
       return;
     }
@@ -83,7 +83,17 @@ export function AiCampaignDates() {
         },
         continueWithoutBusinessMethods: true,
         submitForForkupReview: false,
+        showBusinessConfirmForm: false,
         businessTimingStatus: "ok",
+      });
+      return;
+    }
+    if (cta === "confirm_business") {
+      update({
+        showBusinessConfirmForm: true,
+        submitForForkupReview: false,
+        continueWithoutBusinessMethods: false,
+        businessTimingStatus: "tight_timeline",
       });
       return;
     }
@@ -91,16 +101,14 @@ export function AiCampaignDates() {
       update({
         submitForForkupReview: true,
         continueWithoutBusinessMethods: false,
+        showBusinessConfirmForm: false,
         forkupReviewStatus: "pending",
         businessTimingStatus: "needs_forkup_review",
       });
     }
   };
 
-  const clearTimingFlags = {
-    submitForForkupReview: false as const,
-    continueWithoutBusinessMethods: false as const,
-  };
+  const clearTimingFlags = CLEAR_TIMING_FLAGS;
 
   const endField = (
     <div key="end" className="flex min-w-0 flex-col gap-2">
@@ -208,36 +216,21 @@ export function AiCampaignDates() {
           </p>
         ) : null}
 
-        {timingEval.status === "needs_forkup_review" &&
-        timingEval.message &&
-        canContinue ? (
-          <div className="mt-5 space-y-3 rounded-2xl border border-amber-300/60 bg-amber-50/80 p-4 dark:border-amber-800 dark:bg-amber-950/40">
-            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-              Needs ForkUp Review
-            </p>
-            <p className="text-sm text-amber-900/90 dark:text-amber-100/90">
-              {timingEval.message}
-            </p>
-            {state.submitForForkupReview ? (
-              <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
-                Submitted for ForkUp review. Online donations and ambassador sharing can still
-                move forward. Business invitations stay paused until approved.
-              </p>
-            ) : (
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                {timingEval.ctas.map((cta) => (
-                  <button
-                    key={cta}
-                    type="button"
-                    onClick={() => handleTimingCta(cta)}
-                    className="rounded-full border border-amber-400/70 bg-card px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-secondary"
-                  >
-                    {timingCtaLabel(cta, state.methods)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+        {datesOk ? (
+          <TimelineCheckCard
+            timingEval={timingEval}
+            state={state}
+            onCta={handleTimingCta}
+            onConfirmField={(patch) => update(patch)}
+            onConfirmContinue={() => {
+              if (!isBusinessConfirmationComplete(state)) return;
+              update({
+                showBusinessConfirmForm: false,
+                submitForForkupReview: false,
+                businessTimingStatus: "tight_timeline",
+              });
+            }}
+          />
         ) : null}
       </div>
 
@@ -245,8 +238,16 @@ export function AiCampaignDates() {
         type="button"
         disabled={!canContinue}
         onClick={() => {
-          // Business methods collect partners after dates, before Preview —
-          // including when short timeline needs ForkUp review (emails deferred).
+          // Sync band onto state before leaving dates (server enforces again).
+          if (
+            timingEval.status === "limited_promotion_window" ||
+            timingEval.status === "tight_timeline" ||
+            timingEval.status === "too_soon"
+          ) {
+            if (!state.submitForForkupReview) {
+              update({ businessTimingStatus: timingEval.status });
+            }
+          }
           const needsBusinessInvite =
             state.methods.giveback || state.methods.guestBartending;
           if (needsBusinessInvite) {

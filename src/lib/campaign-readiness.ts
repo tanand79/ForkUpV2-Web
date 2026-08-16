@@ -20,7 +20,9 @@ export type TrackStatus =
   | "payment_setup_needed"
   | "pending_setup"
   | "needs_forkup_review"
-  | "limited_promotion_window";
+  | "limited_promotion_window"
+  | "tight_timeline"
+  | "too_soon";
 
 export type OverallLaunchReadiness =
   | "draft"
@@ -53,6 +55,8 @@ const TRACK_DISPLAY: Record<TrackStatus, string> = {
   pending_setup: "Setup needed",
   needs_forkup_review: "Needs ForkUp Review",
   limited_promotion_window: "Limited Promotion Window",
+  tight_timeline: "Tight Timeline",
+  too_soon: "Too Soon",
 };
 
 /**
@@ -91,13 +95,22 @@ export function deriveCampaignReadiness(
 
   const timingEval = evaluateBusinessMethodTiming(state);
   const timingGate: TrackStatus | null =
-    state.businessTimingStatus === "limited_promotion_window"
-      ? "limited_promotion_window"
-      : timingEval.status === "needs_forkup_review" ||
-          state.submitForForkupReview ||
+    state.businessTimingStatus === "too_soon" || timingEval.status === "too_soon"
+      ? "too_soon"
+      : state.businessTimingStatus === "tight_timeline" ||
+          timingEval.status === "tight_timeline"
+        ? state.submitForForkupReview ||
           state.businessTimingStatus === "needs_forkup_review"
-        ? "needs_forkup_review"
-        : null;
+          ? "needs_forkup_review"
+          : "tight_timeline"
+        : state.businessTimingStatus === "limited_promotion_window" ||
+            timingEval.status === "limited_promotion_window"
+          ? "limited_promotion_window"
+          : timingEval.status === "needs_forkup_review" ||
+              state.submitForForkupReview ||
+              state.businessTimingStatus === "needs_forkup_review"
+            ? "needs_forkup_review"
+            : null;
 
   let dineDonateStatus: TrackStatus = "not_selected";
   if (state.methods.giveback) {

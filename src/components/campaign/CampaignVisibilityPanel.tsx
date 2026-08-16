@@ -102,9 +102,14 @@ export function CampaignVisibilityPanel({
               className={`rounded-full px-3 py-1 text-xs font-semibold ${
                 t.status === "ready"
                   ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
-                  : t.status === "needs_forkup_review"
-                    ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200"
-                    : "bg-secondary text-foreground"
+                  : t.status === "needs_forkup_review" ||
+                      t.status === "tight_timeline"
+                    ? "bg-orange-100 text-orange-950 dark:bg-orange-950 dark:text-orange-200"
+                    : t.status === "too_soon"
+                      ? "bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200"
+                      : t.status === "limited_promotion_window"
+                        ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+                        : "bg-secondary text-foreground"
               }`}
             >
               {t.label}: {t.display}

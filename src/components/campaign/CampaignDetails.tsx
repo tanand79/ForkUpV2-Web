@@ -11,11 +11,12 @@ import {
   ambassadorTimingCoachMessage,
   campaignDateMin,
   campaignDateNotInPastError,
+  CLEAR_TIMING_FLAGS,
   dateFieldRequirements,
   evaluateBusinessMethodTiming,
   hasBusinessMethod,
+  isBusinessConfirmationComplete,
   todayDateOnly,
-  timingCtaLabel,
   type TimingCta,
 } from "@/lib/campaign-timing";
 import { ActionBar } from "./ChooseBusinesses";
@@ -23,6 +24,7 @@ import { CampaignAiGuidance } from "./CampaignAiGuidance";
 import { useLovableFlowRedirect } from "./useLovableFlowRedirect";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
 import { RequestAgainButton } from "@/components/campaign/RequestAgainButton";
+import { TimelineCheckCard } from "@/components/campaign/TimelineCheckCard";
 
 
 const GIVEBACK = [10, 15, 20];
@@ -58,10 +60,9 @@ export function CampaignDetails() {
 
   const handleTimingCta = (cta: TimingCta) => {
     if (cta === "change_date") {
-      // Focus stays on date fields — clear short-timeline CTA flags.
       update({
-        submitForForkupReview: false,
-        continueWithoutBusinessMethods: false,
+        ...CLEAR_TIMING_FLAGS,
+        businessTimingStatus: timingEval.status,
       });
       return;
     }
@@ -76,7 +77,17 @@ export function CampaignDetails() {
         },
         continueWithoutBusinessMethods: true,
         submitForForkupReview: false,
+        showBusinessConfirmForm: false,
         businessTimingStatus: "ok",
+      });
+      return;
+    }
+    if (cta === "confirm_business") {
+      update({
+        showBusinessConfirmForm: true,
+        submitForForkupReview: false,
+        continueWithoutBusinessMethods: false,
+        businessTimingStatus: "tight_timeline",
       });
       return;
     }
@@ -84,6 +95,7 @@ export function CampaignDetails() {
       update({
         submitForForkupReview: true,
         continueWithoutBusinessMethods: false,
+        showBusinessConfirmForm: false,
         forkupReviewStatus: "pending",
         businessTimingStatus: "needs_forkup_review",
       });
@@ -269,8 +281,7 @@ export function CampaignDetails() {
                     onChange={(endDate) =>
                       update({
                         endDate,
-                        submitForForkupReview: false,
-                        continueWithoutBusinessMethods: false,
+                        ...CLEAR_TIMING_FLAGS,
                       })
                     }
                   />
@@ -297,8 +308,7 @@ export function CampaignDetails() {
                       onChange={(startDate) =>
                         update({
                           startDate,
-                          submitForForkupReview: false,
-                          continueWithoutBusinessMethods: false,
+                          ...CLEAR_TIMING_FLAGS,
                         })
                       }
                     />
@@ -328,8 +338,7 @@ export function CampaignDetails() {
                   onChange={(eventDate) =>
                     update({
                       eventDate,
-                      submitForForkupReview: false,
-                      continueWithoutBusinessMethods: false,
+                      ...CLEAR_TIMING_FLAGS,
                     })
                   }
                 />
@@ -377,35 +386,26 @@ export function CampaignDetails() {
             </div>
           ) : null}
 
-          {timingEval.status === "needs_forkup_review" && timingEval.message && (
-            <div className="space-y-3 rounded-2xl border border-amber-300/60 bg-amber-50/80 p-4 dark:border-amber-800 dark:bg-amber-950/40">
-              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-                Needs ForkUp Review
-              </p>
-              <p className="text-sm text-amber-900/90 dark:text-amber-100/90">
-                {timingEval.message}
-              </p>
-              {state.submitForForkupReview ? (
-                <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
-                  Submitted for ForkUp review. Online donations and ambassador sharing can still
-                  move forward. Business invitations stay paused until approved.
-                </p>
-              ) : (
-                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                  {timingEval.ctas.map((cta) => (
-                    <button
-                      key={cta}
-                      type="button"
-                      onClick={() => handleTimingCta(cta)}
-                      className="rounded-full border border-amber-400/70 bg-card px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-secondary"
-                    >
-                      {timingCtaLabel(cta, state.methods)}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          {timingEval.message &&
+          (timingEval.status === "limited_promotion_window" ||
+            timingEval.status === "tight_timeline" ||
+            timingEval.status === "too_soon" ||
+            timingEval.status === "needs_forkup_review") ? (
+            <TimelineCheckCard
+              timingEval={timingEval}
+              state={state}
+              onCta={handleTimingCta}
+              onConfirmField={(patch) => update(patch)}
+              onConfirmContinue={() => {
+                if (!isBusinessConfirmationComplete(state)) return;
+                update({
+                  showBusinessConfirmForm: false,
+                  submitForForkupReview: false,
+                  businessTimingStatus: "tight_timeline",
+                });
+              }}
+            />
+          ) : null}
 
           {enabledMethods.length > 0 && (state.startDate || state.endDate) && (
             <div className="space-y-3 rounded-2xl border border-border bg-card/50 p-4">

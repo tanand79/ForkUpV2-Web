@@ -239,6 +239,13 @@ function loadDraft(): CampaignDraft | null {
         forkupReviewStatus: savedState.forkupReviewStatus ?? "none",
         submitForForkupReview: !!savedState.submitForForkupReview,
         continueWithoutBusinessMethods: !!savedState.continueWithoutBusinessMethods,
+        showBusinessConfirmForm: !!savedState.showBusinessConfirmForm,
+        confirmedBusinessName: savedState.confirmedBusinessName ?? "",
+        confirmedContactName: savedState.confirmedContactName ?? "",
+        confirmedContactEmail: savedState.confirmedContactEmail ?? "",
+        confirmedMethod: savedState.confirmedMethod ?? "",
+        confirmedStatus: savedState.confirmedStatus ?? "",
+        confirmedNotes: savedState.confirmedNotes ?? "",
         lockedBusinessPartners: Array.isArray(savedState.lockedBusinessPartners)
           ? savedState.lockedBusinessPartners
           : [],
@@ -583,13 +590,27 @@ export interface CampaignState {
   /** Guest Bartending single event date (Nick V2 Layer 2). */
   eventDate: string;
   /** Business-method timing gate stamped by server / derived in UI. */
-  businessTimingStatus: "ok" | "needs_forkup_review" | "limited_promotion_window";
+  businessTimingStatus:
+    | "ok"
+    | "needs_forkup_review"
+    | "limited_promotion_window"
+    | "tight_timeline"
+    | "too_soon";
   /** Short-timeline ForkUp review workflow. */
   forkupReviewStatus: "none" | "pending" | "approved" | "denied";
   /** Builder CTA: submit short business timeline for ForkUp review. */
   submitForForkupReview: boolean;
   /** Builder CTA: drop business methods and continue online/ambassador only. */
   continueWithoutBusinessMethods: boolean;
+  /** Tight timeline: show “I already have a business confirmed” form. */
+  showBusinessConfirmForm: boolean;
+  /** Confirmation form fields (Timeline Check 8–20 day band). */
+  confirmedBusinessName: string;
+  confirmedContactName: string;
+  confirmedContactEmail: string;
+  confirmedMethod: "" | "email" | "phone" | "in_person";
+  confirmedStatus: string;
+  confirmedNotes: string;
   /**
    * Deadline for businesses to accept their invitation. Once this date passes
    * the participating business list is finalized and the campaign moves from
@@ -700,6 +721,13 @@ const initialState: CampaignState = {
   forkupReviewStatus: "none",
   submitForForkupReview: false,
   continueWithoutBusinessMethods: false,
+  showBusinessConfirmForm: false,
+  confirmedBusinessName: "",
+  confirmedContactName: "",
+  confirmedContactEmail: "",
+  confirmedMethod: "",
+  confirmedStatus: "",
+  confirmedNotes: "",
   invitationCloseDate: "",
   invitationsClosed: false,
   methodTiming: {},

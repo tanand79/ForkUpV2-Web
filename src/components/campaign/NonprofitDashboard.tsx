@@ -722,6 +722,18 @@ export function NonprofitDashboard() {
             <span className="rounded-full border border-amber-300/70 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               Needs ForkUp Review
             </span>
+          ) : c.businessTimingStatus === "tight_timeline" ? (
+            <span className="rounded-full border border-orange-300/70 bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-950 dark:bg-orange-950/40 dark:text-orange-200">
+              Tight Timeline
+            </span>
+          ) : c.businessTimingStatus === "too_soon" ? (
+            <span className="rounded-full border border-rose-300/70 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+              Too Soon
+            </span>
+          ) : c.businessTimingStatus === "limited_promotion_window" ? (
+            <span className="rounded-full border border-amber-300/70 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Limited Promotion
+            </span>
           ) : null}
           {(c.partnersPending ?? 0) > 0 && (
             <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">

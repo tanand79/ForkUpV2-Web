@@ -71,6 +71,13 @@ export interface CreateCampaignPayload {
   existingSlug?: string;
   submitForForkupReview?: boolean;
   continueWithoutBusinessMethods?: boolean;
+  /** Tight timeline: organizer already has a business/venue confirmed. */
+  confirmedBusinessName?: string | null;
+  confirmedContactName?: string | null;
+  confirmedContactEmail?: string | null;
+  confirmedMethod?: string | null;
+  confirmedStatus?: string | null;
+  confirmedNotes?: string | null;
 }
 
 export interface CreateCampaignResult {
@@ -365,6 +372,12 @@ export function buildCreateCampaignPayload(
     existingSlug: state.campaignSlug ?? undefined,
     submitForForkupReview: state.submitForForkupReview || undefined,
     continueWithoutBusinessMethods: state.continueWithoutBusinessMethods || undefined,
+    confirmedBusinessName: state.confirmedBusinessName?.trim() || undefined,
+    confirmedContactName: state.confirmedContactName?.trim() || undefined,
+    confirmedContactEmail: state.confirmedContactEmail?.trim() || undefined,
+    confirmedMethod: state.confirmedMethod || undefined,
+    confirmedStatus: state.confirmedStatus?.trim() || undefined,
+    confirmedNotes: state.confirmedNotes?.trim() || undefined,
   };
 }
 

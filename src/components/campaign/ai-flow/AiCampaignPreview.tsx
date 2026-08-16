@@ -45,16 +45,18 @@ import {
   ambassadorTimingCoachMessage,
   campaignDateMin,
   campaignDateNotInPastError,
+  CLEAR_TIMING_FLAGS,
   dateFieldRequirements,
   evaluateBusinessMethodTiming,
   hasBusinessMethod,
+  isBusinessConfirmationComplete,
   todayDateOnly,
-  timingCtaLabel,
   type TimingCta,
 } from "@/lib/campaign-timing";
 import { fetchAiCampaignSession } from "@/lib/api-ai-campaign-flow";
 import { createFundraiserCampaignInvite, uploadImage } from "@/lib/api";
 import { campaignMethodsForApi } from "@/lib/builder-submit";
+import { TimelineCheckCard } from "@/components/campaign/TimelineCheckCard";
 import {
   loadAiFlowStore,
   loadAiFlowPendingOrg,
@@ -82,10 +84,7 @@ const METHOD_OPTIONS: { id: SupportMethod; label: string }[] = [
 const fieldClass =
   "mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring/30";
 
-const clearTimingFlags = {
-  submitForForkupReview: false as const,
-  continueWithoutBusinessMethods: false as const,
-};
+const clearTimingFlags = CLEAR_TIMING_FLAGS;
 
 function formatDate(d: string) {
   if (!d) return "";
@@ -395,13 +394,32 @@ export function AiCampaignPreview() {
     });
   }
   if (
-    timingEval.status === "needs_forkup_review" &&
+    (timingEval.status === "tight_timeline" ||
+      timingEval.status === "too_soon" ||
+      timingEval.status === "needs_forkup_review") &&
     timingEval.message &&
-    !state.submitForForkupReview
+    !state.submitForForkupReview &&
+    !isBusinessConfirmationComplete(state)
   ) {
     attention.push({
       id: "forkup-timing",
-      label: "Business timeline is under 30 days — ForkUp review options below",
+      label:
+        timingEval.status === "too_soon"
+          ? "Business timeline is too soon (0–7 days) — change date or switch methods"
+          : timingEval.status === "tight_timeline"
+            ? "Tight business timeline (8–20 days) — confirm business or request review"
+            : "Business timeline needs ForkUp review options below",
+      action: "Review Timing",
+      blocking: timingEval.status === "too_soon",
+    });
+  }
+  if (
+    timingEval.status === "limited_promotion_window" &&
+    timingEval.message
+  ) {
+    attention.push({
+      id: "limited-promo",
+      label: "Limited promotion window (21–29 days) — you can continue with a shorter runway",
       action: "Review Timing",
       blocking: false,
     });
@@ -421,14 +439,14 @@ export function AiCampaignPreview() {
   };
 
   /**
-   * Handles short-timeline CTAs (change date / drop business methods / submit for review).
+   * Handles Timeline Check CTAs (change date / drop business / confirm / review).
    * Mirrors AiCampaignDates — state only; launch enforcement remains on the server.
    */
   const handleTimingCta = (cta: TimingCta) => {
     if (cta === "change_date") {
       update({
-        submitForForkupReview: false,
-        continueWithoutBusinessMethods: false,
+        ...CLEAR_TIMING_FLAGS,
+        businessTimingStatus: timingEval.status,
       });
       setEditing(true);
       return;
@@ -444,7 +462,17 @@ export function AiCampaignPreview() {
         },
         continueWithoutBusinessMethods: true,
         submitForForkupReview: false,
+        showBusinessConfirmForm: false,
         businessTimingStatus: "ok",
+      });
+      return;
+    }
+    if (cta === "confirm_business") {
+      update({
+        showBusinessConfirmForm: true,
+        submitForForkupReview: false,
+        continueWithoutBusinessMethods: false,
+        businessTimingStatus: "tight_timeline",
       });
       return;
     }
@@ -452,6 +480,7 @@ export function AiCampaignPreview() {
       update({
         submitForForkupReview: true,
         continueWithoutBusinessMethods: false,
+        showBusinessConfirmForm: false,
         forkupReviewStatus: "pending",
         businessTimingStatus: "needs_forkup_review",
       });
@@ -508,34 +537,25 @@ export function AiCampaignPreview() {
   ) : null;
 
   const forkupTimingBanner =
-    timingEval.status === "needs_forkup_review" && timingEval.message ? (
-      <div className="mt-6 space-y-3 rounded-2xl border border-amber-300/60 bg-amber-50/80 p-4 dark:border-amber-800 dark:bg-amber-950/40">
-        <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-          Needs ForkUp Review
-        </p>
-        <p className="text-sm text-amber-900/90 dark:text-amber-100/90">
-          {timingEval.message}
-        </p>
-        {state.submitForForkupReview ? (
-          <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
-            Submitted for ForkUp review. Online donations and ambassador sharing can still
-            move forward. Business invitations stay paused until approved.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            {timingEval.ctas.map((cta) => (
-              <button
-                key={cta}
-                type="button"
-                onClick={() => handleTimingCta(cta)}
-                className="rounded-full border border-amber-400/70 bg-card px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-secondary"
-              >
-                {timingCtaLabel(cta, state.methods)}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+    timingEval.message &&
+    (timingEval.status === "limited_promotion_window" ||
+      timingEval.status === "tight_timeline" ||
+      timingEval.status === "too_soon" ||
+      timingEval.status === "needs_forkup_review") ? (
+      <TimelineCheckCard
+        timingEval={timingEval}
+        state={state}
+        onCta={handleTimingCta}
+        onConfirmField={(patch) => update(patch)}
+        onConfirmContinue={() => {
+          if (!isBusinessConfirmationComplete(state)) return;
+          update({
+            showBusinessConfirmForm: false,
+            submitForForkupReview: false,
+            businessTimingStatus: "tight_timeline",
+          });
+        }}
+      />
     ) : null;
 
   return (
