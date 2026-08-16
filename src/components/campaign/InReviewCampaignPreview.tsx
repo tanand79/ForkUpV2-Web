@@ -9,6 +9,7 @@
  * Changelog: Added owner preview for campaign_status = in_review / forkup pending.
  * Changelog: Mounted InReviewCampaignPhotosEditor (crop/resize + save) on this screen.
  * Changelog: Resize on the open cover image (not only in Change photo / panel).
+ * Changelog: Contact Support opens a FAQ dialog (InReviewHelpFaqs).
  */
 "use client";
 
@@ -19,7 +20,6 @@ import {
   Calendar,
   CheckCircle2,
   Circle,
-  Headphones,
   Hourglass,
   Loader2,
   Lock,
@@ -43,6 +43,7 @@ import { useCampaign } from "@/lib/campaign-context";
 import { formatDateUs } from "@/lib/date-only";
 import { assetSrc } from "@/lib/utils";
 import { InReviewCampaignPhotosEditor } from "@/components/campaign/InReviewCampaignPhotosEditor";
+import { InReviewHelpFaqs } from "@/components/campaign/InReviewHelpFaqs";
 import { OpenCoverResizeControl } from "@/components/campaign/OpenCoverResizeControl";
 
 type StoryTab = "story" | "impact" | "funds" | "updates";
@@ -540,12 +541,7 @@ export function InReviewCampaignPreview() {
             <p className="mt-2 text-sm text-muted-foreground">
               Our Success Team is here to help.
             </p>
-            <a
-              href="mailto:support@forkup.org"
-              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-border bg-background px-4 py-2.5 text-sm font-semibold hover:bg-secondary"
-            >
-              <Headphones className="size-4" /> Contact Support
-            </a>
+            <InReviewHelpFaqs />
           </section>
         </aside>
       </div>

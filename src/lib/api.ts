@@ -2788,3 +2788,16 @@ export function postCampaignAiSettlementNarrative(slug: string) {
     body: "{}",
   });
 }
+
+/** Send an in-app Success Team message (SMTP to platform admin / support inbox). */
+export function postSupportContact(body: {
+  message: string;
+  campaignSlug?: string;
+  campaignName?: string;
+}) {
+  return fetchJson<{ success: boolean }>("/api/support/contact", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
