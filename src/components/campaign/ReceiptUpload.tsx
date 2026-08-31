@@ -142,12 +142,11 @@ export function ReceiptUpload() {
     firstName.trim().length > 0 &&
     email.includes("@") &&
     !!imageDataUrl &&
-    hasClaimedTotal &&
     !submitting;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!slug || !selected || !imageDataUrl || !hasClaimedTotal) return;
+    if (!slug || !selected || !imageDataUrl) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -159,7 +158,7 @@ export function ReceiptUpload() {
         methodId: selected.methodId,
         imageBase64: imageDataUrl,
         imageMimeType: imageMimeType ?? "image/jpeg",
-        claimedSubtotal: claimed,
+        claimedSubtotal: hasClaimedTotal ? claimed : undefined,
       });
       setResult(res);
     } catch (err) {
@@ -276,7 +275,7 @@ export function ReceiptUpload() {
       </h1>
       <p className="mt-2 text-sm text-muted-foreground">
         {visitLocked && selected
-          ? `Add a photo and the total for your visit at ${selected.businessName}.`
+          ? `Add a photo of your receipt for your visit at ${selected.businessName}.`
           : "Dined or shopped at a participating business? Upload your receipt so your visit turns into a donation for the campaign."}
       </p>
 
@@ -390,14 +389,15 @@ export function ReceiptUpload() {
           )}
 
           <label className="block space-y-1.5">
-            <span className="text-sm font-semibold">Receipt total</span>
+            <span className="text-sm font-semibold">
+              Receipt total <span className="font-normal text-muted-foreground">(optional)</span>
+            </span>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
               <input
                 type="number"
-                min="0.01"
+                min="0"
                 step="0.01"
-                required
                 value={claimedSubtotal}
                 onChange={(e) => setClaimedSubtotal(e.target.value)}
                 placeholder="0.00"
@@ -405,8 +405,7 @@ export function ReceiptUpload() {
               />
             </div>
             <span className="text-xs text-muted-foreground">
-              Enter the amount on your receipt. If the photo cannot be read automatically, this
-              total is used for review.
+              Helps us match your receipt faster — the organizer confirms the eligible amount.
             </span>
           </label>
 

@@ -20,7 +20,12 @@ import {
 } from "lucide-react";
 import { useCampaign, CAMPAIGN_STAGE_META, type CampaignStage } from "@/lib/campaign-context";
 import type { BusinessInviteStatus } from "@/lib/campaign-context";
-import { fetchCampaignDashboard, type CampaignDashboardData } from "@/lib/api";
+import {
+  fetchCampaignAnalytics,
+  fetchCampaignDashboard,
+  type CampaignAnalytics,
+  type CampaignDashboardData,
+} from "@/lib/api";
 import { toDateOnlyString, formatDateUs } from "@/lib/date-only";
 import { ApiAcceptanceStatusBadge } from "@/components/campaign/BusinessStatusBadge";
 import { formatRespondByLabel, SETUP_STATUS_LABEL, MARKETING_READY_LABEL, SETTLEMENT_READY_LABEL, type SetupStatus, type MarketingReadyStatus, type SettlementReadyStatus } from "@/lib/business-status";
@@ -207,14 +212,9 @@ const RECRUITMENT = [
   },
 ];
 
-// Future receipt-tracking engine — reserved space, not yet built.
-const FUTURE_METRICS = [
-  "Eligible Sales",
-  "Receipts Uploaded",
-  "Donation Pool",
-  "Average Contribution",
-  "Business Leaderboard",
-];
+function formatMoney(value: number): string {
+  return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 export function CampaignDashboard() {
   const { state, goTo, selectedBusinesses, campaignStage, designMode, stageOverride, setStageOverride, update } =
@@ -222,6 +222,7 @@ export function CampaignDashboard() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [previewIds, setPreviewIds] = useState<Record<string, boolean>>({});
   const [apiDashboard, setApiDashboard] = useState<CampaignDashboardData | null>(null);
+  const [receiptAnalytics, setReceiptAnalytics] = useState<CampaignAnalytics | null>(null);
 
   useEffect(() => {
     if (!state.campaignSlug) return;
@@ -243,6 +244,10 @@ export function CampaignDashboard() {
           }
         })
         .catch(() => setApiDashboard(null));
+
+      fetchCampaignAnalytics(state.campaignSlug!)
+        .then(setReceiptAnalytics)
+        .catch(() => setReceiptAnalytics(null));
     };
 
     load();
@@ -285,6 +290,40 @@ export function CampaignDashboard() {
   const showSuccessEngine = stage === "ready" || stage === "live";
   // Receipt & sales tracking activates at launch and drives settlement.
   const showReceiptTracking = stage === "live" || stage === "closed" || stage === "settlement";
+  const receiptTotals = receiptAnalytics?.totals;
+  const topBusiness = receiptAnalytics?.businessLeaderboard[0] ?? null;
+  const receiptTrackingMetrics = [
+    {
+      label: "Eligible Sales",
+      value: receiptTotals ? formatMoney(receiptTotals.eligibleSales) : "—",
+      hint:
+        receiptTotals && receiptTotals.receiptsPending > 0
+          ? "Approved receipts only"
+          : undefined,
+    },
+    {
+      label: "Receipts Uploaded",
+      value: receiptTotals ? String(receiptTotals.receiptsUploaded) : "—",
+      hint: receiptTotals
+        ? `${receiptTotals.receiptsPending} pending · ${receiptTotals.receiptsApproved} approved`
+        : undefined,
+    },
+    {
+      label: "Donation Pool",
+      value: receiptTotals ? formatMoney(receiptTotals.donationPool) : "—",
+      hint: undefined,
+    },
+    {
+      label: "Average Contribution",
+      value: receiptTotals ? formatMoney(receiptTotals.averageContribution) : "—",
+      hint: undefined,
+    },
+    {
+      label: "Business Leaderboard",
+      value: topBusiness ? topBusiness.businessName : receiptTotals ? "None yet" : "—",
+      hint: topBusiness ? formatMoney(topBusiness.donationPool) : undefined,
+    },
+  ];
   // Empty-state guidance is for pre-live only; live can still add partners via CTA.
   const allowBusinessEmptyState = stage !== "live";
   const canAppendBusinessInvites =
@@ -967,12 +1006,33 @@ export function CampaignDashboard() {
             : "Final receipts and eligible sales for your campaign. Receipt uploads are now closed."}
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {FUTURE_METRICS.map((label) => (
-            <div key={label} className="rounded-xl border border-border bg-background p-3 text-center">
-              <p className="text-xl font-extrabold text-foreground">—</p>
-              <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+          {receiptTrackingMetrics.map((m) => (
+            <div key={m.label} className="rounded-xl border border-border bg-background p-3 text-center">
+              <p className="truncate text-xl font-extrabold text-foreground" title={m.value}>
+                {m.value}
+              </p>
+              <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {m.label}
+              </p>
+              {m.hint && (
+                <p className="mt-0.5 text-[10px] text-muted-foreground">{m.hint}</p>
+              )}
             </div>
           ))}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            onClick={() => goTo("receipt-ocr")}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-border bg-card px-5 text-sm font-semibold transition-colors hover:bg-secondary"
+          >
+            <ClipboardCheck className="size-4" /> Review Receipts
+          </button>
+          <button
+            onClick={() => goTo("analytics")}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-border bg-card px-5 text-sm font-semibold transition-colors hover:bg-secondary"
+          >
+            <BarChart3 className="size-4" /> View Analytics
+          </button>
         </div>
       </section>
       )}
