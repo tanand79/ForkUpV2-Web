@@ -7,6 +7,8 @@ import { useCampaign } from "@/lib/campaign-context";
 import {
   fetchSettlementReport,
   lockCampaignSettlement,
+  patchSettlementAchStatus,
+  patchSettlementSettings,
   postCampaignAiSettlementNarrative,
   type SettlementReport,
 } from "@/lib/api";
@@ -79,6 +81,8 @@ function buildSettlementCsv(report: SettlementReport): string {
   return rows.join("\r\n");
 }
 
+const ACH_OPTIONS = ["pending", "processing", "paid", "failed"] as const;
+
 export function ReportingSettlement() {
   const { state, goTo } = useCampaign();
   const slug = state.campaignSlug;
@@ -88,13 +92,28 @@ export function ReportingSettlement() {
   const [locking, setLocking] = useState(false);
   const [narrativeLoading, setNarrativeLoading] = useState(false);
   const [narrative, setNarrative] = useState<string | null>(null);
+  const [achBusyId, setAchBusyId] = useState<number | null>(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [platformFee, setPlatformFee] = useState("");
+  const [cardFee, setCardFee] = useState("");
+  const [cardFixed, setCardFixed] = useState("");
+  const [tips, setTips] = useState("");
+  const [auction, setAuction] = useState("");
 
   const load = useCallback(async () => {
     if (!slug) return;
     setLoading(true);
     setError(null);
     try {
-      setReport(await fetchSettlementReport(slug));
+      const next = await fetchSettlementReport(slug);
+      setReport(next);
+      setPlatformFee(
+        next.campaign.platformFeePercent != null ? String(next.campaign.platformFeePercent) : "",
+      );
+      setCardFee(next.campaign.cardFeePercent != null ? String(next.campaign.cardFeePercent) : "");
+      setCardFixed(next.campaign.cardFeeFixed != null ? String(next.campaign.cardFeeFixed) : "");
+      setTips(String(next.campaign.bartenderTips ?? 0));
+      setAuction(String(next.campaign.silentAuction ?? 0));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load settlement");
     } finally {
@@ -133,7 +152,47 @@ export function ReportingSettlement() {
     }
   };
 
-  /** Nick V2 Layer 4 — draft stakeholder settlement language from totals. */
+  const handleAchStatus = async (
+    settlementId: number,
+    achStatus: (typeof ACH_OPTIONS)[number],
+  ) => {
+    if (!slug) return;
+    setAchBusyId(settlementId);
+    try {
+      await patchSettlementAchStatus(slug, settlementId, achStatus);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update ACH status");
+    } finally {
+      setAchBusyId(null);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (!slug) return;
+    setSettingsSaving(true);
+    try {
+      const parseOrNull = (raw: string) => {
+        const t = raw.trim();
+        if (!t) return null;
+        const n = Number(t);
+        return Number.isFinite(n) ? n : null;
+      };
+      await patchSettlementSettings(slug, {
+        platformFeePercent: parseOrNull(platformFee),
+        cardFeePercent: parseOrNull(cardFee),
+        cardFeeFixed: parseOrNull(cardFixed),
+        bartenderTips: Number(tips) || 0,
+        silentAuction: Number(auction) || 0,
+      });
+      toast.success("Settlement settings saved. They apply at freeze/snapshot.");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save settings");
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
   const handleSettlementNarrative = async () => {
     if (!slug) return;
     setNarrativeLoading(true);
@@ -251,8 +310,85 @@ export function ReportingSettlement() {
             </section>
           )}
 
-          <section className="rounded-2xl border border-border bg-card p-6">
-            <h2 className="font-bold">{report.campaign.name}</h2>
+          {!report.pipeline?.frozen && (
+            <section className="rounded-2xl border border-border bg-card p-6">
+              <h2 className="font-bold">Fees &amp; manual amounts</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Optional overrides before freeze. Leave fees blank to use 15% platform and 2.9% +
+                $0.30 card fees. Tips and silent auction are stored on the snapshot and excluded
+                from giveback %.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm">
+                  <span className="text-muted-foreground">Platform fee %</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={platformFee}
+                    onChange={(e) => setPlatformFee(e.target.value)}
+                    placeholder="15"
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="text-muted-foreground">Card fee %</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={cardFee}
+                    onChange={(e) => setCardFee(e.target.value)}
+                    placeholder="2.9"
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="text-muted-foreground">Card fixed fee $</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={cardFixed}
+                    onChange={(e) => setCardFixed(e.target.value)}
+                    placeholder="0.30"
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="text-muted-foreground">Bartender tips $</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={tips}
+                    onChange={(e) => setTips(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="text-muted-foreground">Silent auction $</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={auction}
+                    onChange={(e) => setAuction(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2"
+                  />
+                </label>
+              </div>
+              <button
+                type="button"
+                disabled={settingsSaving}
+                onClick={() => void handleSaveSettings()}
+                className="mt-4 inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-xs font-semibold hover:bg-secondary disabled:opacity-60"
+              >
+                {settingsSaving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                Save settlement settings
+              </button>
+            </section>
+          )}
             <p className="mt-1 text-sm capitalize text-muted-foreground">Status: {report.campaign.status}</p>
             <div className="mt-4 grid grid-cols-3 gap-3 text-center">
               <div>
@@ -334,8 +470,27 @@ export function ReportingSettlement() {
                     <p className="mt-1 text-muted-foreground">
                       Sales ${b.eligibleSales.toFixed(2)} · Donation ${b.donationPool.toFixed(2)} ·
                       Net ${b.netNonprofitAmount.toFixed(2)} · {b.paymentStatus}
-                      {b.achStatus ? ` · ACH ${b.achStatus}` : ""}
                     </p>
+                    <label className="mt-3 flex items-center gap-2 text-xs">
+                      <span className="text-muted-foreground">ACH status</span>
+                      <select
+                        value={(b.achStatus as (typeof ACH_OPTIONS)[number]) || "pending"}
+                        disabled={achBusyId === b.id}
+                        onChange={(e) =>
+                          void handleAchStatus(
+                            b.id,
+                            e.target.value as (typeof ACH_OPTIONS)[number],
+                          )
+                        }
+                        className="rounded-lg border border-border bg-background px-2 py-1 font-semibold capitalize"
+                      >
+                        {ACH_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     {b.pdfBusinessPath && (
                       <a
                         href={apiUrl(b.pdfBusinessPath)}

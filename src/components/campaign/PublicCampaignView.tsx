@@ -17,6 +17,7 @@ import {
 import { resolveCampaignImage } from "@/lib/campaign-images";
 import type { CampaignDetail, ParticipatingLocation } from "@/lib/campaign-types";
 import { submitParticipation, fetchCampaignDonations, fetchCampaignImages } from "@/lib/api";
+import { buildReceiptUploadHref } from "@/lib/receipt-upload-href";
 import { DonationModal } from "@/components/campaign/DonationModal";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
 import { PublicCampaignDonationsFeed } from "@/components/campaign/PublicCampaignDonationsFeed";
@@ -137,6 +138,19 @@ function ParticipateModal({
         locationId: loc.locationId,
         methodId: loc.methodId,
       });
+      try {
+        sessionStorage.setItem(
+          "forkup_participant",
+          JSON.stringify({
+            firstName: trimmedName,
+            email: trimmedEmail,
+            partySize,
+            returning,
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
       setReservationUrl(result.reservationUrl ?? loc.reservationUrl);
       setSuccess(true);
     } catch (err) {
@@ -188,7 +202,14 @@ function ParticipateModal({
               </button>
             )}
             <a
-              href={`/?step=receipt-upload&campaign=${encodeURIComponent(campaignSlug)}`}
+              href={buildReceiptUploadHref({
+                campaignSlug,
+                businessId: loc.businessId,
+                locationId: loc.locationId,
+                methodId: loc.methodId,
+                firstName,
+                email,
+              })}
               className="mt-4 inline-flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-primary hover:underline"
             >
               <Receipt className="size-4" />

@@ -37,7 +37,9 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({}));
     const message =
       typeof body.error === "string"
-        ? body.error
+        ? typeof body.reason === "string" && body.reason.trim()
+          ? `${body.error} (${body.reason})`
+          : body.error
         : typeof body.message === "string"
           ? body.message
           : `API error: ${res.status}`;
@@ -1896,6 +1898,11 @@ export interface SettlementReport {
     closedAt?: string | null;
     frozenAt?: string | null;
     adjustmentWindowEnd?: string | null;
+    platformFeePercent?: number | null;
+    cardFeePercent?: number | null;
+    cardFeeFixed?: number | null;
+    bartenderTips?: number;
+    silentAuction?: number;
   };
   pipeline?: {
     closed: boolean;
@@ -1950,6 +1957,38 @@ export function fetchSettlementReport(slug: string) {
 export function lockCampaignSettlement(slug: string) {
   return fetchJson<{ success: boolean; status: string }>(`/api/manage/campaigns/${slug}/lock`, {
     method: "POST",
+  });
+}
+
+export function patchSettlementAchStatus(
+  slug: string,
+  settlementId: number,
+  achStatus: "pending" | "processing" | "paid" | "failed",
+) {
+  return fetchJson<{ success: boolean; achStatus: string }>(
+    `/api/manage/campaigns/${slug}/settlements/${settlementId}/ach-status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ achStatus }),
+    },
+  );
+}
+
+export function patchSettlementSettings(
+  slug: string,
+  body: {
+    platformFeePercent: number | null;
+    cardFeePercent: number | null;
+    cardFeeFixed: number | null;
+    bartenderTips: number;
+    silentAuction: number;
+  },
+) {
+  return fetchJson<{ success: boolean }>(`/api/manage/campaigns/${slug}/settlement-settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 

@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { assetSrc } from "@/lib/utils";
 import { submitParticipation } from "@/lib/api";
+import { buildReceiptUploadHref } from "@/lib/receipt-upload-href";
 import type { ParticipatingLocation } from "@/lib/campaign-types";
 import { ScrollReveal } from "@/components/ScrollReveal";
 import forkupLogo from "@/assets/forkup-logo-header.png";
@@ -583,7 +584,14 @@ function LocationCard({
               )}
 
               <a
-                href={`/?step=receipt-upload&campaign=${encodeURIComponent(campaignSlug)}`}
+                href={buildReceiptUploadHref({
+                  campaignSlug,
+                  businessId: loc.businessId,
+                  locationId: loc.locationId,
+                  methodId: loc.methodId,
+                  firstName: participation.firstName,
+                  email: participation.email,
+                })}
                 className="inline-flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-primary hover:underline"
               >
                 <Receipt className="size-4" />

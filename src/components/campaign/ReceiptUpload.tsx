@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Receipt,
   Loader2,
@@ -13,6 +13,10 @@ import {
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchCampaign, uploadReceipt, type ReceiptUploadResult } from "@/lib/api";
 import type { ParticipatingLocation } from "@/lib/campaign-types";
+import {
+  readReceiptUploadPrefillFromSearch,
+  readStoredParticipant,
+} from "@/lib/receipt-upload-href";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8 MB
 
@@ -32,9 +36,10 @@ function readFileAsDataUrl(file: File): Promise<string> {
 export function ReceiptUpload() {
   const { state, goTo } = useCampaign();
 
-  // Fall back to a `?campaign=<slug>` URL param so the public campaign page can
-  // link supporters here directly (context has no slug outside the SPA flow).
   const [urlSlug, setUrlSlug] = useState<string | null>(null);
+  const prefillApplied = useRef(false);
+  const [visitLocked, setVisitLocked] = useState(false);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     setUrlSlug(new URLSearchParams(window.location.search).get("campaign"));
@@ -78,7 +83,38 @@ export function ReceiptUpload() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (prefillApplied.current || locations.length === 0) return;
+    if (typeof window === "undefined") return;
+
+    const fromUrl = readReceiptUploadPrefillFromSearch(window.location.search);
+    const fromStore = readStoredParticipant();
+    const first = fromUrl.firstName || fromStore.firstName || "";
+    const mail = fromUrl.email || fromStore.email || "";
+    if (first) setFirstName(first);
+    if (mail) setEmail(mail);
+
+    let matchedKey = "";
+    if (fromUrl.businessId != null && fromUrl.locationId != null && fromUrl.methodId != null) {
+      const key = `${fromUrl.businessId}-${fromUrl.locationId}-${fromUrl.methodId}`;
+      if (locations.some((loc) => locationKey(loc) === key)) {
+        matchedKey = key;
+      }
+    }
+    if (!matchedKey && locations.length === 1) {
+      matchedKey = locationKey(locations[0]);
+    }
+
+    if (matchedKey) {
+      setSelectedKey(matchedKey);
+      setVisitLocked(Boolean(first && mail && fromUrl.businessId != null));
+    }
+
+    prefillApplied.current = true;
+  }, [locations]);
+
   const selected = locations.find((loc) => locationKey(loc) === selectedKey) ?? null;
+  const showFullPicker = !visitLocked || !selected;
 
   const handleFile = async (file: File | null) => {
     setSubmitError(null);
@@ -97,21 +133,24 @@ export function ReceiptUpload() {
     }
   };
 
+  const claimed = Number(claimedSubtotal);
+  const hasClaimedTotal = Number.isFinite(claimed) && claimed > 0;
+
   const canSubmit =
     !!slug &&
     !!selected &&
     firstName.trim().length > 0 &&
     email.includes("@") &&
     !!imageDataUrl &&
+    hasClaimedTotal &&
     !submitting;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!slug || !selected || !imageDataUrl) return;
+    if (!slug || !selected || !imageDataUrl || !hasClaimedTotal) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const claimed = Number(claimedSubtotal);
       const res = await uploadReceipt(slug, {
         firstName: firstName.trim(),
         email: email.trim(),
@@ -120,7 +159,7 @@ export function ReceiptUpload() {
         methodId: selected.methodId,
         imageBase64: imageDataUrl,
         imageMimeType: imageMimeType ?? "image/jpeg",
-        claimedSubtotal: Number.isFinite(claimed) && claimed > 0 ? claimed : undefined,
+        claimedSubtotal: claimed,
       });
       setResult(res);
     } catch (err) {
@@ -132,9 +171,6 @@ export function ReceiptUpload() {
 
   const resetForm = () => {
     setResult(null);
-    setSelectedKey("");
-    setFirstName("");
-    setEmail("");
     setClaimedSubtotal("");
     setImageDataUrl(null);
     setImageMimeType(null);
@@ -239,8 +275,9 @@ export function ReceiptUpload() {
         Upload your receipt
       </h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Dined or shopped at a participating business? Upload your receipt so your visit
-        turns into a donation for the campaign.
+        {visitLocked && selected
+          ? `Add a photo and the total for your visit at ${selected.businessName}.`
+          : "Dined or shopped at a participating business? Upload your receipt so your visit turns into a donation for the campaign."}
       </p>
 
       {loading && (
@@ -259,76 +296,108 @@ export function ReceiptUpload() {
 
       {!loading && !loadError && locations.length > 0 && (
         <form onSubmit={handleSubmit} className="mt-8 space-y-7">
-          <div>
-            <label className="text-sm font-semibold">Where did you visit?</label>
-            <div className="mt-3 grid gap-2.5">
-              {locations.map((loc) => {
-                const key = locationKey(loc);
-                const active = key === selectedKey;
-                return (
+          {showFullPicker ? (
+            <div>
+              <label className="text-sm font-semibold">Where did you visit?</label>
+              <div className="mt-3 grid gap-2.5">
+                {locations.map((loc) => {
+                  const key = locationKey(loc);
+                  const active = key === selectedKey;
+                  return (
+                    <button
+                      type="button"
+                      key={key}
+                      onClick={() => setSelectedKey(key)}
+                      className={`flex items-start gap-3 rounded-2xl border-2 p-4 text-left transition-colors ${
+                        active
+                          ? "border-primary bg-primary/5"
+                          : "border-border bg-card hover:border-primary/40"
+                      }`}
+                    >
+                      <MapPin
+                        className={`mt-0.5 size-4 shrink-0 ${active ? "text-primary" : "text-muted-foreground"}`}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold">{loc.businessName}</span>
+                        <span className="block text-sm text-muted-foreground">
+                          {loc.locationName}
+                          {loc.city ? ` · ${loc.city}` : ""}
+                          {loc.state ? `, ${loc.state}` : ""}
+                        </span>
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                          {loc.participationMethod} · {loc.givebackPercentage}% giveback
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            selected && (
+              <div className="rounded-2xl border border-border bg-card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <div className="min-w-0">
+                      <p className="font-semibold">{selected.businessName}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {selected.locationName}
+                        {selected.city ? ` · ${selected.city}` : ""}
+                        {selected.state ? `, ${selected.state}` : ""}
+                      </p>
+                      <p className="mt-1 text-sm text-foreground">
+                        {firstName}
+                        {email ? ` · ${email}` : ""}
+                      </p>
+                    </div>
+                  </div>
                   <button
                     type="button"
-                    key={key}
-                    onClick={() => setSelectedKey(key)}
-                    className={`flex items-start gap-3 rounded-2xl border-2 p-4 text-left transition-colors ${
-                      active
-                        ? "border-primary bg-primary/5"
-                        : "border-border bg-card hover:border-primary/40"
-                    }`}
+                    onClick={() => setVisitLocked(false)}
+                    className="shrink-0 text-xs font-semibold text-primary hover:underline"
                   >
-                    <MapPin
-                      className={`mt-0.5 size-4 shrink-0 ${active ? "text-primary" : "text-muted-foreground"}`}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-semibold">{loc.businessName}</span>
-                      <span className="block text-sm text-muted-foreground">
-                        {loc.locationName}
-                        {loc.city ? ` · ${loc.city}` : ""}
-                        {loc.state ? `, ${loc.state}` : ""}
-                      </span>
-                      <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                        {loc.participationMethod} · {loc.givebackPercentage}% giveback
-                      </span>
-                    </span>
+                    Change
                   </button>
-                );
-              })}
-            </div>
-          </div>
+                </div>
+              </div>
+            )
+          )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block space-y-1.5">
-              <span className="text-sm font-semibold">First name</span>
-              <input
-                type="text"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                placeholder="Your first name"
-                className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-semibold">Email</span>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </label>
-          </div>
+          {showFullPicker && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block space-y-1.5">
+                <span className="text-sm font-semibold">First name</span>
+                <input
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="Your first name"
+                  className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-sm font-semibold">Email</span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </label>
+            </div>
+          )}
 
           <label className="block space-y-1.5">
-            <span className="text-sm font-semibold">
-              Receipt total <span className="font-normal text-muted-foreground">(optional)</span>
-            </span>
+            <span className="text-sm font-semibold">Receipt total</span>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
               <input
                 type="number"
-                min="0"
+                min="0.01"
                 step="0.01"
+                required
                 value={claimedSubtotal}
                 onChange={(e) => setClaimedSubtotal(e.target.value)}
                 placeholder="0.00"
@@ -336,7 +405,8 @@ export function ReceiptUpload() {
               />
             </div>
             <span className="text-xs text-muted-foreground">
-              Helps us match your receipt faster — the organizer confirms the eligible amount.
+              Enter the amount on your receipt. If the photo cannot be read automatically, this
+              total is used for review.
             </span>
           </label>
 
@@ -375,7 +445,18 @@ export function ReceiptUpload() {
             </label>
           </div>
 
-          {submitError && <p className="text-sm text-destructive">{submitError}</p>}
+          {submitError && (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              <p>{submitError}</p>
+              {(submitError.toLowerCase().includes("duplicate") ||
+                /\(.*matched\)/i.test(submitError)) && (
+                <p className="mt-1 text-xs">
+                  If this is a different visit, check the date and amount or ask the organizer to
+                  reject the earlier receipt first.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center justify-between gap-3 pt-2">
             <button
