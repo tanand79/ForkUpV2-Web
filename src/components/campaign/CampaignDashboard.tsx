@@ -30,6 +30,7 @@ import { toDateOnlyString, formatDateUs } from "@/lib/date-only";
 import { ApiAcceptanceStatusBadge } from "@/components/campaign/BusinessStatusBadge";
 import { formatRespondByLabel, SETUP_STATUS_LABEL, MARKETING_READY_LABEL, SETTLEMENT_READY_LABEL, type SetupStatus, type MarketingReadyStatus, type SettlementReadyStatus } from "@/lib/business-status";
 import { campaignPublicPath } from "@/lib/campaign-paths";
+import { netAfterPlatformFee } from "@/lib/platform-config";
 import { BusinessEmailActions } from "./BusinessEmailActions";
 import { CampaignVisibilityPanel } from "./CampaignVisibilityPanel";
 import { SuccessEngineActionList } from "./SuccessEngineActionList";
@@ -310,18 +311,18 @@ export function CampaignDashboard() {
     },
     {
       label: "Donation Pool",
-      value: receiptTotals ? formatMoney(receiptTotals.donationPool) : "—",
+      value: receiptTotals ? formatMoney(netAfterPlatformFee(receiptTotals.donationPool)) : "—",
       hint: undefined,
     },
     {
       label: "Average Contribution",
-      value: receiptTotals ? formatMoney(receiptTotals.averageContribution) : "—",
+      value: receiptTotals ? formatMoney(netAfterPlatformFee(receiptTotals.averageContribution)) : "—",
       hint: undefined,
     },
     {
       label: "Business Leaderboard",
       value: topBusiness ? topBusiness.businessName : receiptTotals ? "None yet" : "—",
-      hint: topBusiness ? formatMoney(topBusiness.donationPool) : undefined,
+      hint: topBusiness ? formatMoney(netAfterPlatformFee(topBusiness.donationPool)) : undefined,
     },
   ];
   // Empty-state guidance is for pre-live only; live can still add partners via CTA.
@@ -359,7 +360,7 @@ export function CampaignDashboard() {
     allStatuses.filter((s) => s === "changes-requested").length;
 
   const raised = apiDashboard
-    ? `$${apiDashboard.raised.toLocaleString()}`
+    ? `$${netAfterPlatformFee(apiDashboard.raised).toLocaleString()}`
     : state.goal
       ? state.goal
       : "$3,250";

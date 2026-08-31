@@ -38,6 +38,7 @@ import {
   resolveDashboardDrafts,
   type CampaignTab,
 } from "@/lib/nonprofit-dashboard-campaigns";
+import { netAfterPlatformFee } from "@/lib/platform-config";
 import { RequestAgainButton } from "@/components/campaign/RequestAgainButton";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -754,7 +755,7 @@ export function NonprofitDashboard() {
         ) : null}
         <p className="mt-3 text-sm">
           <span className="text-muted-foreground">Raised: </span>
-          <span className="font-extrabold text-primary">${Number(c.raised).toLocaleString()}</span>
+          <span className="font-extrabold text-primary">${netAfterPlatformFee(Number(c.raised)).toLocaleString()}</span>
           {c.goal > 0 && (
             <span className="text-muted-foreground">
               {" "}

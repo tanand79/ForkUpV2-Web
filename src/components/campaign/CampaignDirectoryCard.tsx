@@ -7,10 +7,12 @@ import { formatCurrency } from "@/data/campaigns";
 import { resolveCampaignImage } from "@/lib/campaign-images";
 import type { CampaignListItem } from "@/lib/campaign-types";
 import { campaignPublicPath } from "@/lib/campaign-paths";
+import { netAfterPlatformFee } from "@/lib/platform-config";
 
 export function CampaignDirectoryCard({ campaign }: { campaign: CampaignListItem }) {
+  const displayRaised = netAfterPlatformFee(campaign.raised);
   const pct =
-    campaign.goal > 0 ? Math.min(100, Math.round((campaign.raised / campaign.goal) * 100)) : 0;
+    campaign.goal > 0 ? Math.min(100, Math.round((displayRaised / campaign.goal) * 100)) : 0;
   const resolvedSrc = resolveCampaignImage(campaign.image);
   const placeholderSrc = resolveCampaignImage(null);
   const [imgSrc, setImgSrc] = useState(resolvedSrc);
@@ -62,7 +64,7 @@ export function CampaignDirectoryCard({ campaign }: { campaign: CampaignListItem
         </div>
 
         <p className="text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">{formatCurrency(campaign.raised)}</span>{" "}
+          <span className="font-semibold text-foreground">{formatCurrency(displayRaised)}</span>{" "}
           raised
           {campaign.goal > 0 && (
             <>

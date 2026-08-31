@@ -23,6 +23,7 @@ import {
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchCampaignAnalytics, type CampaignAnalytics as Analytics } from "@/lib/api";
 import { formatDateUs } from "@/lib/date-only";
+import { netAfterPlatformFee } from "@/lib/platform-config";
 
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -94,9 +95,16 @@ export function CampaignAnalytics() {
     );
   }
 
+  const raisedNet = data ? netAfterPlatformFee(data.campaign.raised) : 0;
+  const poolNet = data ? netAfterPlatformFee(data.totals.donationPool) : 0;
+  const timelineNet =
+    data?.timeline.map((row) => ({
+      ...row,
+      donationPool: netAfterPlatformFee(row.donationPool),
+    })) ?? [];
   const goalPct =
     data && data.campaign.goal > 0
-      ? Math.min(100, Math.round((data.campaign.raised / data.campaign.goal) * 100))
+      ? Math.min(100, Math.round((raisedNet / data.campaign.goal) * 100))
       : null;
 
   const approvalRate =
@@ -141,7 +149,7 @@ export function CampaignAnalytics() {
             </p>
             <div className="mt-4 flex flex-wrap items-baseline gap-x-2 gap-y-1">
               <span className="text-3xl font-extrabold tracking-tight">
-                {fmtCurrency(data.campaign.raised)}
+                {fmtCurrency(raisedNet)}
               </span>
               <span className="text-sm text-muted-foreground">
                 raised of {fmtCurrency(data.campaign.goal)} goal
@@ -164,7 +172,7 @@ export function CampaignAnalytics() {
             <KpiCard
               icon={<DollarSign className="size-4" />}
               label="Giveback pool"
-              value={fmtCurrency(data.totals.donationPool)}
+              value={fmtCurrency(poolNet)}
               hint={`from ${fmtCurrency(data.totals.eligibleSales)} eligible sales`}
             />
             <KpiCard
@@ -228,7 +236,7 @@ export function CampaignAnalytics() {
             {hasTimeline ? (
               <div className="mt-4 h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={data.timeline} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <AreaChart data={timelineNet} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="donationFill" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.35} />
@@ -317,7 +325,7 @@ export function CampaignAnalytics() {
                           {fmtCurrency(b.eligibleSales)}
                         </td>
                         <td className="py-2.5 text-right font-semibold tabular-nums">
-                          {fmtCurrency(b.donationPool)}
+                          {fmtCurrency(netAfterPlatformFee(b.donationPool))}
                         </td>
                       </tr>
                     ))}

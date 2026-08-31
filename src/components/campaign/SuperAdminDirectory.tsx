@@ -30,6 +30,7 @@ import {
   type SuperAdminRoleRow,
   type SuperAdminDirectoryUser,
 } from "@/lib/api";
+import { netAfterPlatformFee } from "@/lib/platform-config";
 import {
   Dialog,
   DialogContent,
@@ -571,7 +572,7 @@ export function SuperAdminCampaignsDirectoryTab() {
                   <td className={td}>{c.nonprofit || "—"}</td>
                   <td className={td}>{c.status || "—"}</td>
                   <td className={`${td} tabular-nums`}>
-                    ${c.raised.toLocaleString()}
+                    ${netAfterPlatformFee(c.raised).toLocaleString()}
                     {c.goal != null ? ` / $${c.goal.toLocaleString()}` : ""}
                   </td>
                   <td className={`${td} text-xs text-muted-foreground`}>

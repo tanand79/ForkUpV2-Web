@@ -63,6 +63,7 @@ import {
   type SuperAdminOrganizationDetails,
   type SuperAdminUser,
 } from "@/lib/api";
+import { netAfterPlatformFee } from "@/lib/platform-config";
 import {
   Dialog,
   DialogContent,
@@ -864,7 +865,7 @@ function LiveCampaignsTab() {
                 <p className="font-semibold">{r.name}</p>
                 <p className="text-muted-foreground">{r.nonprofit}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Raised ${Number(r.raised).toLocaleString()} / ${Number(r.goal).toLocaleString()}
+                  Raised ${netAfterPlatformFee(Number(r.raised)).toLocaleString()} / ${Number(r.goal).toLocaleString()}
                   {r.startDate ? ` · start ${r.startDate}` : ""}
                   {r.endDate ? ` · end ${r.endDate}` : ""}
                 </p>
@@ -1185,9 +1186,10 @@ function ActivityKpi({
  * Inputs: SuperAdminCampaignActivity. Outputs: campaign summary card.
  */
 function CampaignActivityCard({ campaign }: { campaign: SuperAdminCampaignActivity }) {
+  const raisedNet = netAfterPlatformFee(campaign.raised);
   const goalPct =
     campaign.goal > 0
-      ? Math.min(100, Math.round((campaign.raised / campaign.goal) * 100))
+      ? Math.min(100, Math.round((raisedNet / campaign.goal) * 100))
       : null;
   const dateLabel = campaign.eventDate
     ? `Event ${formatDateUs(campaign.eventDate)}`
@@ -1234,7 +1236,7 @@ function CampaignActivityCard({ campaign }: { campaign: SuperAdminCampaignActivi
 
       <p className="mt-3 text-sm">
         <span className="text-muted-foreground">Raised: </span>
-        <span className="font-extrabold text-primary">{fmtMoney(campaign.raised)}</span>
+        <span className="font-extrabold text-primary">{fmtMoney(raisedNet)}</span>
         {campaign.goal > 0 ? (
           <span className="text-muted-foreground"> / {fmtMoney(campaign.goal)} goal</span>
         ) : null}
@@ -1256,7 +1258,7 @@ function CampaignActivityCard({ campaign }: { campaign: SuperAdminCampaignActivi
         />
         <ActivityKpi
           label="Giveback pool"
-          value={fmtMoney(campaign.givebackPool)}
+          value={fmtMoney(netAfterPlatformFee(campaign.givebackPool))}
           hint={`from ${fmtMoney(campaign.eligibleSales)} eligible sales`}
         />
         <ActivityKpi
@@ -1403,7 +1405,7 @@ function OrganizationDetailsView({
                 />
                 <ActivityKpi
                   label="Total raised"
-                  value={fmtMoney(summary.totalRaised)}
+                  value={fmtMoney(netAfterPlatformFee(summary.totalRaised))}
                   hint={
                     summary.totalGoal > 0 ? `of ${fmtMoney(summary.totalGoal)} goal` : undefined
                   }
@@ -1415,7 +1417,7 @@ function OrganizationDetailsView({
                 />
                 <ActivityKpi
                   label="Giveback pool"
-                  value={fmtMoney(summary.givebackPool)}
+                  value={fmtMoney(netAfterPlatformFee(summary.givebackPool))}
                   hint={`from ${fmtMoney(summary.eligibleSales)} eligible sales`}
                 />
                 <ActivityKpi

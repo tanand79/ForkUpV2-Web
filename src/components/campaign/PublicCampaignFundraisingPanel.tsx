@@ -9,6 +9,7 @@
 
 import { CheckCircle2, Heart, MapPin, Share2, Store, Users } from "lucide-react";
 import { formatCurrency } from "@/data/campaigns";
+import { netAfterPlatformFee } from "@/lib/platform-config";
 
 function formatCompactGoal(n: number): string {
   if (n >= 1_000_000) {
@@ -49,7 +50,8 @@ export function PublicCampaignFundraisingPanel({
   onParticipate,
   compact = false,
 }: PublicCampaignFundraisingPanelProps) {
-  const pct = goal > 0 ? Math.min(100, Math.round((raised / goal) * 100)) : 0;
+  const displayRaised = netAfterPlatformFee(raised);
+  const pct = goal > 0 ? Math.min(100, Math.round((displayRaised / goal) * 100)) : 0;
 
   return (
     <div
@@ -63,7 +65,7 @@ export function PublicCampaignFundraisingPanel({
         <p className="text-sm font-medium text-muted-foreground">{pct}% complete</p>
       )}
       <p className="mt-1 font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-        <span className="text-primary">{formatCurrency(raised)}</span>
+        <span className="text-primary">{formatCurrency(displayRaised)}</span>
         {goal > 0 && (
           <span className="text-lg font-semibold text-muted-foreground">
             {" "}

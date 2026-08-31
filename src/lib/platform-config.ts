@@ -58,3 +58,17 @@ export function calculateGivebackBreakdown(
 export function exampleGivebackBreakdown(): GivebackFinancialBreakdown {
   return calculateGivebackBreakdown(2000, 15, DEFAULT_PLATFORM_FEE_PERCENT);
 }
+
+/**
+ * Display amount after ForkUp platform fee (default 15%).
+ * Stored/API totals stay gross; UI progress and pool figures use this.
+ */
+export function netAfterPlatformFee(
+  grossAmount: number,
+  platformFeePercent: number = DEFAULT_PLATFORM_FEE_PERCENT,
+): number {
+  const gross = Number(grossAmount) || 0;
+  if (gross <= 0) return 0;
+  const fee = Math.round(gross * (platformFeePercent / 100) * 100) / 100;
+  return Math.round((gross - fee) * 100) / 100;
+}

@@ -41,6 +41,7 @@ import {
 } from "@/lib/api";
 import { useCampaign } from "@/lib/campaign-context";
 import { formatDateUs } from "@/lib/date-only";
+import { netAfterPlatformFee } from "@/lib/platform-config";
 import { assetSrc } from "@/lib/utils";
 import { InReviewCampaignPhotosEditor } from "@/components/campaign/InReviewCampaignPhotosEditor";
 import { InReviewHelpFaqs } from "@/components/campaign/InReviewHelpFaqs";
@@ -143,7 +144,7 @@ export function InReviewCampaignPreview() {
   const story = (builder?.campaignStory || "").trim();
   const coverUrl = builder?.coverImageUrl ? assetSrc(builder.coverImageUrl) : null;
   const goal = Number(dash?.goal ?? builder?.campaignGoal ?? 0);
-  const raised = Number(dash?.raised ?? 0);
+  const raised = netAfterPlatformFee(Number(dash?.raised ?? 0));
   const progress = pctOfGoal(raised, goal);
   const startLabel = dash?.startDate ? formatDateUs(dash.startDate) : "—";
 

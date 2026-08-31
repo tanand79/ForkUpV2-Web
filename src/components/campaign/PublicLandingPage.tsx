@@ -19,6 +19,7 @@ import heroImage from "@/assets/events-hero.jpg";
 import { formatCurrency } from "@/data/campaigns";
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchCampaigns } from "@/lib/api";
+import { netAfterPlatformFee } from "@/lib/platform-config";
 import { stashAccountIntent } from "@/lib/campaign-auth";
 import { getAuthToken } from "@/lib/auth-storage";
 import { useClientMounted } from "@/lib/use-client-mounted";
@@ -512,7 +513,7 @@ export function PublicLandingPage() {
                     </h3>
                     <p className="mt-1 text-sm text-muted-foreground">{r.nonprofit}</p>
                     <p className="mt-4 font-display text-3xl font-semibold text-primary">
-                      {formatCurrency(r.raised)}{" "}
+                      {formatCurrency(netAfterPlatformFee(r.raised))}{" "}
                       <span className="text-base font-normal text-muted-foreground">raised</span>
                     </p>
                     <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
