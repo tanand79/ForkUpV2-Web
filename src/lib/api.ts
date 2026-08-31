@@ -1892,7 +1892,22 @@ export interface SettlementReport {
     startDate: string | null;
     endDate: string | null;
     isLocked: boolean;
+    graceDays?: number;
+    closedAt?: string | null;
+    frozenAt?: string | null;
+    adjustmentWindowEnd?: string | null;
   };
+  pipeline?: {
+    closed: boolean;
+    frozen: boolean;
+    snapshot: boolean;
+    statementsSent: boolean;
+  };
+  statements?: {
+    nonprofitPdf: string | null;
+    internalPdf: string | null;
+  };
+  auditLog?: { action: string; details: string | null; at: string }[];
   receiptStats: { total: number; approved: number; pending: number };
   businessReports: {
     id: number;
@@ -1901,8 +1916,17 @@ export interface SettlementReport {
     eligibleSales: number;
     donationPercentage: number;
     donationPool: number;
+    givebackAmount?: number;
     forkupFee: number;
     netNonprofitAmount: number;
+    stripeDonations?: number;
+    stripeFee?: number;
+    stripeNet?: number;
+    achDebitAmount?: number;
+    achStatus?: string;
+    snapshotStatus?: string;
+    pdfBusinessPath?: string | null;
+    pdfAchPath?: string | null;
     paymentStatus: string;
     lockedAt: string | null;
   }[];

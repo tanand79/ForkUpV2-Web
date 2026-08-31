@@ -11,6 +11,7 @@ import {
   type SettlementReport,
 } from "@/lib/api";
 import { PayoutsPanel } from "@/components/campaign/PayoutsPanel";
+import { apiUrl } from "@/lib/api-config";
 
 /** Wrap a value as a CSV field, escaping quotes and commas per RFC 4180. */
 function csvField(value: string | number | null | undefined): string {
@@ -168,8 +169,10 @@ export function ReportingSettlement() {
       </button>
       <h1 className="text-2xl font-extrabold tracking-tight">Reporting &amp; Settlement</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Business giveback settlement from approved receipts. Online donations are tracked separately
-        and excluded from business settlement calculations.
+        After the campaign end date plus grace period, ForkUp closes the campaign, waits a 24-hour
+        adjustment window, then freezes totals. Settlement uses approved Dine &amp; Donate receipts
+        and completed online donations, applies the platform fee and card processing fees, then
+        emails PDF statements.
       </p>
 
       {loading && (
@@ -213,6 +216,38 @@ export function ReportingSettlement() {
                 Settlement narrative
               </h2>
               <p className="mt-2 whitespace-pre-wrap text-muted-foreground">{narrative}</p>
+            </section>
+          )}
+
+          {report.pipeline && (
+            <section className="rounded-2xl border border-border bg-card p-6">
+              <h2 className="font-bold">Settlement pipeline</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Grace period {report.campaign.graceDays ?? 7} days after the end date, then a 24-hour
+                adjustment window. You can still lock early with the button below.
+              </p>
+              <ol className="mt-4 grid gap-2 text-sm sm:grid-cols-4">
+                {(
+                  [
+                    ["Closed", report.pipeline.closed],
+                    ["Frozen", report.pipeline.frozen],
+                    ["Snapshot", report.pipeline.snapshot],
+                    ["Statements sent", report.pipeline.statementsSent],
+                  ] as const
+                ).map(([label, done]) => (
+                  <li
+                    key={label}
+                    className={`rounded-lg px-3 py-2 ${done ? "bg-primary/10 font-semibold" : "bg-secondary/40 text-muted-foreground"}`}
+                  >
+                    {done ? "Done" : "Pending"} — {label}
+                  </li>
+                ))}
+              </ol>
+              {report.campaign.adjustmentWindowEnd && !report.pipeline.frozen && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Adjustment window ends {new Date(report.campaign.adjustmentWindowEnd).toLocaleString()}
+                </p>
+              )}
             </section>
           )}
 
@@ -299,11 +334,35 @@ export function ReportingSettlement() {
                     <p className="mt-1 text-muted-foreground">
                       Sales ${b.eligibleSales.toFixed(2)} · Donation ${b.donationPool.toFixed(2)} ·
                       Net ${b.netNonprofitAmount.toFixed(2)} · {b.paymentStatus}
+                      {b.achStatus ? ` · ACH ${b.achStatus}` : ""}
                     </p>
+                    {b.pdfBusinessPath && (
+                      <a
+                        href={apiUrl(b.pdfBusinessPath)}
+                        className="mt-2 inline-block text-xs font-semibold text-primary hover:underline"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Download statement PDF
+                      </a>
+                    )}
                   </li>
                 ))}
               </ul>
             </section>
+          )}
+
+          {report.statements?.nonprofitPdf && (
+            <p className="text-sm">
+              <a
+                href={apiUrl(report.statements.nonprofitPdf)}
+                className="font-semibold text-primary hover:underline"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Download nonprofit donation statement PDF
+              </a>
+            </p>
           )}
 
           <PayoutsPanel slug={slug} businessReports={report.businessReports} />
