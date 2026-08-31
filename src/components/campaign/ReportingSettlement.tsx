@@ -389,6 +389,9 @@ export function ReportingSettlement() {
               </button>
             </section>
           )}
+
+          <section className="rounded-2xl border border-border bg-card p-6">
+            <h2 className="font-bold">{report.campaign.name}</h2>
             <p className="mt-1 text-sm capitalize text-muted-foreground">Status: {report.campaign.status}</p>
             <div className="mt-4 grid grid-cols-3 gap-3 text-center">
               <div>
