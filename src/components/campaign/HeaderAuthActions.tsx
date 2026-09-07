@@ -16,6 +16,7 @@ import { getAuthToken } from "@/lib/auth-storage";
 import { clearAuthAndSession } from "@/lib/auth-session";
 
 import { HeaderPillButton, headerPillClass } from "./SiteHeader";
+import { AiEngineDropdown } from "./AiEngineDropdown";
 
 
 
@@ -125,11 +126,17 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
 
     return (
 
-      <span className={`${headerPillClass} invisible`} aria-hidden>
+      <>
 
-        Sign in
+        <AiEngineDropdown />
 
-      </span>
+        <span className={`${headerPillClass} invisible`} aria-hidden>
+
+          Sign in
+
+        </span>
+
+      </>
 
     );
 
@@ -142,6 +149,8 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
     return (
 
       <>
+
+        <AiEngineDropdown />
 
         {label && (
 
@@ -177,11 +186,17 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
 
   return (
 
-    <button type="button" onClick={() => goTo("auth-login")} className={headerPillClass}>
+    <>
 
-      Sign in
+      <AiEngineDropdown />
 
-    </button>
+      <button type="button" onClick={() => goTo("auth-login")} className={headerPillClass}>
+
+        Sign in
+
+      </button>
+
+    </>
 
   );
 

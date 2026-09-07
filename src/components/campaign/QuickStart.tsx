@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useCampaign, type SupportMethod, type SupportMethods } from "@/lib/campaign-context";
 import { fetchManageCampaigns, generateCampaignDraft, suggestCampaignGoal } from "@/lib/api";
+import { getAiModel } from "@/lib/aiModelSetting";
 import { getAuthToken } from "@/lib/auth-storage";
 import { suggestCampaignDates, suggestOnlineCampaignDates, hasBusinessMethod } from "@/lib/campaign-timing";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
@@ -321,6 +322,7 @@ export function QuickStart() {
         organizationType: "nonprofit",
         organizationId: org?.id,
         website: state.promotion.websiteUrl || undefined,
+        modelId: getAiModel(),
       });
       setPendingDraft({
         title: draft.title,

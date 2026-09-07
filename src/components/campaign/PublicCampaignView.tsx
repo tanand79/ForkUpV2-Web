@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   BadgeCheck,
   Calendar,
   CheckCircle2,
@@ -26,7 +25,7 @@ import { PublicCampaignGuestBartendingSection } from "@/components/campaign/Publ
 import { PublicCampaignImageSlider } from "@/components/campaign/PublicCampaignImageSlider";
 import { PublicCampaignLeaderboard } from "@/components/campaign/PublicCampaignLeaderboard";
 import { PublicCampaignLocationsSection } from "@/components/campaign/PublicCampaignLocationsSection";
-import { HeaderPillLink, SiteHeader } from "@/components/campaign/SiteHeader";
+import { PublicCampaignSiteHeader } from "@/components/campaign/PublicCampaignSiteHeader";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 function isGuestBartendingLocation(loc: ParticipatingLocation): boolean {
@@ -513,21 +512,7 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-12">
-      <SiteHeader
-        trailing={
-          <>
-            <span className="hidden text-sm font-semibold text-foreground sm:inline">Campaign</span>
-            <HeaderPillLink href="/?step=campaign-directory">
-              <ArrowLeft className="size-3.5" />
-              Back to campaigns
-            </HeaderPillLink>
-            <HeaderPillLink href="/">
-              <ArrowLeft className="size-3.5" />
-              Back to home
-            </HeaderPillLink>
-          </>
-        }
-      />
+      <PublicCampaignSiteHeader />
 
       {isPreviewNotLive && (
         <div className="border-b border-amber-300/60 bg-amber-50/95 px-4 py-3 text-center text-sm font-semibold text-amber-900">

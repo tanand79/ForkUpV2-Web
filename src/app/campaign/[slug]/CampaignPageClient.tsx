@@ -7,8 +7,7 @@ import { fetchCampaign } from "@/lib/api";
 import type { CampaignDetail } from "@/lib/campaign-types";
 import { PublicCampaignView } from "@/components/campaign/PublicCampaignView";
 import { PublicCampaignSkeleton } from "@/components/campaign/PublicCampaignSkeleton";
-import { HeaderPillLink, SiteHeader } from "@/components/campaign/SiteHeader";
-import { ArrowLeft } from "lucide-react";
+import { PublicCampaignSiteHeader } from "@/components/campaign/PublicCampaignSiteHeader";
 
 function slugFromPathname(pathname: string): string {
   const match = pathname.match(/\/campaign\/([^/]+)/);
@@ -39,21 +38,7 @@ function useCampaignSlugFromUrl(): { slug: string; ready: boolean } {
 function CampaignPageShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
-      <SiteHeader
-        trailing={
-          <>
-            <span className="hidden text-sm font-semibold text-foreground sm:inline">Campaign</span>
-            <HeaderPillLink href="/?step=campaign-directory">
-              <ArrowLeft className="size-3.5" />
-              Back to campaigns
-            </HeaderPillLink>
-            <HeaderPillLink href="/">
-              <ArrowLeft className="size-3.5" />
-              Back to home
-            </HeaderPillLink>
-          </>
-        }
-      />
+      <PublicCampaignSiteHeader />
       <div className="mx-auto max-w-3xl px-5 py-16">{children}</div>
     </div>
   );

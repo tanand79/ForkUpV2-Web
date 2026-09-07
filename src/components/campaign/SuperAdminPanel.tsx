@@ -1683,18 +1683,20 @@ function ProfileTab({
 }
 
 function AiTab() {
-  const [selected, setSelected] = useState("");
-  const [models, setModels] = useState<
-    {
-      id: string;
-      label: string;
-      vendor: string;
-      tier: string;
-      blurb: string;
-      estimatedRunCost: number;
-      pricingSource?: "aws" | "fallback";
-    }[]
-  >([]);
+  type AiModelCard = {
+    id: string;
+    label: string;
+    vendor: string;
+    tier: string;
+    blurb: string;
+    estimatedRunCost: number;
+    estimatedReceiptRunCost: number;
+    pricingSource?: "aws" | "fallback";
+  };
+
+  const [selectedDraft, setSelectedDraft] = useState("");
+  const [selectedReceipt, setSelectedReceipt] = useState("");
+  const [models, setModels] = useState<AiModelCard[]>([]);
   const [pricingSource, setPricingSource] = useState<"aws" | "fallback" | "mixed" | null>(null);
   const [pricingFetchedAt, setPricingFetchedAt] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -1704,7 +1706,8 @@ function AiTab() {
   useEffect(() => {
     void fetchSuperAdminAiSettings()
       .then((r) => {
-        setSelected(r.selectedModelId);
+        setSelectedDraft(r.selectedModelId);
+        setSelectedReceipt(r.selectedReceiptModelId);
         setModels(r.models);
         setPricingSource(r.pricingSource ?? null);
         setPricingFetchedAt(r.pricingFetchedAt ?? null);
@@ -1717,8 +1720,11 @@ function AiTab() {
     setError(null);
     setMessage(null);
     try {
-      await saveSuperAdminAiSettings(selected);
-      setMessage("AI model saved. New drafts will use this engine.");
+      await saveSuperAdminAiSettings({
+        modelId: selectedDraft,
+        receiptModelId: selectedReceipt,
+      });
+      setMessage("AI models saved. Drafts and receipt OCR will use your selections.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     }
@@ -1742,48 +1748,82 @@ function AiTab() {
     ? ` · updated ${formatDateTimeUs(pricingFetchedAt)}`
     : "";
 
+  const renderModelGrid = (
+    selected: string,
+    onSelect: (id: string) => void,
+    costKey: "estimatedRunCost" | "estimatedReceiptRunCost",
+    costSuffix: string,
+  ) => (
+    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      {models.map((m) => (
+        <button
+          key={`${costKey}-${m.id}`}
+          type="button"
+          onClick={() => onSelect(m.id)}
+          className={`rounded-xl border p-4 text-left transition-colors ${
+            selected === m.id ? "border-primary bg-primary/5" : "border-border hover:bg-secondary/40"
+          }`}
+        >
+          <p className="text-sm font-semibold">{m.label}</p>
+          <p className="text-xs text-muted-foreground">
+            {m.vendor} · {m.tier}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{m.blurb}</p>
+          <p className="mt-2 text-xs font-semibold text-primary">
+            Est. {formatCost(m[costKey])} {costSuffix}
+            <span className="ml-1 font-normal text-muted-foreground">
+              · {m.pricingSource === "aws" ? "Live from AWS" : "Cached estimate"}
+            </span>
+          </p>
+        </button>
+      ))}
+    </div>
+  );
+
   return (
-    <section className="rounded-2xl border border-border bg-card p-5">
-      <h2 className="flex items-center gap-2 text-lg font-bold">
-        <Sparkles className="size-5 text-primary" /> AI Engine
-      </h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Choose the Bedrock model used for organization and campaign drafts. Estimated run cost shown
-        per typical draft (~10k in / 3.5k out tokens).
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Pricing: <span className="font-medium text-foreground">{pricingLabel}</span>
-        {fetchedLabel}
-      </p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        {models.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => setSelected(m.id)}
-            className={`rounded-xl border p-4 text-left transition-colors ${
-              selected === m.id ? "border-primary bg-primary/5" : "border-border hover:bg-secondary/40"
-            }`}
-          >
-            <p className="text-sm font-semibold">{m.label}</p>
-            <p className="text-xs text-muted-foreground">
-              {m.vendor} · {m.tier}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">{m.blurb}</p>
-            <p className="mt-2 text-xs font-semibold text-primary">
-              Est. {formatCost(m.estimatedRunCost)} / run
-              <span className="ml-1 font-normal text-muted-foreground">
-                · {m.pricingSource === "aws" ? "Live from AWS" : "Cached estimate"}
-              </span>
-            </p>
-          </button>
-        ))}
+    <section className="rounded-2xl border border-border bg-card p-5 space-y-6">
+      <div>
+        <h2 className="flex items-center gap-2 text-lg font-bold">
+          <Sparkles className="size-5 text-primary" /> AI Engine
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Choose Bedrock models for campaign drafts and receipt/check vision OCR — like the clinical
+          AI engine picker in Dermwrite.
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Pricing: <span className="font-medium text-foreground">{pricingLabel}</span>
+          {fetchedLabel}
+        </p>
       </div>
-      <button type="button" className={`${btnPrimary} mt-4`} onClick={() => void save()}>
-        Save AI selection
+
+      <div className="rounded-xl border border-border/70 bg-secondary/20 p-4">
+        <h3 className="text-sm font-bold text-foreground">Campaign &amp; organization drafts</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Used for AI campaign drafts, story improvements, and organization populate (~10k in / 3.5k
+          out tokens per run).
+        </p>
+        {renderModelGrid(selectedDraft, setSelectedDraft, "estimatedRunCost", "/ draft run")}
+      </div>
+
+      <div className="rounded-xl border border-border/70 bg-secondary/20 p-4">
+        <h3 className="text-sm font-bold text-foreground">Receipt &amp; check OCR (vision)</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Reads uploaded receipts, invoices, and checks to extract merchant, date, and donation-eligible
+          subtotal (~2k in / 500 out tokens per scan).
+        </p>
+        {renderModelGrid(
+          selectedReceipt,
+          setSelectedReceipt,
+          "estimatedReceiptRunCost",
+          "/ receipt scan",
+        )}
+      </div>
+
+      <button type="button" className={btnPrimary} onClick={() => void save()}>
+        Save AI selections
       </button>
-      {message && <p className="mt-2 text-sm text-emerald-700">{message}</p>}
-      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+      {message && <p className="text-sm text-emerald-700">{message}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
     </section>
   );
 }

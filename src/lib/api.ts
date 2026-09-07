@@ -547,6 +547,7 @@ export function generateCampaignDraft(body: {
   organizationType?: "nonprofit" | "business";
   organizationId?: number;
   website?: string;
+  modelId?: string;
 }) {
   return fetchJson<CampaignDraftResult>("/api/generate-campaign-draft", {
     method: "POST",
@@ -1801,11 +1802,12 @@ export function uploadReceipt(
     imageBase64: string;
     imageMimeType?: string;
     claimedSubtotal?: number;
+    receiptModelId?: string;
   },
 ) {
   return fetchJson<ReceiptUploadResult>(`/api/campaigns/${slug}/receipts`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
 }
@@ -2156,13 +2158,14 @@ export function changeSuperAdminPassword(currentPassword: string, newPassword: s
 
 /**
  * GET /api/superadmin/settings/ai
- * Response: selectedModelId, pricingSource ("aws"|"fallback"|"mixed"),
+ * Response: selectedModelId, selectedReceiptModelId, pricingSource ("aws"|"fallback"|"mixed"),
  * pricingFetchedAt (ISO), models[{ id, label, vendor, tier, blurb,
- * inputPer1M, outputPer1M, pricingSource, estimatedRunCost }]
+ * inputPer1M, outputPer1M, pricingSource, estimatedRunCost, estimatedReceiptRunCost }]
  */
 export function fetchSuperAdminAiSettings() {
   return fetchJson<{
     selectedModelId: string;
+    selectedReceiptModelId: string;
     pricingSource?: "aws" | "fallback" | "mixed";
     pricingFetchedAt?: string;
     models: {
@@ -2175,16 +2178,53 @@ export function fetchSuperAdminAiSettings() {
       outputPer1M: number;
       pricingSource?: "aws" | "fallback";
       estimatedRunCost: number;
+      estimatedReceiptRunCost: number;
     }[];
   }>("/api/superadmin/settings/ai");
 }
 
-export function saveSuperAdminAiSettings(modelId: string) {
-  return fetchJson<{ success: boolean; selectedModelId: string }>("/api/superadmin/settings/ai", {
+export function saveSuperAdminAiSettings(input: {
+  modelId?: string;
+  receiptModelId?: string;
+}) {
+  return fetchJson<{
+    success: boolean;
+    selectedModelId: string;
+    selectedReceiptModelId: string;
+  }>("/api/superadmin/settings/ai", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+/** User-facing AI engine (not Super Admin). */
+export function fetchUserAiSettings() {
+  return fetchJson<{ modelId: string }>("/api/ai/settings", {
+    headers: { ...authHeaders() },
+  });
+}
+
+export function saveUserAiSettings(modelId: string) {
+  return fetchJson<{ modelId: string }>("/api/ai/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ modelId }),
   });
+}
+
+export function fetchAiModelCatalog() {
+  return fetchJson<{
+    models: {
+      id: string;
+      label: string;
+      vendor: string;
+      tier: string;
+      blurb: string;
+      inputPer1M: number;
+      outputPer1M: number;
+    }[];
+  }>("/api/ai/models");
 }
 
 export function fetchSuperAdminCharges() {

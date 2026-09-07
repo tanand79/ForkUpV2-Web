@@ -1,25 +1,10 @@
-import { ArrowLeft } from "lucide-react";
-import { HeaderPillLink, SiteHeader } from "@/components/campaign/SiteHeader";
+import { PublicCampaignSiteHeader } from "@/components/campaign/PublicCampaignSiteHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function PublicCampaignSkeleton() {
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-12">
-      <SiteHeader
-        trailing={
-          <>
-            <span className="hidden text-sm font-semibold text-foreground sm:inline">Campaign</span>
-            <HeaderPillLink href="/?step=campaign-directory">
-              <ArrowLeft className="size-3.5" />
-              Back to campaigns
-            </HeaderPillLink>
-            <HeaderPillLink href="/">
-              <ArrowLeft className="size-3.5" />
-              Back to home
-            </HeaderPillLink>
-          </>
-        }
-      />
+      <PublicCampaignSiteHeader />
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 md:py-10">
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-10">

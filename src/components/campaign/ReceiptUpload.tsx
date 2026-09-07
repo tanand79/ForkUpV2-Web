@@ -17,6 +17,7 @@ import {
   readReceiptUploadPrefillFromSearch,
   readStoredParticipant,
 } from "@/lib/receipt-upload-href";
+import { getAiModel } from "@/lib/aiModelSetting";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8 MB
 
@@ -159,6 +160,7 @@ export function ReceiptUpload() {
         imageBase64: imageDataUrl,
         imageMimeType: imageMimeType ?? "image/jpeg",
         claimedSubtotal: hasClaimedTotal ? claimed : undefined,
+        receiptModelId: getAiModel(),
       });
       setResult(res);
     } catch (err) {
