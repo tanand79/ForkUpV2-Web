@@ -17,6 +17,7 @@ export type AccountIntent = UserRole;
 
 const BUSINESS_STEPS: StepId[] = [
   "business-claim",
+  "business-ai-onboarding",
   "business-invites-nonprofit",
   "business-dashboard",
   "ach-settings",
@@ -117,8 +118,17 @@ export function resolveDashboardStep(
   accountIntent: UserRole | null,
   hasNonprofitMembership: boolean,
   hasBusinessMembership: boolean,
-  currentStep?: StepId,
+  _currentStep?: StepId,
 ): StepId {
+  // Active role always wins — avoids nonprofit dashboard when user is in business context.
+  if (accountIntent) {
+    return dashboardStepForRole(
+      accountIntent,
+      hasNonprofitMembership,
+      hasBusinessMembership,
+    );
+  }
+
   const storedReturn = getDashboardReturn();
   if (storedReturn) {
     if (storedReturn === "business-dashboard" && hasBusinessMembership) return storedReturn;
@@ -130,7 +140,7 @@ export function resolveDashboardStep(
   const role =
     accountIntent ??
     getRoleHint() ??
-    (currentStep ? roleHintFromStep(currentStep) : null);
+    (_currentStep ? roleHintFromStep(_currentStep) : null);
 
   if (!role) return "account-hub";
   return dashboardStepForRole(role, hasNonprofitMembership, hasBusinessMembership);
@@ -183,6 +193,48 @@ export function consumeAuthReturnStep(): StepId | null {
   const raw = sessionStorage.getItem(RETURN_KEY);
   sessionStorage.removeItem(RETURN_KEY);
   if (raw && isStepId(raw)) return raw;
+  return null;
+}
+
+const AUTH_INITIAL_MODE_KEY = "forkup-auth-initial-mode";
+
+/** Open sign-up (not sign-in) before business AI onboarding for new visitors. */
+export function prepareBusinessJoinAuth() {
+  stashRoleHint("business");
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(AUTH_INITIAL_MODE_KEY, "register");
+  stashAuthReturnStep("business-ai-onboarding");
+}
+
+/**
+ * Destination for "Join as Business" — guest-first quick setup (Task 12).
+ */
+export function stepForBusinessJoin(
+  isAuthenticated: boolean,
+  hasBusinessProfile: boolean,
+): StepId {
+  stashRoleHint("business");
+  if (isAuthenticated && hasBusinessProfile) {
+    return "business-dashboard";
+  }
+  return "business-ai-onboarding";
+}
+
+/** Existing business accounts should not re-run AI claim onboarding after sign-in. */
+export function shouldSkipBusinessAiOnboarding(
+  businessMembershipCount: number,
+  hasBusinessProfile: boolean,
+): boolean {
+  return businessMembershipCount > 0 || hasBusinessProfile;
+}
+
+export function readAuthInitialMode(): "login" | "register" | null {
+  if (typeof window === "undefined") return null;
+  const raw = sessionStorage.getItem(AUTH_INITIAL_MODE_KEY);
+  if (raw === "login" || raw === "register") {
+    sessionStorage.removeItem(AUTH_INITIAL_MODE_KEY);
+    return raw;
+  }
   return null;
 }
 

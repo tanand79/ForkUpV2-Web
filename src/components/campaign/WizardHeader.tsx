@@ -35,6 +35,7 @@ const POST_CREATION_STEPS: StepId[] = [
   "choose-account-type",
   "nonprofit-claim",
   "business-claim",
+  "business-ai-onboarding",
   "business-invites-nonprofit",
   "nonprofit-accepts-invite",
   "nonprofit-dashboard",
@@ -103,7 +104,7 @@ export function WizardHeader() {
     </HeaderPillButton>
   );
 
-  if (step === "website-landing" || step === "past-campaigns" || step === "success-stories") {
+  if (step === "website-landing" || step === "website-marketing" || step === "past-campaigns" || step === "success-stories") {
     return null;
   }
 

@@ -18,7 +18,7 @@ import {
 } from "@/lib/campaign-routes";
 import { syncAuthSession, sessionMatchesState, buildSessionPatch, loadUserSession, persistUserSession } from "@/lib/auth-session";
 import type { UserRole } from "@/lib/user-roles";
-import { dashboardStepForRole } from "@/lib/user-roles";
+import { dashboardStepForRole, ROLE_HOME_DASHBOARD_STEPS } from "@/lib/user-roles";
 import { getAuthToken } from "@/lib/auth-storage";
 import { storyRequirementMet } from "@/lib/story-validation";
 import { assetSrc } from "@/lib/utils";
@@ -267,12 +267,14 @@ export type StepId =
   | "start"
   // ⚠️ DESIGN MODE placeholders — pre-campaign entry / claim lifecycle.
   | "website-landing"
+  | "website-marketing"
   | "campaign-directory"
   | "past-campaigns"
   | "success-stories"
   | "choose-account-type"
   | "nonprofit-claim"
   | "business-claim"
+  | "business-ai-onboarding"
   | "business-invites-nonprofit"
   | "nonprofit-accepts-invite"
   | "fundraiser-invite-accept"
@@ -280,6 +282,8 @@ export type StepId =
   | "nonprofit-dashboard"
   | "business-dashboard"
   | "ach-settings"
+  | "nonprofit-ach-settings"
+  | "settlement-ach-approval"
   | "supporter-dashboard"
   | "auth-login"
   | "account-hub"
@@ -1517,9 +1521,16 @@ export function CampaignProvider({
     if (!stepRequiresAuth(step)) return;
     if (isCampaignAuthenticated()) return;
 
+    if (step === "business-ai-onboarding") {
+      sessionStorage.setItem("forkup-auth-initial-mode", "register");
+    }
     stashAuthReturnStep(step);
     setStep("auth-login");
-    window.history.replaceState({ step: "auth-login" }, "", stepToPath("auth-login"));
+    window.history.replaceState(
+      { step: "auth-login" },
+      "",
+      pathForStep("auth-login", window.location.pathname, window.location.search),
+    );
   }, [step, designMode]);
 
   // Remember the last dashboard visited so "Back to dashboard" returns to the right role.
@@ -1527,6 +1538,34 @@ export function CampaignProvider({
     if (typeof window === "undefined") return;
     stashDashboardReturn(step, state.accountIntent);
   }, [step, state.accountIntent]);
+
+  // Keep dashboard URL aligned with active role (e.g. business user on nonprofit-dashboard).
+  useEffect(() => {
+    if (typeof window === "undefined" || designMode) return;
+    if (!getAuthToken() || !state.accountIntent) return;
+    if (!ROLE_HOME_DASHBOARD_STEPS.includes(step)) return;
+
+    const expected = dashboardStepForRole(
+      state.accountIntent,
+      state.nonprofitMemberships.length > 0,
+      state.businessMemberships.length > 0,
+    );
+    if (
+      expected !== step &&
+      expected !== "nonprofit-claim" &&
+      expected !== "business-claim" &&
+      expected !== "business-ai-onboarding"
+    ) {
+      goTo(expected);
+    }
+  }, [
+    step,
+    state.accountIntent,
+    state.nonprofitMemberships.length,
+    state.businessMemberships.length,
+    designMode,
+    goTo,
+  ]);
 
   const discardLocalDraft = useCallback((opts?: { slug?: string; force?: boolean }) => {
     if (!opts?.force && opts?.slug) {

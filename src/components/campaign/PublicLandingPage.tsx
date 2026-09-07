@@ -20,11 +20,12 @@ import { formatCurrency } from "@/data/campaigns";
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchCampaigns } from "@/lib/api";
 import { netAfterPlatformFee } from "@/lib/platform-config";
-import { stashAccountIntent } from "@/lib/campaign-auth";
+import { resolveDashboardStep, stashAccountIntent, stepForBusinessJoin } from "@/lib/campaign-auth";
 import { getAuthToken } from "@/lib/auth-storage";
 import { useClientMounted } from "@/lib/use-client-mounted";
 import type { CampaignListItem } from "@/lib/campaign-types";
 import { CampaignDirectoryCard } from "@/components/campaign/CampaignDirectoryCard";
+import { campaignHasEnded } from "@/components/campaign/CampaignDatePicker";
 
 /**
  * Public Landing Page — the broad public ForkUp marketplace front door.
@@ -100,7 +101,7 @@ export function PublicLandingPage() {
 
   useEffect(() => {
     void fetchCampaigns()
-      .then((rows) => setLiveCampaigns(rows.slice(0, 4)))
+      .then((rows) => setLiveCampaigns(rows.filter((c) => !campaignHasEnded(c)).slice(0, 4)))
       .catch(() => setLiveCampaigns([]))
       .finally(() => setCampaignsLoading(false));
   }, []);
@@ -129,6 +130,19 @@ export function PublicLandingPage() {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const openMyDashboard = () => {
+    const dashboard = resolveDashboardStep(
+      state.accountIntent,
+      state.nonprofitMemberships.length > 0,
+      state.businessMemberships.length > 0,
+    );
+    goTo(
+      dashboard === "nonprofit-claim" || dashboard === "business-claim"
+        ? "account-hub"
+        : dashboard,
+    );
+  };
+
   // Nonprofit members → own-org create. Everyone else → fundraiser find-org path.
   const startCampaign = () => {
     if (state.nonprofitMemberships.length > 0 || state.nonprofitProfile) {
@@ -141,8 +155,9 @@ export function PublicLandingPage() {
   };
 
   const joinAsBusiness = () => {
-    stashAccountIntent("business");
-    goTo("business-claim");
+    const hasBusiness =
+      state.businessMemberships.length > 0 || Boolean(state.businessProfile?.id);
+    goTo(stepForBusinessJoin(isLoggedIn, hasBusiness));
   };
 
   const exploreDirectory = () => {
@@ -238,7 +253,7 @@ export function PublicLandingPage() {
             {isLoggedIn && (
               <button
                 type="button"
-                onClick={() => goTo("nonprofit-dashboard")}
+                onClick={openMyDashboard}
                 className="rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
                 My Dashboard
@@ -294,7 +309,7 @@ export function PublicLandingPage() {
                 type="button"
                 onClick={() => {
                   setMobileOpen(false);
-                  goTo("nonprofit-dashboard");
+                  openMyDashboard();
                 }}
                 className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent"
               >
@@ -318,29 +333,31 @@ export function PublicLandingPage() {
           <div className="absolute inset-0 bg-foreground/78" />
         </div>
 
-        <div className="relative mx-auto max-w-6xl px-5 pb-16 pt-12 sm:px-6 md:pb-24 md:pt-16">
-          <div className="mx-auto max-w-3xl space-y-5 text-center text-background animate-rise">
-            <div className="flex flex-col items-center gap-2">
+        <div className="relative mx-auto max-w-6xl px-5 pb-8 pt-4 sm:px-6 md:pb-10 md:pt-5">
+          <div className="mx-auto max-w-4xl space-y-3 text-center text-background animate-rise">
+            <div className="flex flex-col items-center gap-1">
               <img
                 src={assetSrc(forkupLogo)}
                 alt="ForkUp"
                 width={380}
                 height={190}
-                className="h-[148px] w-auto object-contain md:h-[168px]"
+                className="h-[100px] w-auto object-contain md:h-[120px]"
               />
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-background/90">
                 Do good through everyday spending
               </p>
             </div>
-            <h1 className="font-display text-5xl font-semibold leading-[0.98] tracking-tight md:text-6xl lg:text-7xl">
-              Raise more by bringing your community and local businesses together.
+            <h1 className="mx-auto max-w-3xl font-display text-2xl font-semibold leading-tight tracking-tight sm:text-3xl md:max-w-4xl md:text-4xl lg:text-[2.75rem]">
+              Raise more by bringing your community and
+              <br />
+              local businesses together.
             </h1>
-            <p className="mx-auto max-w-2xl text-lg leading-relaxed text-background/90 md:text-xl">
+            <p className="mx-auto max-w-2xl text-base leading-snug text-background/90 md:text-lg">
               ForkUp connects nonprofits, teams, schools, and community groups with local businesses and
               supporters to build campaigns, drive participation, and track the impact in one place.
             </p>
 
-            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-center gap-3">
               <button
                 onClick={startCampaign}
                 className="group inline-flex items-center gap-2 rounded-full bg-primary px-7 py-3.5 text-base font-semibold text-primary-foreground shadow-xl shadow-primary/20 transition-all hover:bg-primary-dark hover:-translate-y-0.5 active:scale-95"
@@ -355,7 +372,7 @@ export function PublicLandingPage() {
                 Explore Live Campaigns
               </button>
             </div>
-            <div className="flex flex-col items-center gap-3 pt-3">
+            <div className="flex flex-col items-center gap-2 pt-1">
               <p className="text-sm text-background/80">
                 Create a campaign in minutes. Launch when ready.
               </p>
@@ -636,6 +653,9 @@ export function PublicLandingPage() {
             . Do good, locally.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+            <button onClick={() => goTo("website-landing")} className="transition-colors hover:text-foreground">
+              Events Home
+            </button>
             <button onClick={() => scrollTo("campaigns")} className="transition-colors hover:text-foreground">
               Live Campaigns
             </button>

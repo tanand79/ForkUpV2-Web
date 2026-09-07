@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Loader2,
   Settings2,
+  Landmark,
   Trash2,
   ShieldCheck,
   Clock,
@@ -924,6 +925,14 @@ export function NonprofitDashboard() {
             >
               <Settings2 className="size-4 shrink-0" />
               Edit organization profile
+            </button>
+            <button
+              type="button"
+              onClick={() => goTo("nonprofit-ach-settings")}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-primary transition-colors hover:text-primary-dark"
+            >
+              <Landmark className="size-4 shrink-0" />
+              Payout bank details
             </button>
             <span className="hidden h-4 w-px bg-border sm:block" aria-hidden />
             <button

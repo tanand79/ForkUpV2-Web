@@ -57,8 +57,34 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export function fetchCampaigns(status?: string) {
-  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+export function fetchPastCampaigns() {
+  return fetchCampaigns({ status: "past" });
+}
+
+/** Top-event campaigns for Success Stories (past first, then live). */
+export async function fetchSuccessStoryCampaigns() {
+  const past = await fetchPastCampaigns();
+  const featuredPast = past.filter((c) => c.topEvent);
+  if (featuredPast.length > 0) return featuredPast;
+  const live = await fetchCampaigns();
+  return live.filter((c) => c.topEvent);
+}
+
+export function fetchCampaigns(statusOrOptions?: string | { status?: string; nearby?: { lat: number; lng: number; radiusMiles?: number } }) {
+  const options =
+    typeof statusOrOptions === "string"
+      ? { status: statusOrOptions }
+      : (statusOrOptions ?? {});
+  const params = new URLSearchParams();
+  if (options.status) params.set("status", options.status);
+  if (options.nearby) {
+    params.set("lat", String(options.nearby.lat));
+    params.set("lng", String(options.nearby.lng));
+    if (options.nearby.radiusMiles != null) {
+      params.set("radiusMiles", String(options.nearby.radiusMiles));
+    }
+  }
+  const q = params.toString() ? `?${params.toString()}` : "";
   return fetchJson<CampaignListItem[]>(`/api/campaigns${q}`);
 }
 
@@ -1949,6 +1975,45 @@ export interface SettlementReport {
   onlineDonations?: {
     count: number;
     total: number;
+  };
+  achApprovals?: {
+    id: number;
+    settlementId: number;
+    approvalType: "business_debit" | "nonprofit_payout";
+    amount: number;
+    status: string;
+    approvedAt: string | null;
+    approvedByName: string | null;
+    businessName: string | null;
+    locationName: string | null;
+  }[];
+  calculationReview?: {
+    platformFeePercent: number;
+    cardFeePercent: number;
+    cardFeeFixed: number;
+    business: {
+      eligibleSales: number;
+      grossGiveback: number;
+      forkupFee: number;
+      netFromGiveback: number;
+      achDebitTotal: number;
+      amountOwedByBusiness: number;
+    };
+    online: {
+      donationsGross: number;
+      cardProcessingFee: number;
+      netAfterFees: number;
+      amountOwedToNonprofit: number;
+      donationCount: number;
+    } | null;
+    totals: {
+      donationPool: number;
+      forkupFee: number;
+      netToNonprofit: number;
+      outstandingBusinessAch: number;
+      outstandingNonprofitPayout: number;
+    };
+    lines: { label: string; formula: string; amount: number }[];
   };
 }
 

@@ -78,7 +78,7 @@ export function resolvePostAuthDestination(
   }
 
   if (roleHint) {
-    return ROLE_DASHBOARD[roleHint];
+    return dashboardStepForRole(roleHint, avail.nonprofit, avail.business);
   }
 
   const roles = availableRoles(avail);
@@ -115,8 +115,16 @@ export function pickDefaultActiveRole(
   ) {
     return previous;
   }
-  if (avail.nonprofit) return "nonprofit";
   if (avail.business) return "business";
+  if (avail.nonprofit) return "nonprofit";
   if (avail.fundraiser) return "fundraiser";
   return "supporter";
 }
+
+/** Dashboard steps that should match the user's active role. */
+export const ROLE_HOME_DASHBOARD_STEPS: StepId[] = [
+  "nonprofit-dashboard",
+  "business-dashboard",
+  "supporter-dashboard",
+  "fundraiser-dashboard",
+];

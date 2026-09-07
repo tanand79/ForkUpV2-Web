@@ -971,6 +971,17 @@ export function BusinessClaim() {
           ? "Update your business details. Changes apply to future partnerships."
           : "Confirm your business and the fundraising methods you can support. Your entries are saved as you type."}
       </p>
+      {!isEditing && (
+        <p className="mt-3 text-sm">
+          <button
+            type="button"
+            onClick={() => goTo("business-ai-onboarding")}
+            className="font-semibold text-primary hover:underline"
+          >
+            Quick setup with your website instead →
+          </button>
+        </p>
+      )}
 
       {outcome ? (
         <div className="mt-6">

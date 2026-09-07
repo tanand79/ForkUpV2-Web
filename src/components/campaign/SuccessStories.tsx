@@ -1,28 +1,44 @@
 "use client";
 
-import { ArrowLeft, Heart, Quote, Sparkles, Store, Users } from "lucide-react";
-import { successStories, formatCurrency, type Campaign } from "@/data/campaigns";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, Heart, Loader2, Quote, Sparkles, Store, Users } from "lucide-react";
+import { formatCurrency } from "@/data/campaigns";
+import { fetchSuccessStoryCampaigns } from "@/lib/api";
+import { resolveCampaignImage } from "@/lib/campaign-images";
+import { campaignPublicPath } from "@/lib/campaign-paths";
+import type { CampaignListItem } from "@/lib/campaign-types";
 import { useCampaign } from "@/lib/campaign-context";
+import { netAfterPlatformFee } from "@/lib/platform-config";
 
 /**
- * Success Stories — a standalone public, curated proof-of-concept view (not a
- * homepage section). Opened from the Campaigns dropdown → "Success Stories".
- * Reuses selected completed campaign data with community-impact framing.
- * Cards are display-only — story/impact copy is already on the card (no redirect to live directory).
+ * Success Stories — featured campaigns (top_event) from the API.
+ * Past featured campaigns first; falls back to live top events.
  */
 
-function SuccessStoryCard({ campaign }: { campaign: Campaign }) {
+function SuccessStoryCard({ campaign }: { campaign: CampaignListItem }) {
+  const displayRaised = netAfterPlatformFee(campaign.raised);
+  const resolvedSrc = resolveCampaignImage(campaign.image);
+  const placeholderSrc = resolveCampaignImage(null);
+  const summary = `${campaign.nonprofit} ran ${campaign.dateRange} and raised ${formatCurrency(displayRaised)} with community support.`;
+
   return (
-    <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
+    <Link
+      href={campaignPublicPath(campaign.slug)}
+      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
+    >
       <div className="relative aspect-[16/9] overflow-hidden bg-muted">
         <img
-          src={campaign.image}
+          src={resolvedSrc}
           alt={campaign.name}
           loading="lazy"
           width={1024}
           height={576}
-          className="h-full w-full object-cover object-center"
-          style={{ filter: "saturate(0.9) contrast(1.03) brightness(1.01)" }}
+          className="h-full w-full object-contain object-center transition-transform duration-500 group-hover:scale-[1.02]"
+          onError={(e) => {
+            const img = e.currentTarget;
+            if (img.src !== placeholderSrc) img.src = placeholderSrc;
+          }}
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-foreground/40" />
         <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-background/80 px-2.5 py-1 text-[11px] font-medium text-foreground/85 ring-1 ring-background/40 backdrop-blur-md">
@@ -35,45 +51,52 @@ function SuccessStoryCard({ campaign }: { campaign: Campaign }) {
         <div>
           <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             {campaign.nonprofit}
+            {campaign.nonprofitVerified && (
+              <span className="ml-1.5 text-primary">· Verified</span>
+            )}
           </p>
-          <h3 className="font-display text-xl font-semibold leading-tight tracking-tight text-foreground">
+          <h3 className="font-display text-xl font-semibold leading-tight tracking-tight text-foreground transition-colors group-hover:text-primary">
             {campaign.name}
           </h3>
         </div>
 
         <p className="inline-flex items-start gap-2 text-sm leading-relaxed text-muted-foreground">
           <Quote className="mt-0.5 size-4 shrink-0 text-primary/70" />
-          <span>{campaign.story ?? campaign.description}</span>
+          <span>{summary}</span>
         </p>
-
-        {campaign.impact && (
-          <p className="rounded-xl bg-accent/70 px-3 py-2 text-sm font-medium text-foreground">
-            {campaign.impact}
-          </p>
-        )}
 
         <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
             <Heart className="size-3.5 text-primary" />
-            <span className="font-semibold text-foreground">{formatCurrency(campaign.raised)}</span> raised
+            <span className="font-semibold text-foreground">{formatCurrency(displayRaised)}</span> raised
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Store className="size-3.5" />
-            {campaign.businesses.length} business partners
+            {campaign.participatingLocationCount} business partners
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Users className="size-3.5" />
-            {campaign.supporters} supporters
+            {campaign.supportersGoing} supporters
           </span>
         </div>
-
       </div>
-    </article>
+    </Link>
   );
 }
 
 export function SuccessStories() {
   const { goTo } = useCampaign();
+  const [campaigns, setCampaigns] = useState<CampaignListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    void fetchSuccessStoryCampaigns()
+      .then(setCampaigns)
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load success stories"))
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <main className="min-h-screen bg-background">
@@ -100,13 +123,24 @@ export function SuccessStories() {
       </section>
 
       <section className="mx-auto max-w-6xl px-5 py-12 sm:px-6 md:py-16">
-        {successStories.length === 0 ? (
+        {loading && (
+          <div className="flex justify-center py-16">
+            <Loader2 className="size-8 animate-spin text-primary" />
+          </div>
+        )}
+        {error && (
+          <p className="rounded-2xl border border-dashed border-border p-10 text-center text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        {!loading && !error && campaigns.length === 0 && (
           <p className="rounded-2xl border border-dashed border-border p-10 text-center text-muted-foreground">
             No success stories yet. Featured completed campaigns will appear here.
           </p>
-        ) : (
+        )}
+        {!loading && !error && campaigns.length > 0 && (
           <div className="grid gap-5 md:grid-cols-2">
-            {successStories.map((c) => (
+            {campaigns.map((c) => (
               <SuccessStoryCard key={c.slug} campaign={c} />
             ))}
           </div>

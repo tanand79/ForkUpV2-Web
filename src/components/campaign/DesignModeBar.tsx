@@ -35,11 +35,13 @@ const SECTIONS: Section[] = [
   {
     title: "Entry / Claim Flows",
     steps: [
-      { id: "website-landing", label: "Public Landing Page" },
+      { id: "website-landing", label: "Public Home (Task 1)" },
+      { id: "website-marketing", label: "Marketing Landing Page" },
       { id: "campaign-directory", label: "Campaign Directory / Live Campaigns" },
       { id: "campaign-page", label: "Public Campaign Page" },
       { id: "nonprofit-claim", label: "Nonprofit Claim / Create Profile" },
       { id: "business-claim", label: "Business Claim / Create Profile" },
+      { id: "business-ai-onboarding", label: "Business AI Onboarding (Tasks 6–9)" },
       { id: "business-acceptance", label: "Business Acceptance Flow" },
     ],
   },

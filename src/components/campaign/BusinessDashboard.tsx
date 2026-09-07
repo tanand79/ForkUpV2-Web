@@ -191,10 +191,10 @@ export function BusinessDashboard() {
         </p>
         <button
           type="button"
-          onClick={() => goTo("business-claim")}
+          onClick={() => goTo("business-ai-onboarding")}
           className="btn-primary mt-6 rounded-full px-6 py-3 text-sm font-semibold"
         >
-          Claim business profile
+          Set up business profile
         </button>
       </main>
     );

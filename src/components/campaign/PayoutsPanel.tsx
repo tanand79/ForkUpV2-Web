@@ -13,6 +13,7 @@ import {
   type SettlementReport,
 } from "@/lib/api";
 import { formatDateTimeUs, formatDateUs, looksLikeIsoDateTime } from "@/lib/date-only";
+import { formatMoneyUSD } from "@/lib/money-format";
 
 const TYPE_LABEL: Record<PayoutType, string> = {
   business_to_forkup: "Business → ForkUp",
@@ -156,11 +157,11 @@ export function PayoutsPanel({
 
       <div className="mt-4 grid grid-cols-3 gap-3 text-center">
         <div className="rounded-xl bg-secondary/40 p-3">
-          <p className="text-lg font-bold text-emerald-600">${summary.totalPaid.toFixed(2)}</p>
+          <p className="text-lg font-bold text-emerald-600">{formatMoneyUSD(summary.totalPaid)}</p>
           <p className="text-xs text-muted-foreground">Paid</p>
         </div>
         <div className="rounded-xl bg-secondary/40 p-3">
-          <p className="text-lg font-bold text-amber-600">${summary.totalPending.toFixed(2)}</p>
+          <p className="text-lg font-bold text-amber-600">{formatMoneyUSD(summary.totalPending)}</p>
           <p className="text-xs text-muted-foreground">Outstanding</p>
         </div>
         <div className="rounded-xl bg-secondary/40 p-3">
@@ -288,7 +289,7 @@ export function PayoutsPanel({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-semibold">
-                    {TYPE_LABEL[p.payoutType]} · ${p.amount.toFixed(2)}
+                    {TYPE_LABEL[p.payoutType]} · {formatMoneyUSD(p.amount)}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {p.businessName ? `${p.businessName}${p.locationName ? ` — ${p.locationName}` : ""} · ` : ""}

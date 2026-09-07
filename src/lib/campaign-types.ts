@@ -20,6 +20,9 @@ export interface CampaignListItem {
   nonprofitVerified: boolean;
   image: string;
   dateRange: string;
+  /** YYYY-MM-DD from API for calendar filters. */
+  startDate?: string | null;
+  endDate?: string | null;
   raised: number;
   goal: number;
   supportersGoing: number;

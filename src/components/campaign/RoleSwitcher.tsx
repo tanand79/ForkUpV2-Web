@@ -34,7 +34,15 @@ export function RoleSwitcher() {
     true,
   );
 
-  const active = state.accountIntent ?? (avail.nonprofit ? "nonprofit" : "supporter");
+  const active =
+    state.accountIntent ??
+    (avail.business && !avail.nonprofit
+      ? "business"
+      : avail.nonprofit
+        ? "nonprofit"
+        : avail.business
+          ? "business"
+          : "supporter");
 
   const navigateRole = (role: UserRole) => {
     switchActiveRole(role);

@@ -28,6 +28,7 @@ import {
   type AuthUser,
   type BusinessInvitationDetail,
 } from "@/lib/api";
+import { stepForBusinessJoin } from "@/lib/campaign-auth";
 import { getAuthToken, setAuthToken } from "@/lib/auth-storage";
 
 type View = "invite" | "accepted" | "declined" | "changes";
@@ -44,7 +45,7 @@ export function BusinessAcceptance() {
   const token = searchParams.get("token")?.trim() ?? "";
   const apiMode = token.length > 0;
 
-  const { state } = useCampaign();
+  const { state, goTo } = useCampaign();
 
   const [apiInvite, setApiInvite] = useState<BusinessInvitationDetail | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -402,7 +403,7 @@ export function BusinessAcceptance() {
               </button>
             </div>
           ) : (
-            <div className="mt-4">
+            <div className="mt-4 space-y-3">
               <AuthLogin
                 intent="business"
                 onSuccess={() => void loadInvitation()}
@@ -412,6 +413,26 @@ export function BusinessAcceptance() {
                     : undefined
                 }
               />
+              <p className="text-center text-xs text-amber-900 dark:text-amber-200/90">
+                New here?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const hasBusiness =
+                      state.businessMemberships.length > 0 || Boolean(state.businessProfile?.id);
+                    const authed = Boolean(getAuthToken());
+                    const next = stepForBusinessJoin(authed, hasBusiness);
+                    if (next === "business-ai-onboarding" || next === "auth-login") {
+                      goTo(next, { query: { token } });
+                      return;
+                    }
+                    goTo(next);
+                  }}
+                  className="font-semibold underline"
+                >
+                  Set up your business from your website
+                </button>
+              </p>
             </div>
           )}
         </div>

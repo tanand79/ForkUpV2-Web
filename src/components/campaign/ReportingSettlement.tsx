@@ -13,7 +13,9 @@ import {
   type SettlementReport,
 } from "@/lib/api";
 import { PayoutsPanel } from "@/components/campaign/PayoutsPanel";
+import { SettlementCalculationBreakdown } from "@/components/campaign/SettlementCalculationBreakdown";
 import { apiUrl } from "@/lib/api-config";
+import { formatMoneyNumber, formatMoneyUSD } from "@/lib/money-format";
 
 /** Wrap a value as a CSV field, escaping quotes and commas per RFC 4180. */
 function csvField(value: string | number | null | undefined): string {
@@ -39,13 +41,13 @@ function buildSettlementCsv(report: SettlementReport): string {
   rows.push(csvRow(["Receipts (total)", report.receiptStats.total]));
   rows.push(csvRow(["Receipts (approved)", report.receiptStats.approved]));
   rows.push(csvRow(["Receipts (pending)", report.receiptStats.pending]));
-  rows.push(csvRow(["Eligible sales", report.nonprofitReport.eligibleSales.toFixed(2)]));
-  rows.push(csvRow(["Donation pool", report.nonprofitReport.donationPool.toFixed(2)]));
-  rows.push(csvRow(["ForkUp fee", report.nonprofitReport.forkupFee.toFixed(2)]));
-  rows.push(csvRow(["Net to nonprofit", report.nonprofitReport.netNonprofitAmount.toFixed(2)]));
+  rows.push(csvRow(["Eligible sales", formatMoneyNumber(report.nonprofitReport.eligibleSales)]));
+  rows.push(csvRow(["Donation pool", formatMoneyNumber(report.nonprofitReport.donationPool)]));
+  rows.push(csvRow(["ForkUp fee", formatMoneyNumber(report.nonprofitReport.forkupFee)]));
+  rows.push(csvRow(["Net to nonprofit", formatMoneyNumber(report.nonprofitReport.netNonprofitAmount)]));
   if (report.onlineDonations) {
     rows.push(csvRow(["Online donations (count)", report.onlineDonations.count]));
-    rows.push(csvRow(["Online donations (total)", report.onlineDonations.total.toFixed(2)]));
+    rows.push(csvRow(["Online donations (total)", formatMoneyNumber(report.onlineDonations.total)]));
   }
   rows.push("");
 
@@ -67,11 +69,11 @@ function buildSettlementCsv(report: SettlementReport): string {
       csvRow([
         b.businessName,
         b.locationName,
-        b.eligibleSales.toFixed(2),
+        formatMoneyNumber(b.eligibleSales),
         b.donationPercentage,
-        b.donationPool.toFixed(2),
-        b.forkupFee.toFixed(2),
-        b.netNonprofitAmount.toFixed(2),
+        formatMoneyNumber(b.donationPool),
+        formatMoneyNumber(b.forkupFee),
+        formatMoneyNumber(b.netNonprofitAmount),
         b.paymentStatus,
         b.lockedAt ?? "",
       ]),
@@ -415,29 +417,34 @@ export function ReportingSettlement() {
               Business giveback summary
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Eligible sales, donation pool, platform fee, and net nonprofit amount are stored separately.
+              Eligible sales, donation pool, platform fee, and net nonprofit amount are stored
+              separately.
             </p>
             <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
               <div className="flex justify-between rounded-lg bg-secondary/40 px-3 py-2">
                 <dt>Eligible sales</dt>
-                <dd className="font-semibold">${report.nonprofitReport.eligibleSales.toFixed(2)}</dd>
+                <dd className="font-semibold">{formatMoneyUSD(report.nonprofitReport.eligibleSales)}</dd>
               </div>
               <div className="flex justify-between rounded-lg bg-secondary/40 px-3 py-2">
                 <dt>Donation pool</dt>
-                <dd className="font-semibold">${report.nonprofitReport.donationPool.toFixed(2)}</dd>
+                <dd className="font-semibold">{formatMoneyUSD(report.nonprofitReport.donationPool)}</dd>
               </div>
               <div className="flex justify-between rounded-lg bg-secondary/40 px-3 py-2">
                 <dt>ForkUp fee</dt>
-                <dd className="font-semibold">${report.nonprofitReport.forkupFee.toFixed(2)}</dd>
+                <dd className="font-semibold">{formatMoneyUSD(report.nonprofitReport.forkupFee)}</dd>
               </div>
               <div className="flex justify-between rounded-lg bg-primary/10 px-3 py-2">
                 <dt>Net to nonprofit</dt>
                 <dd className="font-bold text-primary">
-                  ${report.nonprofitReport.netNonprofitAmount.toFixed(2)}
+                  {formatMoneyUSD(report.nonprofitReport.netNonprofitAmount)}
                 </dd>
               </div>
             </dl>
           </section>
+
+          {report.calculationReview && (
+            <SettlementCalculationBreakdown review={report.calculationReview} />
+          )}
 
           {report.onlineDonations && report.onlineDonations.count > 0 && (
             <section className="rounded-2xl border border-border bg-card p-6">
@@ -454,7 +461,7 @@ export function ReportingSettlement() {
                 <div className="flex justify-between rounded-lg bg-primary/10 px-3 py-2">
                   <dt>Total donated online</dt>
                   <dd className="font-bold text-primary">
-                    ${report.onlineDonations.total.toFixed(2)}
+                    {formatMoneyUSD(report.onlineDonations.total)}
                   </dd>
                 </div>
               </dl>
@@ -471,8 +478,9 @@ export function ReportingSettlement() {
                       {b.businessName} — {b.locationName}
                     </p>
                     <p className="mt-1 text-muted-foreground">
-                      Sales ${b.eligibleSales.toFixed(2)} · Donation ${b.donationPool.toFixed(2)} ·
-                      Net ${b.netNonprofitAmount.toFixed(2)} · {b.paymentStatus}
+                      Sales {formatMoneyUSD(b.eligibleSales)} · Donation{" "}
+                      {formatMoneyUSD(b.donationPool)} · Net {formatMoneyUSD(b.netNonprofitAmount)} ·{" "}
+                      {b.paymentStatus}
                     </p>
                     <label className="mt-3 flex items-center gap-2 text-xs">
                       <span className="text-muted-foreground">ACH status</span>
@@ -522,6 +530,51 @@ export function ReportingSettlement() {
               </a>
             </p>
           )}
+
+          {report.achApprovals && report.achApprovals.length > 0 && (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50/80 p-6 dark:border-amber-900 dark:bg-amber-950/30">
+              <h2 className="font-bold">ACH approvals</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Businesses and nonprofits approve ACH via email links before transfers are initiated.
+              </p>
+              <ul className="mt-4 space-y-2 text-sm">
+                {report.achApprovals.map((a) => (
+                  <li
+                    key={a.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2"
+                  >
+                    <span>
+                      {a.approvalType === "nonprofit_payout"
+                        ? "Online donation payout"
+                        : `${a.businessName ?? "Business"}${a.locationName ? ` — ${a.locationName}` : ""}`}
+                      {" · "}
+                      {formatMoneyUSD(a.amount)}
+                    </span>
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
+                        a.status === "approved"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-amber-100 text-amber-800"
+                      }`}
+                    >
+                      {a.status}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {report.onlineDonations &&
+            report.onlineDonations.count > 0 &&
+            report.achApprovals?.some(
+              (a) => a.approvalType === "nonprofit_payout" && a.status === "pending",
+            ) && (
+              <p className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-foreground">
+                Online donation settlement is ready — the nonprofit must approve the payout link
+                sent by email before ACH is initiated.
+              </p>
+            )}
 
           <PayoutsPanel slug={slug} businessReports={report.businessReports} />
 

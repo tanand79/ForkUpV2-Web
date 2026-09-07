@@ -7,7 +7,9 @@ import {
   consumeAuthReturnStep,
   consumeRoleHint,
   getRoleHint,
+  readAuthInitialMode,
   resolvePostAuthStep,
+  shouldSkipBusinessAiOnboarding,
   stashRoleHint,
   type AccountIntent,
 } from "@/lib/campaign-auth";
@@ -63,12 +65,15 @@ import {
 import { FundraiserAcceptsInvite } from "@/components/campaign/FundraiserAcceptsInvite";
 import { FundraiserDashboard } from "@/components/campaign/FundraiserDashboard";
 import { PublicLandingPage } from "@/components/campaign/PublicLandingPage";
+import { PublicHomePage } from "@/components/campaign/PublicHomePage";
 import { CampaignDirectory } from "@/components/campaign/CampaignDirectory";
 import { PastCampaigns } from "@/components/campaign/PastCampaigns";
 import { SuccessStories } from "@/components/campaign/SuccessStories";
 import { NonprofitDashboard } from "@/components/campaign/NonprofitDashboard";
 import { BusinessDashboard } from "@/components/campaign/BusinessDashboard";
 import { BusinessAchSettings } from "@/components/campaign/BusinessAchSettings";
+import { NonprofitAchSettings } from "@/components/campaign/NonprofitAchSettings";
+import { SettlementAchApproval } from "@/components/campaign/SettlementAchApproval";
 import { SupporterDashboard } from "@/components/campaign/SupporterDashboard";
 import { AccountHub } from "@/components/campaign/AccountHub";
 import { SuccessState } from "@/components/campaign/SuccessStates";
@@ -87,6 +92,7 @@ import {
   AiCampaignPreview,
   AiContinueGuest,
 } from "@/components/campaign/ai-flow";
+import { BusinessAiOnboarding } from "@/components/campaign/business-ai/BusinessAiOnboarding";
 
 /**
  * Purpose: Detect post-auth return into an in-progress campaign builder/launch path.
@@ -123,11 +129,13 @@ function AuthLoginScreen() {
   const [initialMode, setInitialMode] = useState<"login" | "register">("login");
 
   useEffect(() => {
-    setRoleHint(getRoleHint() ?? "nonprofit");
-    const raw = sessionStorage.getItem("forkup-auth-initial-mode");
-    if (raw === "register") {
+    const hint = getRoleHint() ?? "nonprofit";
+    setRoleHint(hint);
+    const savedMode = readAuthInitialMode();
+    if (savedMode) {
+      setInitialMode(savedMode);
+    } else if (hint === "business") {
       setInitialMode("register");
-      sessionStorage.removeItem("forkup-auth-initial-mode");
     }
     setMounted(true);
   }, []);
@@ -219,14 +227,38 @@ function AuthLoginScreen() {
         update({ nonprofitProfile: pendingNonprofitProfile });
       }
 
-      goTo(
-        resolvePostAuthStep(
-          returnStep,
-          role,
-          session.nonprofitMemberships.length,
+      const inviteToken =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("token")?.trim() || undefined
+          : undefined;
+
+      if (
+        returnStep === "business-ai-onboarding" &&
+        shouldSkipBusinessAiOnboarding(
           session.businessMemberships.length,
-        ),
+          Boolean(session.businessProfile?.id),
+        )
+      ) {
+        goTo(
+          inviteToken ? "business-acceptance" : "business-dashboard",
+          inviteToken ? { query: { token: inviteToken } } : undefined,
+        );
+        return;
+      }
+
+      const destination = resolvePostAuthStep(
+        returnStep,
+        role,
+        session.nonprofitMemberships.length,
+        session.businessMemberships.length,
       );
+
+      if (destination === "business-ai-onboarding" && inviteToken) {
+        goTo("business-ai-onboarding", { query: { token: inviteToken } });
+        return;
+      }
+
+      goTo(destination);
     } finally {
       setFinishing(false);
     }
@@ -235,10 +267,12 @@ function AuthLoginScreen() {
   return (
     <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col justify-center px-5 py-10 sm:px-6">
       <h1 className="font-display text-3xl font-bold tracking-tight">
-        Welcome back
+        {roleHint === "business" ? "Join as a business partner" : "Welcome back"}
       </h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Sign in to continue your fundraiser, or create a free account.
+        {roleHint === "business"
+          ? "Create a free account to set up your business profile. Already registered? Switch to Sign in below — we will take you to your business dashboard."
+          : "Sign in to continue your fundraiser, or create a free account."}
       </p>
 
       {mounted && (
@@ -289,6 +323,8 @@ function WizardBody() {
     case "start":
       return <StartFundraising />;
     case "website-landing":
+      return <PublicHomePage />;
+    case "website-marketing":
       return <PublicLandingPage />;
     case "campaign-directory":
       return <CampaignDirectory />;
@@ -304,6 +340,18 @@ function WizardBody() {
       return <NonprofitClaim />;
     case "business-claim":
       return <BusinessClaim />;
+    case "business-ai-onboarding":
+      return (
+        <Suspense
+          fallback={
+            <div className="flex justify-center py-20">
+              <span className="text-sm text-muted-foreground">Loading business setup…</span>
+            </div>
+          }
+        >
+          <BusinessAiOnboarding />
+        </Suspense>
+      );
     case "business-invites-nonprofit":
       return <BusinessInvitesNonprofit />;
     case "nonprofit-accepts-invite":
@@ -338,6 +386,10 @@ function WizardBody() {
       return <BusinessDashboard />;
     case "ach-settings":
       return <BusinessAchSettings />;
+    case "nonprofit-ach-settings":
+      return <NonprofitAchSettings />;
+    case "settlement-ach-approval":
+      return <SettlementAchApproval />;
     case "supporter-dashboard":
       return <SupporterDashboard />;
     case "auth-login":
