@@ -289,6 +289,7 @@ export type StepId =
   | "auth-login"
   | "auth-forgot-password"
   | "auth-reset-password"
+  | "auth-verify-email"
   | "account-hub"
   | "choose-organizer-mode"
   // GoFundMe-style first questions (who / region / purpose) before Find Org.

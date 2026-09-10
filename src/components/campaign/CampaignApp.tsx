@@ -86,6 +86,14 @@ import {
   AuthForgotPassword,
   AuthResetPassword,
 } from "@/components/campaign/AuthPasswordRecovery";
+import {
+  AuthVerifyEmail,
+  consumePostVerifyFinishIntent,
+  isAwaitingEmailVerify,
+  promotePendingAuthToken,
+  stashPostVerifyIntent,
+  clearPendingSignupAuth,
+} from "@/components/campaign/AuthEmailVerification";
 import { ChooseOrganizerMode } from "@/components/campaign/ChooseOrganizerMode";
 import { CreateFundraiser } from "@/components/campaign/CreateFundraiser";
 import { GuidedBuilderShell } from "@/components/campaign/GuidedBuilderShell";
@@ -340,6 +348,25 @@ function AuthLoginScreen() {
     }
   };
 
+  useEffect(() => {
+    if (!mounted) return;
+    const pendingIntent = consumePostVerifyFinishIntent();
+    if (
+      pendingIntent === "nonprofit" ||
+      pendingIntent === "business" ||
+      pendingIntent === "supporter" ||
+      pendingIntent === "fundraiser"
+    ) {
+      promotePendingAuthToken();
+      setFinishing(true);
+      void finishAuth(pendingIntent);
+      return;
+    }
+    // Sign-in / sign-up screen must not show a leftover signed-in header.
+    clearPendingSignupAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
+
   const lockFundraiserDraft = isFundraiserOrgDraftLocked(
     state.accountIntent,
     state.nonprofitProfile,
@@ -363,7 +390,20 @@ function AuthLoginScreen() {
           <AuthLogin
             intent={lockFundraiserDraft ? "fundraiser" : roleHint}
             initialMode={initialMode}
-            onSuccess={finishAuth}
+            onSuccess={async (selectedRole) => {
+              if (isAwaitingEmailVerify()) {
+                return;
+              }
+              await finishAuth(selectedRole);
+            }}
+            onRegistered={(registeredEmail) => {
+              const intent = lockFundraiserDraft ? "fundraiser" : roleHint;
+              stashPostVerifyIntent(intent);
+              // Clear any leftover ?token= so we do not auto-verify and show a false error.
+              goTo("auth-verify-email", {
+                query: { email: registeredEmail, token: undefined },
+              });
+            }}
             onForgotPassword={() => goTo("auth-forgot-password")}
             linkOrganization={
               // Only register→link when intentionally claiming as nonprofit.
@@ -498,6 +538,12 @@ function WizardBody() {
       return (
         <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-primary" /></div>}>
           <AuthResetPassword />
+        </Suspense>
+      );
+    case "auth-verify-email":
+      return (
+        <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-primary" /></div>}>
+          <AuthVerifyEmail />
         </Suspense>
       );
     case "choose-organizer-mode":

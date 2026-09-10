@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  ArrowLeft,
   ArrowRight,
   Sparkles,
   Zap,
@@ -207,6 +208,15 @@ export function PublicLandingPage() {
       <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-6">
           <nav className="hidden items-center gap-1 md:flex">
+            {/* Back to public home — About page had no header path to website-landing */}
+            <button
+              type="button"
+              onClick={() => goTo("website-landing")}
+              className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="size-4" />
+              Home
+            </button>
             {/* Campaigns dropdown — click/tap toggle (works on touch + mouse) */}
             <div className="relative" ref={campaignsMenuRef}>
               <button
@@ -280,6 +290,17 @@ export function PublicLandingPage() {
         {/* Mobile menu */}
         {mobileOpen && (
           <div className="border-t border-border bg-background px-5 py-4 md:hidden">
+            <button
+              type="button"
+              onClick={() => {
+                setMobileOpen(false);
+                goTo("website-landing");
+              }}
+              className="mb-2 inline-flex w-full items-center gap-1.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              <ArrowLeft className="size-4" />
+              Home
+            </button>
             <p className="px-1 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Campaigns
             </p>
@@ -336,13 +357,20 @@ export function PublicLandingPage() {
         <div className="relative mx-auto max-w-6xl px-5 pb-8 pt-4 sm:px-6 md:pb-10 md:pt-5">
           <div className="mx-auto max-w-4xl space-y-3 text-center text-background animate-rise">
             <div className="flex flex-col items-center gap-1">
-              <img
-                src={assetSrc(forkupLogo)}
-                alt="ForkUp"
-                width={380}
-                height={190}
-                className="h-[100px] w-auto object-contain md:h-[120px]"
-              />
+              <button
+                type="button"
+                onClick={() => goTo("website-landing")}
+                className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-background/60"
+                aria-label="Back to ForkUp home"
+              >
+                <img
+                  src={assetSrc(forkupLogo)}
+                  alt="ForkUp"
+                  width={380}
+                  height={190}
+                  className="h-[100px] w-auto object-contain md:h-[120px]"
+                />
+              </button>
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-background/90">
                 Do good through everyday spending
               </p>

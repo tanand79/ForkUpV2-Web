@@ -1,4 +1,4 @@
-import { ArrowLeft, LogOut } from "lucide-react";
+import { ArrowLeft, Home, LogOut } from "lucide-react";
 import { useCampaign, SETUP_STEPS, type StepId } from "@/lib/campaign-context";
 import { resolveDashboardStep, roleHintFromStep, stashDashboardReturn } from "@/lib/campaign-auth";
 import { getAuthToken } from "@/lib/auth-storage";
@@ -43,7 +43,6 @@ const POST_CREATION_STEPS: StepId[] = [
   "business-dashboard",
   "supporter-dashboard",
   "account-hub",
-  "auth-login",
   "success-virtual",
   "success-ambassador",
   "success-bartending",
@@ -78,7 +77,7 @@ export function WizardHeader() {
 
   const BackToHome = (
     <HeaderPillButton onClick={handleBackToHome}>
-      <ArrowLeft className="size-3.5" />
+      <Home className="size-3.5" />
       Back to home
     </HeaderPillButton>
   );
@@ -99,7 +98,7 @@ export function WizardHeader() {
   ) : null;
 
   const SaveExit = (
-    <HeaderPillButton onClick={saveAndExit}>
+    <HeaderPillButton onClick={saveAndExit} variant="primary">
       <LogOut className="size-3.5" />
       Save &amp; Exit
     </HeaderPillButton>
@@ -130,9 +129,21 @@ export function WizardHeader() {
     step === "super-admin-reset-password" ||
     step === "super-admin" ||
     step === "auth-forgot-password" ||
-    step === "auth-reset-password"
+    step === "auth-reset-password" ||
+    step === "auth-verify-email"
   ) {
     return null;
+  }
+
+  // Sign-in / sign-up: never show signed-in chrome (Sign out / Save & Exit).
+  if (step === "auth-login") {
+    return (
+      <SiteHeader
+        sticky={false}
+        leading={HomeLogo}
+        trailing={BackToHome}
+      />
+    );
   }
 
   // Lovable Build → Review → Partners → Launch (guided / AI draft path only).
@@ -208,7 +219,6 @@ export function WizardHeader() {
     );
   }
 
-  const progress = currentIndex >= 0 ? ((currentIndex + 1) / total) * 100 : 8;
   const showLaunchChecklist =
     ADVANCED_BUILDER_STEPS.includes(step) ||
     step === "businesses" ||
@@ -229,20 +239,19 @@ export function WizardHeader() {
           </>
         ) : (
           <>
-            <span className="text-sm font-semibold text-foreground">
+            <span className="shrink-0 text-sm font-semibold text-foreground">
               {currentIndex >= 0 ? `Step ${currentIndex + 1} of ${total}` : "Get started"}
             </span>
+            <span className="mx-0.5 hidden h-5 w-px shrink-0 bg-border sm:block" aria-hidden />
             {currentLabel && (
-              <span className="hidden text-xs font-medium text-muted-foreground sm:inline">
+              <span className="hidden shrink-0 text-xs font-medium text-muted-foreground sm:inline">
                 {currentLabel}
               </span>
             )}
-            {BackToDashboard}
             {BackToHome}
             <OrganizationSwitcher />
             <RoleSwitcher />
             <HeaderAuthActions step={step} />
-            {SaveExit}
           </>
         )
       }
@@ -251,16 +260,7 @@ export function WizardHeader() {
           <div className="pb-4">
             <LaunchChecklist />
           </div>
-        ) : (
-          <div className="pb-4">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
-              <div
-                className="h-full rounded-full bg-primary transition-all duration-500"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-        )
+        ) : undefined
       }
     />
   );

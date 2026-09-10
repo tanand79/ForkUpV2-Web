@@ -14,7 +14,6 @@
  */
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { TEST_LOCATION_RICHMOND_VA } from "@/hooks/use-browser-location";
 
 const PRESETS = [8, 15, 25, 50] as const;
 
@@ -55,7 +54,7 @@ export type SearchRadiusControlProps = {
   enabled: boolean;
   valueMiles: number;
   onChange: (miles: number) => void;
-  /** Map center — falls back to Richmond test pin when omitted. */
+  /** Map center — visitor coords; map waits until both are set. */
   latitude?: number | null;
   longitude?: number | null;
 };
@@ -92,14 +91,13 @@ export function SearchRadiusControl({
   );
   const [customText, setCustomText] = useState(String(active));
 
-  const lat =
-    latitude != null && Number.isFinite(latitude)
-      ? latitude
-      : TEST_LOCATION_RICHMOND_VA.latitude;
-  const lng =
-    longitude != null && Number.isFinite(longitude)
-      ? longitude
-      : TEST_LOCATION_RICHMOND_VA.longitude;
+  const hasCenter =
+    latitude != null &&
+    longitude != null &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude);
+  const lat = hasCenter ? (latitude as number) : null;
+  const lng = hasCenter ? (longitude as number) : null;
 
   useEffect(() => {
     const next = clampMiles(valueMiles);
@@ -240,23 +238,35 @@ export function SearchRadiusControl({
           </p>
         </div>
 
-        {/* Right — live Google Map + radius rings */}
+        {/* Right — live Google Map + radius rings (waits for visitor coords) */}
         <div className="relative min-h-[260px] overflow-hidden sm:min-h-full">
-          <GoogleRadiusMap
-            latitude={lat}
-            longitude={lng}
-            radiusMiles={enabled ? active : 8}
-            dimmed={!enabled}
-          />
-          <p
-            className="pointer-events-none absolute bottom-3 left-0 right-0 text-center text-xs font-semibold tracking-wide"
-            style={{
-              color: INK,
-              textShadow: "0 1px 2px rgba(255,255,255,0.9)",
-            }}
-          >
-            Active: {active} mi
-          </p>
+          {lat != null && lng != null ? (
+            <>
+              <GoogleRadiusMap
+                latitude={lat}
+                longitude={lng}
+                radiusMiles={enabled ? active : 8}
+                dimmed={!enabled}
+              />
+              <p
+                className="pointer-events-none absolute bottom-3 left-0 right-0 text-center text-xs font-semibold tracking-wide"
+                style={{
+                  color: INK,
+                  textShadow: "0 1px 2px rgba(255,255,255,0.9)",
+                }}
+              >
+                Active: {active} mi
+              </p>
+            </>
+          ) : (
+            <div
+              className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm"
+              style={{ background: CREAM, color: MUTED }}
+              aria-live="polite"
+            >
+              Getting your location…
+            </div>
+          )}
         </div>
       </div>
     </div>

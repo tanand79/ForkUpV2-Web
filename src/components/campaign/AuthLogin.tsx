@@ -38,6 +38,9 @@ export function AuthLogin({
   /** Optional: open forgot-password step from sign-in mode. */
   onForgotPassword,
 
+  /** Optional: called after successful register (before onSuccess). */
+  onRegistered,
+
 }: {
 
   intent?: AccountIntent;
@@ -55,6 +58,8 @@ export function AuthLogin({
   initialMode?: "login" | "register";
 
   onForgotPassword?: () => void;
+
+  onRegistered?: (email: string) => void | Promise<void>;
 
 }) {
 
@@ -193,29 +198,22 @@ export function AuthLogin({
 
       stashRoleHint(intent);
 
-      const result =
-
-        mode === "login"
-
-          ? await loginUser(normalized, password)
-
-          : await registerUser({
-
-              email: normalized,
-
-              password,
-
-              fullName: fullName.trim() || undefined,
-
-              organizationType: linkOrganization?.organizationType,
-
-              organizationId: linkOrganization?.organizationId,
-
-            });
-
-      setAuthToken(result.token);
-
-      await onSuccess?.(intent);
+      if (mode === "login") {
+        const result = await loginUser(normalized, password);
+        setAuthToken(result.token);
+        await onSuccess?.(intent);
+      } else {
+        await registerUser({
+          email: normalized,
+          password,
+          fullName: fullName.trim() || undefined,
+          organizationType: linkOrganization?.organizationType,
+          organizationId: linkOrganization?.organizationId,
+        });
+        // Account is created only after email verify — no session yet.
+        await onRegistered?.(normalized);
+        await onSuccess?.(intent);
+      }
 
     } catch (err) {
 

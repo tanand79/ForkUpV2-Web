@@ -448,6 +448,14 @@ export function PublicHomePage() {
             <button type="button" onClick={() => goTo("success-stories")} className="hover:text-foreground">
               Success Stories
             </button>
+            {/* Quiet staff entry — same pattern as About / website-marketing footer */}
+            <button
+              type="button"
+              onClick={() => goTo(getAuthToken() ? "super-admin" : "super-admin-login")}
+              className="text-xs text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+            >
+              Staff Login
+            </button>
           </div>
         </div>
       </footer>

@@ -6,6 +6,10 @@ import forkupLogo from "@/assets/forkup-logo-header.png";
 export const headerPillClass =
   "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:border-primary/40";
 
+/** Solid primary pill for header CTAs (e.g. Save & Exit). Inputs: none. Outputs: class string. */
+export const headerPillPrimaryClass =
+  "inline-flex shrink-0 items-center gap-1.5 rounded-full border border-primary bg-primary px-3.5 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90";
+
 const headerShellClass = "border-b border-border bg-background/80 backdrop-blur-md";
 
 export function SiteHeaderLogo({
@@ -70,14 +74,20 @@ export function HeaderPillButton({
   children,
   type = "button",
   className = "",
+  variant = "default",
 }: {
   onClick: () => void;
   children: ReactNode;
   type?: "button" | "submit";
   className?: string;
+  variant?: "default" | "primary";
 }) {
   return (
-    <button type={type} onClick={onClick} className={`${headerPillClass} ${className}`.trim()}>
+    <button
+      type={type}
+      onClick={onClick}
+      className={`${variant === "primary" ? headerPillPrimaryClass : headerPillClass} ${className}`.trim()}
+    >
       {children}
     </button>
   );
@@ -101,9 +111,9 @@ export function SiteHeader({
   return (
     <header className={`${sticky ? "sticky top-0 z-50" : ""} ${headerShellClass}`}>
       <div className="mx-auto max-w-5xl px-5 sm:px-6">
-        <div className="flex h-20 items-center justify-between gap-3">
+        <div className="flex min-h-20 items-center justify-between gap-3 py-2">
           {leading ?? <SiteHeaderLogo href={logoHref} onClick={logoOnClick} />}
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+          <div className="flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-2 overflow-x-auto sm:gap-3">
             {trailing}
           </div>
         </div>

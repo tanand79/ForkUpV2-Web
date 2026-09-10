@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, FileText } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { getAuthToken } from "@/lib/auth-storage";
 import { useClientMounted } from "@/lib/use-client-mounted";
@@ -83,10 +83,11 @@ export function RoleSwitcher() {
   return (
     <label className="relative inline-flex shrink-0 items-center">
       <span className="sr-only">Switch role</span>
+      <FileText className="pointer-events-none absolute left-3 z-10 size-3.5 text-muted-foreground" />
       <select
         value={active}
         onChange={(e) => navigateRole(e.target.value as UserRole)}
-        className={`${headerPillClass} h-8 max-w-[11.5rem] cursor-pointer appearance-none truncate py-1.5 pl-3.5 pr-8`}
+        className={`${headerPillClass} h-8 max-w-[11.5rem] cursor-pointer appearance-none truncate py-1.5 pl-8 pr-8`}
         title={
           foreignDraft
             ? "Raising for another nonprofit — stay on Fundraiser to send an invite"

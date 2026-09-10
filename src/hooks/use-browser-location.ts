@@ -4,8 +4,9 @@
  * Browser location for nearby (~8 mile) search filters.
  *
  * Purpose: Expose coords (+ city/state) for nearby API calls.
- * Order: US device GPS → else Browser IP / VPN geolocation (US only) →
- * else Richmond VA test pin (overseas QA).
+ * Order: device GPS (shown live, including outside US) → else US IP / VPN →
+ * else leave coords null (no Richmond auto-pin). Outside-US GPS keeps the map
+ * pin; US IP/VPN upgrades nearby when available.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -194,10 +195,16 @@ export function useBrowserLocation(enabled = true): BrowserLocationState {
   }, []);
 
   /**
-   * Prefer US IP / VPN when GPS is missing or overseas; Richmond only if IP is also unusable.
+   * Prefer US IP / VPN when GPS is missing or overseas.
+   * Leaves coords null when IP is also unusable (no Richmond auto-pin),
+   * unless preserveExistingCoords is true (keep live GPS on the map).
    */
   const applyIpOrRichmond = useCallback(
-    async (cancelled: () => boolean, gpsNote: string) => {
+    async (
+      cancelled: () => boolean,
+      gpsNote: string,
+      preserveExistingCoords = false,
+    ) => {
       const ip = await ipGeolocateUsClient();
       if (cancelled()) return;
       if (ip) {
@@ -219,11 +226,24 @@ export function useBrowserLocation(enabled = true): BrowserLocationState {
         }
         return;
       }
-      applyRichmondFallback(
-        `${gpsNote} No US IP / VPN detected — using Richmond, VA test pin so nearby (~8 mi) can work.`,
+      if (preserveExistingCoords) {
+        setUsedAutoFallback(false);
+        setError(
+          `${gpsNote} No US IP / VPN — showing your live GPS on the map.`,
+        );
+        return;
+      }
+      setLatitude(null);
+      setLongitude(null);
+      setCity(null);
+      setStateCode(null);
+      setUsedAutoFallback(false);
+      setStatus("unavailable");
+      setError(
+        `${gpsNote} No US IP / VPN detected — allow location or use a US VPN to enable nearby search.`,
       );
     },
-    [applyRichmondFallback],
+    [],
   );
 
   useEffect(() => {
@@ -289,9 +309,21 @@ export function useBrowserLocation(enabled = true): BrowserLocationState {
         const lng = pos.coords.longitude;
 
         if (isLikelyOutsideUs(lat, lng)) {
+          // Show live GPS on the map; US IP/VPN upgrades nearby when available.
+          setLatitude(lat);
+          setLongitude(lng);
+          setStatus("ready");
+          setUsedAutoFallback(false);
+          setError(null);
+          void reverseGeocodeClient(lat, lng).then((place) => {
+            if (cancelled) return;
+            if (place.city) setCity(place.city);
+            if (place.state) setStateCode(place.state);
+          });
           void applyIpOrRichmond(
             isCancelled,
             "Device GPS is outside the US.",
+            true,
           );
           return;
         }
@@ -321,8 +353,33 @@ export function useBrowserLocation(enabled = true): BrowserLocationState {
       GEO_OPTIONS,
     );
 
+    // Live GPS updates while nearby is enabled (additive; does not change VPN/US fallback).
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (cancelled) return;
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        // Live pin follows the device everywhere (including outside the US).
+        setLatitude(lat);
+        setLongitude(lng);
+        setStatus("ready");
+        setUsedAutoFallback(false);
+        setError(null);
+        void reverseGeocodeClient(lat, lng).then((place) => {
+          if (cancelled) return;
+          setCity(place.city);
+          setStateCode(place.state);
+        });
+      },
+      () => {
+        // Ignore transient watch errors when a fix already exists or IP path ran.
+      },
+      GEO_OPTIONS,
+    );
+
     return () => {
       cancelled = true;
+      navigator.geolocation.clearWatch(watchId);
     };
   }, [enabled, token, override, applyIpOrRichmond]);
 

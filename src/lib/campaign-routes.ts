@@ -28,6 +28,7 @@ export const ALL_STEP_IDS: StepId[] = [
   "auth-login",
   "auth-forgot-password",
   "auth-reset-password",
+  "auth-verify-email",
   "account-hub",
   "choose-organizer-mode",
   "create-fundraiser",

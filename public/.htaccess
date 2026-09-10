@@ -64,6 +64,7 @@ RewriteRule ^super-admin-reset-password/?$ /index.html?step=super-admin-reset-pa
 RewriteRule ^super-admin/?$ /index.html?step=super-admin [L,QSA]
 RewriteRule ^auth-forgot-password/?$ /index.html?step=auth-forgot-password [L,QSA]
 RewriteRule ^auth-reset-password/?$ /index.html?step=auth-reset-password [L,QSA]
+RewriteRule ^auth-verify-email/?$ /index.html?step=auth-verify-email [L,QSA]
 RewriteRule ^guest-bartending/?$ /index.html?step=guestBartending [L,QSA]
 RewriteRule ^ambassador/?$ /index.html?step=ambassador [L,QSA]
 RewriteRule ^success-virtual/?$ /index.html?step=success-virtual [L,QSA]

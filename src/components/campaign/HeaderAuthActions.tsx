@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useClientMounted } from "@/lib/use-client-mounted";
 
-import { LogOut } from "lucide-react";
+import { LayoutGrid, LogOut } from "lucide-react";
 
 import { useCampaign } from "@/lib/campaign-context";
 
@@ -156,13 +156,15 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
 
           <span
 
-            className="hidden max-w-[10rem] truncate text-xs font-medium text-muted-foreground sm:inline"
+            className={`${headerPillClass} max-w-[5.5rem] sm:max-w-[7rem]`}
 
             title={label}
 
           >
 
-            {label}
+            <LayoutGrid className="size-3.5 shrink-0" />
+
+            <span className="truncate">{label}</span>
 
           </span>
 

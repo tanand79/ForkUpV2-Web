@@ -1625,6 +1625,8 @@ export interface AuthUser {
   id: number;
   email: string;
   fullName: string | null;
+  /** Additive: present when API returns email verification status. */
+  emailVerified?: boolean;
   organizations: {
     organizationType: "nonprofit" | "business";
     organizationId: number;
@@ -1668,7 +1670,11 @@ export function registerUser(body: {
   organizationId?: number;
   role?: string;
 }) {
-  return fetchJson<{ token: string; user: AuthUser }>("/api/auth/register", {
+  return fetchJson<{
+    pendingVerification: true;
+    email: string;
+    message: string;
+  }>("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -1719,6 +1725,40 @@ export function resetPassword(token: string, password: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, password }),
+  });
+}
+
+/**
+ * POST /api/auth/verify-email
+ * body: { token } OR { email, code }
+ * response: { success, emailVerified }
+ */
+export function verifyEmail(
+  body: { token: string } | { email: string; code: string },
+) {
+  return fetchJson<{
+    success: boolean;
+    emailVerified: boolean;
+    /** Present when verifying a pending_signups row (account created on verify). */
+    token?: string;
+    user?: AuthUser;
+  }>("/api/auth/verify-email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * POST /api/auth/resend-verification
+ * body: { email }
+ * response: { success, message }
+ */
+export function resendVerification(email: string) {
+  return fetchJson<{ success: boolean; message: string }>("/api/auth/resend-verification", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
   });
 }
 
