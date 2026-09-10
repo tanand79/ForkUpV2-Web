@@ -126,7 +126,7 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
 
     return (
 
-      <>
+      <div className="flex items-center gap-2">
 
         <AiEngineDropdown />
 
@@ -142,7 +142,7 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
 
         </span>
 
-      </>
+      </div>
 
     );
 
@@ -154,7 +154,7 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
 
     return (
 
-      <>
+      <div className="flex items-center gap-2">
 
         <AiEngineDropdown />
 
@@ -184,7 +184,7 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
 
         </HeaderPillButton>
 
-      </>
+      </div>
 
     );
 
@@ -194,7 +194,7 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
 
   return (
 
-    <>
+    <div className="flex items-center gap-2">
 
       <AiEngineDropdown />
 
@@ -217,7 +217,7 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
 
       </button>
 
-    </>
+    </div>
 
   );
 

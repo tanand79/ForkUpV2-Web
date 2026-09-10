@@ -2,7 +2,7 @@
 
 /**
  * Task 1 + 2 (minimal) — Simplified public homepage (`website-landing`).
- * Hero unchanged; live campaigns preview (4 cards) + View all. Marketing at website-marketing.
+ * Hero unchanged; live campaigns section shows all filtered campaigns. Marketing at website-marketing.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -26,7 +26,6 @@ import { CampaignDirectoryCard } from "@/components/campaign/CampaignDirectoryCa
 import { CampaignDatePicker, campaignHasEnded, campaignMatchesDate } from "@/components/campaign/CampaignDatePicker";
 import { NearbyLocationPills } from "@/components/campaign/NearbyLocationPills";
 import { useCampaignNearby } from "@/hooks/use-campaign-nearby";
-import { HOMEPAGE_LIVE_PREVIEW_LIMIT } from "@/lib/homepage-campaigns";
 
 export function PublicHomePage() {
   const { goTo, state } = useCampaign();
@@ -92,11 +91,6 @@ export function PublicHomePage() {
     if (!selectedDate) return liveCampaigns;
     return liveCampaigns.filter((c) => campaignMatchesDate(c, selectedDate));
   }, [liveCampaigns, selectedDate]);
-
-  const homepagePreview = useMemo(
-    () => displayed.slice(0, HOMEPAGE_LIVE_PREVIEW_LIMIT),
-    [displayed],
-  );
 
   const startCampaign = () => {
     if (state.nonprofitMemberships.length > 0 || state.nonprofitProfile) {
@@ -365,13 +359,6 @@ export function PublicHomePage() {
                     : `Active campaigns within ${nearby.nearby?.radiusMiles ?? nearby.radiusMiles} miles — join one before it ends.`}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => goTo("campaign-directory")}
-              className="inline-flex items-center gap-1 text-sm font-semibold text-primary"
-            >
-              View all <ArrowRight className="size-4" />
-            </button>
           </div>
 
           {loading && (
@@ -407,7 +394,7 @@ export function PublicHomePage() {
           )}
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {homepagePreview.map((c) => (
+            {displayed.map((c) => (
               <CampaignDirectoryCard key={c.slug} campaign={c} />
             ))}
           </div>
