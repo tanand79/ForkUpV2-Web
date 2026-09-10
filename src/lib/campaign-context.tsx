@@ -22,6 +22,7 @@ import { dashboardStepForRole, ROLE_HOME_DASHBOARD_STEPS } from "@/lib/user-role
 import { getAuthToken } from "@/lib/auth-storage";
 import { storyRequirementMet } from "@/lib/story-validation";
 import { assetSrc } from "@/lib/utils";
+import { isForeignNonprofitTarget } from "@/lib/foreign-nonprofit-target";
 import { type Business } from "@/data/businesses";
 import {
   hasLockedBusinessPartners,
@@ -1397,6 +1398,10 @@ export function CampaignProvider({
     const current = stateRef.current;
     const np = current.nonprofitProfile;
     if (!np?.id || !getAuthToken() || !canSaveDraftToServer(current)) {
+      return false;
+    }
+    // Never auto-save a foreign-org draft under the signed-in membership org.
+    if (isForeignNonprofitTarget(np, current.nonprofitMemberships)) {
       return false;
     }
     const payload = buildDraftSavePayload(current, np, computeSelectedBusinesses(current));

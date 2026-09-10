@@ -35,6 +35,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { isForeignNonprofitTarget } from "@/lib/foreign-nonprofit-target";
+import { stashAccountIntent } from "@/lib/campaign-auth";
 
 function formatDate(d: string) {
   if (!d) return "";
@@ -145,6 +147,17 @@ export function ReviewLaunch() {
     if (!canLaunch) return;
     if (!state.nonprofitProfile) {
       goTo("nonprofit-claim");
+      return;
+    }
+    // Existing NPO membership + draft for a different org → cannot launch as owner.
+    if (
+      isForeignNonprofitTarget(state.nonprofitProfile, state.nonprofitMemberships)
+    ) {
+      setLaunchError(
+        "This campaign is for another nonprofit. Continue as a Fundraiser and send them an invite — it cannot be created under your organization.",
+      );
+      stashAccountIntent("fundraiser");
+      update({ accountIntent: "fundraiser" });
       return;
     }
     // Block launch when the cover is only a temporary blob: preview (never persisted).

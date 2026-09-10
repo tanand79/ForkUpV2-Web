@@ -39,6 +39,7 @@ import {
 } from "@/lib/campaign-context";
 import { getAuthToken } from "@/lib/auth-storage";
 import { stashAccountIntent, stashAuthReturnStep } from "@/lib/campaign-auth";
+import { isForeignNonprofitTarget } from "@/lib/foreign-nonprofit-target";
 import { formatCurrency } from "@/data/campaigns";
 import { formatDateUs } from "@/lib/date-only";
 import {
@@ -1079,7 +1080,12 @@ export function AiCampaignPreview() {
           type="button"
           disabled={!ready || inviteSending}
           onClick={() => {
-            const fundraiserPath = state.accountIntent === "fundraiser";
+            const fundraiserPath =
+              state.accountIntent === "fundraiser" ||
+              isForeignNonprofitTarget(
+                state.nonprofitProfile,
+                state.nonprofitMemberships,
+              );
             if (fundraiserPath) {
               if (!getAuthToken()) {
                 stashAccountIntent("fundraiser");
@@ -1088,6 +1094,7 @@ export function AiCampaignPreview() {
                 goTo("auth-login");
                 return;
               }
+              update({ accountIntent: "fundraiser" });
               const pending = loadAiFlowPendingOrg();
               const stored = loadAiFlowStore();
               // Prefer invite-target id from AI flow storage — membership profile
@@ -1155,7 +1162,11 @@ export function AiCampaignPreview() {
         >
           {inviteSending
             ? "Sending invite…"
-            : state.accountIntent === "fundraiser"
+            : state.accountIntent === "fundraiser" ||
+                isForeignNonprofitTarget(
+                  state.nonprofitProfile,
+                  state.nonprofitMemberships,
+                )
               ? "Send invite to nonprofit"
               : "Continue"}
         </button>

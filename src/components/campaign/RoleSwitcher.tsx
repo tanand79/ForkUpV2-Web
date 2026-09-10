@@ -5,6 +5,7 @@ import { useCampaign } from "@/lib/campaign-context";
 import { getAuthToken } from "@/lib/auth-storage";
 import { useClientMounted } from "@/lib/use-client-mounted";
 import { stashDashboardReturn, stashRoleHint } from "@/lib/campaign-auth";
+import { isForeignNonprofitTarget } from "@/lib/foreign-nonprofit-target";
 import {
   ROLE_CLAIM_STEP,
   ROLE_DASHBOARD,
@@ -34,17 +35,35 @@ export function RoleSwitcher() {
     true,
   );
 
-  const active =
-    state.accountIntent ??
-    (avail.business && !avail.nonprofit
-      ? "business"
-      : avail.nonprofit
-        ? "nonprofit"
-        : avail.business
-          ? "business"
-          : "supporter");
+  const foreignDraft = isForeignNonprofitTarget(
+    state.nonprofitProfile,
+    state.nonprofitMemberships,
+  );
+
+  const active = foreignDraft
+    ? "fundraiser"
+    : state.accountIntent ??
+      (avail.business && !avail.nonprofit
+        ? "business"
+        : avail.nonprofit
+          ? "nonprofit"
+          : avail.business
+            ? "business"
+            : "supporter");
 
   const navigateRole = (role: UserRole) => {
+    // Draft for another NPO while this email already owns one → stay fundraiser.
+    // Switching to Nonprofit Organizer would attach create/launch to the wrong org.
+    if (
+      role === "nonprofit" &&
+      isForeignNonprofitTarget(state.nonprofitProfile, state.nonprofitMemberships)
+    ) {
+      switchActiveRole("fundraiser");
+      stashRoleHint("fundraiser");
+      goTo("ai-campaign-preview");
+      return;
+    }
+
     switchActiveRole(role);
     stashRoleHint(role);
 
@@ -68,7 +87,11 @@ export function RoleSwitcher() {
         value={active}
         onChange={(e) => navigateRole(e.target.value as UserRole)}
         className={`${headerPillClass} h-8 max-w-[11.5rem] cursor-pointer appearance-none truncate py-1.5 pl-3.5 pr-8`}
-        title="Switch between nonprofit, business, fundraiser, and supporter"
+        title={
+          foreignDraft
+            ? "Raising for another nonprofit — stay on Fundraiser to send an invite"
+            : "Switch between nonprofit, business, fundraiser, and supporter"
+        }
       >
         {ALL_ROLES.map((role) => (
           <option key={role} value={role}>

@@ -15,6 +15,10 @@ import {
 } from "@/lib/campaign-auth";
 import { syncAuthSession, buildSessionPatch } from "@/lib/auth-session";
 import { ensureGuestNonprofitLinked } from "@/lib/link-guest-nonprofit";
+import {
+  isForeignNonprofitTarget,
+  isFundraiserOrgDraftLocked,
+} from "@/lib/foreign-nonprofit-target";
 import { WizardHeader } from "@/components/campaign/WizardHeader";
 import { StartFundraising } from "@/components/campaign/StartFundraising";
 import { ChooseMethods } from "@/components/campaign/ChooseMethods";
@@ -129,8 +133,16 @@ function AuthLoginScreen() {
   const [initialMode, setInitialMode] = useState<"login" | "register">("login");
 
   useEffect(() => {
-    const hint = getRoleHint() ?? "nonprofit";
+    // Guest AI find-org already chose a target → lock fundraiser before optional picker runs.
+    const lockedFundraiser = isFundraiserOrgDraftLocked(
+      state.accountIntent,
+      state.nonprofitProfile,
+    );
+    const hint = lockedFundraiser
+      ? "fundraiser"
+      : (getRoleHint() ?? "nonprofit");
     setRoleHint(hint);
+    if (lockedFundraiser) stashRoleHint("fundraiser");
     const savedMode = readAuthInitialMode();
     if (savedMode) {
       setInitialMode(savedMode);
@@ -138,7 +150,7 @@ function AuthLoginScreen() {
       setInitialMode("register");
     }
     setMounted(true);
-  }, []);
+  }, [state.accountIntent, state.nonprofitProfile]);
 
   const finishAuth = async (selectedRole: AccountIntent) => {
     setFinishing(true);
@@ -157,27 +169,49 @@ function AuthLoginScreen() {
           pendingNonprofitProfile.id > 0
         );
 
-      // Same email, all roles: picking Fundraiser at signup while continuing a
-      // brand-new NPO campaign draft should proceed as Nonprofit Organizer.
-      // Real fundraiser invites target an existing ForkUp nonprofit id — unchanged.
-      let role = selectedRole;
+      // Bound wait so a stuck /auth/context cannot leave the spinner forever.
+      // Sync first so we can detect foreign-org vs existing memberships.
+      let session = await Promise.race([
+        syncAuthSession(selectedRole, { force: true }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000)),
+      ]);
+
+      const memberships = session?.nonprofitMemberships ?? [];
+      const foreignTarget = isForeignNonprofitTarget(
+        pendingNonprofitProfile,
+        memberships,
+      );
+
+      // Existing NPO on this email + draft for a different NPO → fundraiser only.
+      // Prevents Hear To Heal hijacking a Headstrong (or other) guest draft.
+      let role: AccountIntent = foreignTarget ? "fundraiser" : selectedRole;
+
+      // Brand-new org + no memberships yet: fundraiser signup may proceed as nonprofit claim.
+      // Never upgrade when the user already owns another NPO (foreignTarget handles that).
       if (
+        !foreignTarget &&
         role === "fundraiser" &&
         isBrandNewOrgDraft &&
+        memberships.length === 0 &&
         isCampaignContinuationStep(returnStep)
       ) {
         role = "nonprofit";
       }
 
-      // Bound wait so a stuck /auth/context cannot leave the spinner forever.
-      let session = await Promise.race([
-        syncAuthSession(role, { force: true }),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000)),
-      ]);
+      if (role !== selectedRole && session) {
+        session = await Promise.race([
+          syncAuthSession(role, { force: true }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000)),
+        ]);
+      }
 
       // Guest-created nonprofit only — never attach an invite-target org when the
       // user signs in as fundraiser/business (that leaked Headstrong onto screen9).
-      if (role === "nonprofit" && (pendingNonprofitId || pendingCampaignSlug)) {
+      if (
+        role === "nonprofit" &&
+        !foreignTarget &&
+        (pendingNonprofitId || pendingCampaignSlug)
+      ) {
         try {
           const linkedId = await ensureGuestNonprofitLinked({
             nonprofitId: pendingNonprofitId,
@@ -196,30 +230,54 @@ function AuthLoginScreen() {
 
       if (!session) {
         // Token is already saved — send user to hub; dashboard will retry sync.
-        goTo(role === "business" ? "business-dashboard" : role === "supporter" ? "supporter-dashboard" : "nonprofit-dashboard");
+        goTo(
+          role === "business"
+            ? "business-dashboard"
+            : role === "supporter"
+              ? "supporter-dashboard"
+              : role === "fundraiser"
+                ? "fundraiser-dashboard"
+                : "nonprofit-dashboard",
+        );
         return;
       }
 
       const patch = buildSessionPatch(session);
-      // Keep in-progress claim profile only for nonprofit role (not invite targets).
-      if (
+
+      if (foreignTarget && pendingNonprofitProfile) {
+        // Keep invite-target org; do not replace with membership (e.g. Hear To Heal).
+        update({
+          ...patch,
+          accountIntent: "fundraiser",
+          nonprofitProfile: pendingNonprofitProfile,
+        });
+        switchActiveRole("fundraiser");
+        update({
+          accountIntent: "fundraiser",
+          nonprofitProfile: pendingNonprofitProfile,
+        });
+        stashRoleHint("fundraiser");
+      } else if (
         role === "nonprofit" &&
         !patch.nonprofitProfile &&
         pendingNonprofitProfile
       ) {
+        // Keep in-progress claim profile only for nonprofit role (not invite targets).
         update({
           ...patch,
           nonprofitProfile: pendingNonprofitProfile,
         });
+        switchActiveRole(role);
       } else {
         update(patch);
+        switchActiveRole(role);
       }
-      switchActiveRole(role);
 
       // Guest→signup: org is often created only at Launch, so memberships are
       // still empty. Re-apply the draft profile after switchActiveRole so Launch
       // does not bounce to nonprofit-claim.
       if (
+        !foreignTarget &&
         role === "nonprofit" &&
         pendingNonprofitProfile &&
         (session.nonprofitMemberships?.length ?? 0) === 0
@@ -258,11 +316,30 @@ function AuthLoginScreen() {
         return;
       }
 
+      // Foreign-org draft must resume the invite (fundraiser) UI, not nonprofit Launch.
+      if (foreignTarget) {
+        goTo(
+          returnStep === "ai-campaign-preview" ||
+            returnStep === "ai-campaign-dates" ||
+            returnStep === "ai-campaign-build" ||
+            returnStep === "ai-campaign-ideas" ||
+            returnStep === "ai-campaign-purpose"
+            ? returnStep
+            : "ai-campaign-preview",
+        );
+        return;
+      }
+
       goTo(destination);
     } finally {
       setFinishing(false);
     }
   };
+
+  const lockFundraiserDraft = isFundraiserOrgDraftLocked(
+    state.accountIntent,
+    state.nonprofitProfile,
+  );
 
   return (
     <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col justify-center px-5 py-10 sm:px-6">
@@ -272,19 +349,23 @@ function AuthLoginScreen() {
       <p className="mt-2 text-sm text-muted-foreground">
         {roleHint === "business"
           ? "Create a free account to set up your business profile. Already registered? Switch to Sign in below — we will take you to your business dashboard."
-          : "Sign in to continue your fundraiser, or create a free account."}
+          : lockFundraiserDraft
+            ? "Sign in to continue as a fundraiser for the organization you selected. If this email already has a nonprofit, you will invite them — not claim their org."
+            : "Sign in to continue your fundraiser, or create a free account."}
       </p>
 
       {mounted && (
         <div className="mt-8">
           <AuthLogin
-            intent={roleHint}
+            intent={lockFundraiserDraft ? "fundraiser" : roleHint}
             initialMode={initialMode}
             onSuccess={finishAuth}
             linkOrganization={
               // Only register→link when intentionally claiming as nonprofit.
               // Fundraiser/business invite targets must not become memberships.
-              roleHint === "nonprofit" && state.nonprofitProfile?.id
+              !lockFundraiserDraft &&
+              roleHint === "nonprofit" &&
+              state.nonprofitProfile?.id
                 ? {
                     organizationType: "nonprofit",
                     organizationId: state.nonprofitProfile.id,
@@ -298,21 +379,33 @@ function AuthLoginScreen() {
         </div>
       )}
 
-      {/* Role intent stays available but de-emphasized — GoFundMe-style auth first. */}
-      <details className="mt-8 rounded-xl border border-border bg-card/40 p-3">
-        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Account type (optional)
-        </summary>
-        <div className="mt-3">
-          <AccountIntentPicker
-            value={roleHint}
-            onChange={(next) => {
-              setRoleHint(next);
-              stashRoleHint(next);
-            }}
-          />
-        </div>
-      </details>
+      {/* Locked when guest/AI already selected an org to raise for. */}
+      {lockFundraiserDraft ? (
+        <p className="mt-8 rounded-xl border border-border bg-card/40 p-3 text-xs text-muted-foreground">
+          Account type locked to <span className="font-semibold text-foreground">Fundraiser</span>{" "}
+          for{" "}
+          <span className="font-semibold text-foreground">
+            {state.nonprofitProfile?.organizationName}
+          </span>
+          . Emails that already own another nonprofit must invite this organization — they cannot
+          create the campaign under their own NPO.
+        </p>
+      ) : (
+        <details className="mt-8 rounded-xl border border-border bg-card/40 p-3">
+          <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Account type (optional)
+          </summary>
+          <div className="mt-3">
+            <AccountIntentPicker
+              value={roleHint}
+              onChange={(next) => {
+                setRoleHint(next);
+                stashRoleHint(next);
+              }}
+            />
+          </div>
+        </details>
+      )}
     </main>
   );
 }

@@ -4,6 +4,7 @@ import { resolveDashboardStep, roleHintFromStep, stashDashboardReturn } from "@/
 import { getAuthToken } from "@/lib/auth-storage";
 import { useClientMounted } from "@/lib/use-client-mounted";
 import { RoleSwitcher } from "./RoleSwitcher";
+import { OrganizationSwitcher } from "./OrganizationSwitcher";
 import { LaunchChecklist } from "./LaunchChecklist";
 import { SetupProgress } from "./SetupProgress";
 import { HeaderAuthActions } from "./HeaderAuthActions";
@@ -146,6 +147,7 @@ export function WizardHeader() {
         trailing={
           <>
             {BackToDashboard}
+            <OrganizationSwitcher />
             <RoleSwitcher />
             <HeaderAuthActions step={step} />
             {SaveExit}
@@ -169,6 +171,7 @@ export function WizardHeader() {
           <>
             {BackToDashboard}
             {BackToHome}
+            <OrganizationSwitcher />
             <RoleSwitcher />
             <HeaderAuthActions step={step} />
           </>
@@ -189,6 +192,7 @@ export function WizardHeader() {
               step !== "account-hub" &&
               BackToDashboard}
             {BackToHome}
+            <OrganizationSwitcher />
             <RoleSwitcher />
             <HeaderAuthActions step={step} />
             {step !== "nonprofit-dashboard" &&
@@ -216,6 +220,7 @@ export function WizardHeader() {
         showLaunchChecklist ? (
           <>
             {BackToDashboard}
+            <OrganizationSwitcher />
             <RoleSwitcher />
             <HeaderAuthActions step={step} />
             {SaveExit}
@@ -232,6 +237,7 @@ export function WizardHeader() {
             )}
             {BackToDashboard}
             {BackToHome}
+            <OrganizationSwitcher />
             <RoleSwitcher />
             <HeaderAuthActions step={step} />
             {SaveExit}
