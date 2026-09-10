@@ -156,7 +156,7 @@ export function OrganizationLookupConfirm({
   const requestIdRef = useRef(0);
   /** On by default — nearby. Uncheck for normal search. */
   const [useNearbyFilter, setUseNearbyFilter] = useState(true);
-  const [radiusMiles, setRadiusMiles] = useState(8);
+  const [radiusMiles, setRadiusMiles] = useState(50);
   const browserLocation = useBrowserLocation(useNearbyFilter);
   const gpsNearby = nearbyQueryParams(browserLocation, radiusMiles);
   const nearby = useNearbyFilter ? gpsNearby : undefined;

@@ -60,7 +60,7 @@ export type SearchRadiusControlProps = {
 };
 
 function clampMiles(n: number): number {
-  if (!Number.isFinite(n)) return 8;
+  if (!Number.isFinite(n)) return 50;
   return Math.min(100, Math.max(1, Math.round(n)));
 }
 
@@ -156,7 +156,7 @@ export function SearchRadiusControl({
                 >
                   <span className="font-medium">
                     {miles} miles
-                    {miles === 8 ? (
+                    {miles === 50 ? (
                       <span
                         className="ml-1.5 font-normal"
                         style={{ opacity: selected ? 0.9 : 0.65 }}
@@ -245,7 +245,7 @@ export function SearchRadiusControl({
               <GoogleRadiusMap
                 latitude={lat}
                 longitude={lng}
-                radiusMiles={enabled ? active : 8}
+                radiusMiles={enabled ? active : 50}
                 dimmed={!enabled}
               />
               <p

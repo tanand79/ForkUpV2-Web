@@ -409,7 +409,7 @@ export function nearbyQueryParams(
     | "state"
     | "usedAutoFallback"
   >,
-  radiusMiles = 8,
+  radiusMiles = 50,
 ): {
   lat: number;
   lng: number;

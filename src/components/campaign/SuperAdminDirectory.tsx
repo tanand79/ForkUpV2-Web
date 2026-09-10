@@ -3,6 +3,7 @@
  *
  * Purpose: Users, Roles, Nonprofits, Businesses (+ ACH summary), Campaigns,
  * Fundraisers, Donations, and Overview counts. Does not remove existing tabs.
+ * Users tab also supports delete of non-platform-admin accounts (confirm dialog).
  *
  * Inputs: Super Admin bearer session via existing fetch helpers.
  * Outputs: searchable tables; Businesses expand locations for ACH status.
@@ -13,6 +14,7 @@ import { useCallback, useEffect, useState, Fragment } from "react";
 import { ChevronDown, ChevronRight, Eye, Loader2, Search, Trash2 } from "lucide-react";
 import {
   deleteSuperAdminLiveCampaign,
+  deleteSuperAdminUser,
   fetchSuperAdminBusinesses,
   fetchSuperAdminCampaigns,
   fetchSuperAdminDonations,
@@ -134,6 +136,8 @@ export function SuperAdminUsersTab() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actingId, setActingId] = useState<number | null>(null);
+  const [deleteUser, setDeleteUser] = useState<SuperAdminDirectoryUser | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 300);
@@ -162,12 +166,29 @@ export function SuperAdminUsersTab() {
     void load();
   }, [load]);
 
+  const confirmDeleteUser = async () => {
+    if (!deleteUser) return;
+    setActingId(deleteUser.id);
+    setError(null);
+    try {
+      await deleteSuperAdminUser(deleteUser.id);
+      setDeleteUser(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete user");
+    } finally {
+      setActingId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Users &amp; roles</h2>
-          <p className="text-sm text-muted-foreground">{total} users</p>
+          <p className="text-sm text-muted-foreground">
+            {total} users · non-admin accounts can be deleted
+          </p>
         </div>
         <SearchBox value={search} onChange={setSearch} placeholder="Search email or name…" />
       </div>
@@ -186,7 +207,7 @@ export function SuperAdminUsersTab() {
       )}
 
       <div className={tableWrap}>
-        <table className="w-full min-w-[640px]">
+        <table className="w-full min-w-[720px]">
           <thead className="border-b border-border bg-secondary/40">
             <tr>
               <th className={th}>ID</th>
@@ -194,17 +215,18 @@ export function SuperAdminUsersTab() {
               <th className={th}>Name</th>
               <th className={th}>Admin</th>
               <th className={th}>Memberships</th>
+              <th className={th}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="py-10 text-center">
+                <td colSpan={6} className="py-10 text-center">
                   <Loader2 className="mx-auto size-5 animate-spin text-primary" />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
-              <EmptyRow colSpan={5} message="No users found." />
+              <EmptyRow colSpan={6} message="No users found." />
             ) : (
               rows.map((u) => (
                 <tr key={u.id} className="border-b border-border/60 last:border-0">
@@ -219,12 +241,70 @@ export function SuperAdminUsersTab() {
                           .map((m) => `${m.organizationType}:${m.organizationId}/${m.role}`)
                           .join(", ")}
                   </td>
+                  <td className={td}>
+                    {u.isPlatformAdmin ? (
+                      <span className="text-xs text-muted-foreground">Protected</span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={actingId === u.id}
+                        onClick={() => setDeleteUser(u)}
+                        className="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800 disabled:opacity-40"
+                      >
+                        <Trash2 className="size-3.5" /> Delete
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      <Dialog
+        open={deleteUser != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteUser(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete user account?</DialogTitle>
+            <DialogDescription>
+              This permanently removes{" "}
+              <span className="font-semibold text-foreground">
+                {deleteUser?.email ?? "this account"}
+              </span>
+              , their sessions, and related email records. Organizations and campaigns are kept.
+              This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold"
+              onClick={() => setDeleteUser(null)}
+              disabled={actingId === deleteUser?.id}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={actingId === deleteUser?.id}
+              onClick={() => void confirmDeleteUser()}
+              className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40"
+            >
+              {actingId === deleteUser?.id ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              Delete user
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -65,7 +65,7 @@ export function AiFindOrganization() {
   const [error, setError] = useState<string | null>(null);
   /** On by default — nearby. Uncheck for normal national search. */
   const [useNearbyFilter, setUseNearbyFilter] = useState(true);
-  const [radiusMiles, setRadiusMiles] = useState(8);
+  const [radiusMiles, setRadiusMiles] = useState(50);
   const browserLocation = useBrowserLocation(useNearbyFilter);
   const nearby = useNearbyFilter
     ? nearbyQueryParams(browserLocation, radiusMiles)

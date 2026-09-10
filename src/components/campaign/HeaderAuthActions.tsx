@@ -132,6 +132,12 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
 
         <span className={`${headerPillClass} invisible`} aria-hidden>
 
+          Sign up
+
+        </span>
+
+        <span className={`${headerPillClass} invisible`} aria-hidden>
+
           Sign in
 
         </span>
@@ -191,6 +197,19 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
     <>
 
       <AiEngineDropdown />
+
+      <button
+        type="button"
+        onClick={() => {
+          sessionStorage.setItem("forkup-auth-initial-mode", "register");
+          goTo("auth-login");
+        }}
+        className={headerPillClass}
+      >
+
+        Sign up
+
+      </button>
 
       <button type="button" onClick={() => goTo("auth-login")} className={headerPillClass}>
 

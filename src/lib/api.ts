@@ -2767,6 +2767,18 @@ export function fetchSuperAdminUsers(opts?: { search?: string; limit?: number; o
   );
 }
 
+/**
+ * Hard-delete a non-platform-admin user (superadmin).
+ * Method: DELETE /api/superadmin/users/:id
+ * Response: { success, id, email }
+ */
+export function deleteSuperAdminUser(id: number) {
+  return fetchJson<{ success: boolean; id: number; email: string }>(
+    `/api/superadmin/users/${id}`,
+    { method: "DELETE" },
+  );
+}
+
 export type SuperAdminRoleRow = {
   id: string;
   roleName: string;
