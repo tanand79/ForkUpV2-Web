@@ -1683,6 +1683,45 @@ export function logoutUser() {
   return fetchJson<{ success: boolean }>("/api/auth/logout", { method: "POST" });
 }
 
+/**
+ * POST /api/auth/forgot-password
+ * body: { email }
+ * response: { success, message } — always generic (no account leak)
+ */
+export function forgotPassword(email: string) {
+  return fetchJson<{ success: boolean; message: string }>("/api/auth/forgot-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+}
+
+/**
+ * POST /api/auth/verify-reset-code
+ * body: { email, code }
+ * response: { token } — long reset token for reset-password
+ */
+export function verifyResetCode(email: string, code: string) {
+  return fetchJson<{ token: string }>("/api/auth/verify-reset-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, code }),
+  });
+}
+
+/**
+ * POST /api/auth/reset-password
+ * body: { token, password }
+ * response: { success }
+ */
+export function resetPassword(token: string, password: string) {
+  return fetchJson<{ success: boolean }>("/api/auth/reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, password }),
+  });
+}
+
 export function linkUserOrganization(body: {
   organizationType: "nonprofit" | "business";
   organizationId: number;

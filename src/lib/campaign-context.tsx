@@ -287,6 +287,8 @@ export type StepId =
   | "settlement-ach-approval"
   | "supporter-dashboard"
   | "auth-login"
+  | "auth-forgot-password"
+  | "auth-reset-password"
   | "account-hub"
   | "choose-organizer-mode"
   // GoFundMe-style first questions (who / region / purpose) before Find Org.

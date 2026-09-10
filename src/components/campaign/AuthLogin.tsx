@@ -35,6 +35,9 @@ export function AuthLogin({
   /** Optional start tab; default remains login so existing callers are unchanged. */
   initialMode = "login",
 
+  /** Optional: open forgot-password step from sign-in mode. */
+  onForgotPassword,
+
 }: {
 
   intent?: AccountIntent;
@@ -50,6 +53,8 @@ export function AuthLogin({
   };
 
   initialMode?: "login" | "register";
+
+  onForgotPassword?: () => void;
 
 }) {
 
@@ -359,6 +364,18 @@ export function AuthLogin({
             </button>
           </div>
         </label>
+
+        {mode === "login" && onForgotPassword ? (
+          <div className="-mt-1 flex justify-end">
+            <button
+              type="button"
+              onClick={onForgotPassword}
+              className="text-sm font-semibold text-primary underline-offset-4 hover:underline"
+            >
+              Forgot password?
+            </button>
+          </div>
+        ) : null}
 
         {error && (
           <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">

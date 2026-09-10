@@ -62,6 +62,8 @@ const ALL_STEP_IDS = [
   "super-admin-forgot-password",
   "super-admin-reset-password",
   "super-admin",
+  "auth-forgot-password",
+  "auth-reset-password",
   "guestBartending",
   "ambassador",
   "success-virtual",

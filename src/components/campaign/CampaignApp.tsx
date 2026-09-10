@@ -82,6 +82,10 @@ import { SupporterDashboard } from "@/components/campaign/SupporterDashboard";
 import { AccountHub } from "@/components/campaign/AccountHub";
 import { SuccessState } from "@/components/campaign/SuccessStates";
 import { AuthLogin, AccountIntentPicker } from "@/components/campaign/AuthLogin";
+import {
+  AuthForgotPassword,
+  AuthResetPassword,
+} from "@/components/campaign/AuthPasswordRecovery";
 import { ChooseOrganizerMode } from "@/components/campaign/ChooseOrganizerMode";
 import { CreateFundraiser } from "@/components/campaign/CreateFundraiser";
 import { GuidedBuilderShell } from "@/components/campaign/GuidedBuilderShell";
@@ -360,6 +364,7 @@ function AuthLoginScreen() {
             intent={lockFundraiserDraft ? "fundraiser" : roleHint}
             initialMode={initialMode}
             onSuccess={finishAuth}
+            onForgotPassword={() => goTo("auth-forgot-password")}
             linkOrganization={
               // Only register→link when intentionally claiming as nonprofit.
               // Fundraiser/business invite targets must not become memberships.
@@ -487,6 +492,14 @@ function WizardBody() {
       return <SupporterDashboard />;
     case "auth-login":
       return <AuthLoginScreen />;
+    case "auth-forgot-password":
+      return <AuthForgotPassword />;
+    case "auth-reset-password":
+      return (
+        <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-primary" /></div>}>
+          <AuthResetPassword />
+        </Suspense>
+      );
     case "choose-organizer-mode":
       return <ChooseOrganizerMode />;
     case "create-fundraiser":

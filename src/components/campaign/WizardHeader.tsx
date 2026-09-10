@@ -128,7 +128,9 @@ export function WizardHeader() {
     step === "super-admin-login" ||
     step === "super-admin-forgot-password" ||
     step === "super-admin-reset-password" ||
-    step === "super-admin"
+    step === "super-admin" ||
+    step === "auth-forgot-password" ||
+    step === "auth-reset-password"
   ) {
     return null;
   }

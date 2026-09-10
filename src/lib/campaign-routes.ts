@@ -26,6 +26,8 @@ export const ALL_STEP_IDS: StepId[] = [
   "settlement-ach-approval",
   "supporter-dashboard",
   "auth-login",
+  "auth-forgot-password",
+  "auth-reset-password",
   "account-hub",
   "choose-organizer-mode",
   "create-fundraiser",
