@@ -175,18 +175,6 @@ export function PublicHomePage() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <div className="hidden lg:flex">
-              <NearbyLocationPills
-                locationLabel={nearby.locationLabel}
-                zipInput={nearby.zipInput}
-                setZipInput={nearby.setZipInput}
-                zipError={nearby.zipError}
-                radiusMiles={nearby.radiusMiles}
-                setRadiusMiles={nearby.setRadiusMiles}
-                allLocations={nearby.allLocations}
-                setAllLocations={nearby.setAllLocations}
-              />
-            </div>
             {isLoggedIn && (
               <button
                 type="button"
@@ -223,18 +211,6 @@ export function PublicHomePage() {
 
         {mobileOpen && (
           <div className="border-t border-border bg-background px-5 py-4 md:hidden">
-            <div className="mb-3">
-              <NearbyLocationPills
-                locationLabel={nearby.locationLabel}
-                zipInput={nearby.zipInput}
-                setZipInput={nearby.setZipInput}
-                zipError={nearby.zipError}
-                radiusMiles={nearby.radiusMiles}
-                setRadiusMiles={nearby.setRadiusMiles}
-                allLocations={nearby.allLocations}
-                setAllLocations={nearby.setAllLocations}
-              />
-            </div>
             <p className="px-1 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Campaigns
             </p>
@@ -345,6 +321,16 @@ export function PublicHomePage() {
                 <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
                   Live Campaigns
                 </h2>
+                <NearbyLocationPills
+                  locationLabel={nearby.locationLabel}
+                  zipInput={nearby.zipInput}
+                  setZipInput={nearby.setZipInput}
+                  zipError={nearby.zipError}
+                  radiusMiles={nearby.radiusMiles}
+                  setRadiusMiles={nearby.setRadiusMiles}
+                  allLocations={nearby.allLocations}
+                  setAllLocations={nearby.setAllLocations}
+                />
                 <CampaignDatePicker
                   campaigns={liveCampaigns}
                   selected={selectedDate}
@@ -378,6 +364,14 @@ export function PublicHomePage() {
                     className="font-semibold text-primary"
                   >
                     Show all locations
+                  </button>
+                  {", "}
+                  <button
+                    type="button"
+                    onClick={() => nearby.setRadiusMiles(50)}
+                    className="font-semibold text-primary"
+                  >
+                    Widen to 50 mi
                   </button>
                   {", "}
                 </>
