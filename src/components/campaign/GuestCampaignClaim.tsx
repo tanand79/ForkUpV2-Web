@@ -85,7 +85,7 @@ export function GuestCampaignClaim() {
     const sessionEmail = session?.email?.trim().toLowerCase() || "";
     const expected = info?.guestEmail?.trim().toLowerCase() || "";
     if (expected && sessionEmail && sessionEmail !== expected) {
-      setError(emailMismatchMessage(session.email, info!.guestEmail));
+      setError(emailMismatchMessage(session!.email, info!.guestEmail));
       return;
     }
     setBusy(true);
