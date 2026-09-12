@@ -98,7 +98,8 @@ export function PublicHomePage() {
       goTo("start");
       return;
     }
-    stashAccountIntent("fundraiser");
+    // Pass 1: primary path is create via NPO (search org), not fundraiser-by-default.
+    stashAccountIntent("nonprofit");
     goTo("ai-find-org");
   };
 

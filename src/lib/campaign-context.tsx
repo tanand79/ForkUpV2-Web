@@ -67,6 +67,7 @@ const BUILDER_FLOW_STEPS: StepId[] = [
 /** Parallel AI-first funnel — also persisted to browser for guest resume. */
 const AI_FLOW_STEPS: StepId[] = [
   "ai-find-org",
+  "claimed-npo-chooser",
   "ai-connect-social",
   "ai-analyzing",
   "ai-campaign-ideas",
@@ -160,6 +161,7 @@ function loadDraft(): CampaignDraft | null {
       "businesses",
       "invite",
       "ai-find-org",
+      "claimed-npo-chooser",
       "ai-connect-social",
       "ai-analyzing",
       "ai-campaign-ideas",
@@ -298,6 +300,7 @@ export type StepId =
   | "quick-start"
   // Parallel AI-first create funnel (guest allowed through preview).
   | "ai-find-org"
+  | "claimed-npo-chooser"
   | "ai-connect-social"
   | "ai-analyzing"
   | "ai-campaign-ideas"
@@ -306,6 +309,9 @@ export type StepId =
   | "ai-campaign-dates"
   | "ai-campaign-preview"
   | "ai-continue-guest"
+  | "guest-launch-sent"
+  | "guest-campaign-claim"
+  | "fundraiser-invite-sent"
   // Lovable Review Your Campaign (after Prepare My Draft) — not the old details/media tabs.
   | "campaign-review"
   | "methods"

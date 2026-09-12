@@ -2,6 +2,7 @@
  * Barrel for parallel AI-first create flow screens.
  */
 export { AiFindOrganization } from "./AiFindOrganization";
+export { ClaimedNpoChooser } from "./ClaimedNpoChooser";
 export { AiConnectSocial } from "./AiConnectSocial";
 export { AiAnalyzing } from "./AiAnalyzing";
 export { AiCampaignIdeas } from "./AiCampaignIdeas";

@@ -54,7 +54,8 @@ export const CAMPAIGN_AUTH_STEPS: StepId[] = [
   "edit-invite",
   "business-invite-flow",
   "media",
-  "review",
+  // Pass 2: review/launch allowed without signup (guest email claim instead).
+  // "review" intentionally omitted from auth-required list.
   "created",
   "dashboard",
   "receipt-ocr",
@@ -83,6 +84,7 @@ export function roleHintFromStep(step: StepId): UserRole | null {
     step === "quick-start" ||
     step === "campaign-review" ||
     step === "ai-find-org" ||
+    step === "claimed-npo-chooser" ||
     step === "ai-connect-social" ||
     step === "ai-analyzing" ||
     step === "ai-campaign-ideas" ||
@@ -91,6 +93,9 @@ export function roleHintFromStep(step: StepId): UserRole | null {
     step === "ai-campaign-dates" ||
     step === "ai-campaign-preview" ||
     step === "ai-continue-guest" ||
+    step === "guest-launch-sent" ||
+    step === "guest-campaign-claim" ||
+    step === "fundraiser-invite-sent" ||
     step === "methods"
   ) {
     return "nonprofit";

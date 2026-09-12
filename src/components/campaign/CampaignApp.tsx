@@ -68,6 +68,9 @@ import {
 } from "@/components/campaign/EntryFlows";
 import { FundraiserAcceptsInvite } from "@/components/campaign/FundraiserAcceptsInvite";
 import { FundraiserDashboard } from "@/components/campaign/FundraiserDashboard";
+import { GuestLaunchSent } from "@/components/campaign/GuestLaunchSent";
+import { GuestCampaignClaim } from "@/components/campaign/GuestCampaignClaim";
+import { FundraiserInviteSent } from "@/components/campaign/FundraiserInviteSent";
 import { PublicLandingPage } from "@/components/campaign/PublicLandingPage";
 import { PublicHomePage } from "@/components/campaign/PublicHomePage";
 import { CampaignDirectory } from "@/components/campaign/CampaignDirectory";
@@ -107,6 +110,7 @@ import {
   AiCampaignDates,
   AiCampaignPreview,
   AiContinueGuest,
+  ClaimedNpoChooser,
 } from "@/components/campaign/ai-flow";
 import { BusinessAiOnboarding } from "@/components/campaign/business-ai/BusinessAiOnboarding";
 
@@ -555,6 +559,8 @@ function WizardBody() {
       return <LegacyQuickStartDivert />;
     case "ai-find-org":
       return <AiFindOrganization />;
+    case "claimed-npo-chooser":
+      return <ClaimedNpoChooser />;
     case "ai-connect-social":
       return <AiConnectSocial />;
     case "ai-analyzing":
@@ -571,6 +577,24 @@ function WizardBody() {
       return <AiCampaignPreview />;
     case "ai-continue-guest":
       return <AiContinueGuest />;
+    case "guest-launch-sent":
+      return (
+        <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-primary" /></div>}>
+          <GuestLaunchSent />
+        </Suspense>
+      );
+    case "guest-campaign-claim":
+      return (
+        <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-primary" /></div>}>
+          <GuestCampaignClaim />
+        </Suspense>
+      );
+    case "fundraiser-invite-sent":
+      return (
+        <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-primary" /></div>}>
+          <FundraiserInviteSent />
+        </Suspense>
+      );
     case "campaign-review":
       // Legacy Lovable Review — divert to AI preview (CampaignReview kept for Design Mode).
       return <LegacyCampaignReviewDivert />;

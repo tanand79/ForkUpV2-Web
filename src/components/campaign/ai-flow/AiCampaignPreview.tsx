@@ -38,7 +38,6 @@ import {
   type SupportMethod,
 } from "@/lib/campaign-context";
 import { getAuthToken } from "@/lib/auth-storage";
-import { stashAccountIntent, stashAuthReturnStep } from "@/lib/campaign-auth";
 import { isForeignNonprofitTarget } from "@/lib/foreign-nonprofit-target";
 import { formatCurrency } from "@/data/campaigns";
 import { formatDateUs } from "@/lib/date-only";
@@ -132,6 +131,9 @@ export function AiCampaignPreview() {
   const [coverPickerOpen, setCoverPickerOpen] = useState(false);
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  /** Pass 3: mandatory when sending fundraiser invite without signup. */
+  const [fundraiserEmail, setFundraiserEmail] = useState("");
+  const [fundraiserMessage, setFundraiserMessage] = useState("");
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState(
     () => loadAiFlowPendingOrg()?.youtubeUrl?.trim() || "",
@@ -1067,6 +1069,46 @@ export function AiCampaignPreview() {
         )}
       </section>
 
+      {(state.accountIntent === "fundraiser" ||
+        isForeignNonprofitTarget(
+          state.nonprofitProfile,
+          state.nonprofitMemberships,
+        )) && (
+        <section className="mt-8 space-y-3 rounded-2xl border border-border bg-card p-5">
+          <p className="text-sm font-semibold">Send invite to the nonprofit</p>
+          <p className="text-xs text-muted-foreground">
+            ForkUp emails their contact on file. You never enter the nonprofit&apos;s
+            email. They accept and complete paperwork before the campaign is fully
+            active under their account.
+          </p>
+          {!getAuthToken() ? (
+            <label className="block text-sm">
+              <span className="font-medium">Your email (required)</span>
+              <input
+                type="email"
+                autoComplete="email"
+                value={fundraiserEmail}
+                onChange={(e) => setFundraiserEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
+              />
+            </label>
+          ) : null}
+          <label className="block text-sm">
+            <span className="font-medium">
+              Optional message to the nonprofit
+            </span>
+            <textarea
+              value={fundraiserMessage}
+              onChange={(e) => setFundraiserMessage(e.target.value)}
+              rows={3}
+              placeholder="Introduce yourself and why you want to raise for them…"
+              className="mt-1.5 w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
+            />
+          </label>
+        </section>
+      )}
+
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
         <button
           type="button"
@@ -1087,13 +1129,6 @@ export function AiCampaignPreview() {
                 state.nonprofitMemberships,
               );
             if (fundraiserPath) {
-              if (!getAuthToken()) {
-                stashAccountIntent("fundraiser");
-                stashAuthReturnStep("ai-campaign-preview");
-                sessionStorage.setItem("forkup-auth-initial-mode", "register");
-                goTo("auth-login");
-                return;
-              }
               update({ accountIntent: "fundraiser" });
               const pending = loadAiFlowPendingOrg();
               const stored = loadAiFlowStore();
@@ -1122,6 +1157,13 @@ export function AiCampaignPreview() {
                 );
                 return;
               }
+              const guestEmail = fundraiserEmail.trim().toLowerCase();
+              if (!getAuthToken() && !guestEmail.includes("@")) {
+                setInviteError(
+                  "Enter your email so we can track this invite and so the nonprofit can reply.",
+                );
+                return;
+              }
               setInviteError(null);
               setInviteSending(true);
               void createFundraiserCampaignInvite({
@@ -1134,11 +1176,24 @@ export function AiCampaignPreview() {
                 eventDate: state.eventDate || null,
                 coverImage:
                   state.cover?.storedUrl || state.cover?.url || null,
-                message: null,
+                message: fundraiserMessage.trim() || null,
                 methods: campaignMethodsForApi(state),
                 submitForForkupReview: Boolean(state.submitForForkupReview),
+                fundraiserEmail: getAuthToken() ? undefined : guestEmail,
               })
-                .then(() => goTo("fundraiser-dashboard"))
+                .then((res) => {
+                  if (getAuthToken()) {
+                    goTo("fundraiser-dashboard");
+                    return;
+                  }
+                  goTo("fundraiser-invite-sent", {
+                    query: {
+                      email: res.fundraiserEmail || guestEmail,
+                      hint: res.nonprofitEmailHint || "",
+                      name: res.campaignName || state.title.trim(),
+                    },
+                  });
+                })
                 .catch((err) =>
                   setInviteError(
                     err instanceof Error ? err.message : "Failed to send invitation",
@@ -1148,15 +1203,13 @@ export function AiCampaignPreview() {
               return;
             }
             // Partners are collected after Dates; Preview Continue goes to Launch.
+            // Pass 2: nonprofit path may continue to review without signup.
             const nextStep = "review" as const;
             if (getAuthToken()) {
               goTo(nextStep);
               return;
             }
-            stashAccountIntent("nonprofit");
-            stashAuthReturnStep(nextStep);
-            sessionStorage.setItem("forkup-auth-initial-mode", "register");
-            goTo("auth-login");
+            goTo(nextStep);
           }}
           className="inline-flex w-full flex-1 items-center justify-center rounded-full bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >

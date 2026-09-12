@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * AI flow — Find & select nonprofit (fundraisers / guests).
+ * AI flow — Find & select nonprofit (create-via-NPO / fundraisers / guests).
  *
- * On confirm: persist pending org → connect-social. Sets accountIntent fundraiser
- * (selecting an org you don't own is a partnership invite path).
+ * On confirm:
+ * - Claimed in ForkUp → claimed-npo-chooser (fundraiser vs request access)
+ * - Otherwise → AI connect-social as nonprofit (or fundraiser if that intent was set)
  *
  * Nonprofit organizers with a membership never use this screen — they are
  * diverted into own-org AI create.
@@ -120,7 +121,6 @@ export function AiFindOrganization() {
     if (!selected) return;
     setBusy(true);
     setError(null);
-    stashAccountIntent("fundraiser");
 
     try {
       // Drop prior AI session so a previous membership org cannot be reused.
@@ -144,8 +144,42 @@ export function AiFindOrganization() {
         logoUrl: selected.logoUrl,
       });
 
+      const claimedInForkUp =
+        selected.id > 0 &&
+        String(selected.claimStatus || "")
+          .trim()
+          .toLowerCase() === "claimed";
+
+      // Pass 1: claimed orgs never auto-own — chooser (fundraiser vs request access).
+      if (claimedInForkUp) {
+        update({
+          nonprofitProfile: {
+            id: selected.id,
+            organizationName: selected.organizationName,
+            contactName: selected.contactName || "",
+            contactEmail: selected.contactEmail || "",
+            mission: selected.mission || undefined,
+            causeCategory: selected.causeCategory || undefined,
+            verificationStatus: selected.verificationStatus,
+            claimStatus: selected.claimStatus,
+          },
+          promotion: {
+            ...state.promotion,
+            websiteUrl: selected.website || state.promotion.websiteUrl,
+          },
+        });
+        goTo("claimed-npo-chooser");
+        return;
+      }
+
+      // Unclaimed / IRS-only / preloaded: continue as nonprofit draft (propose, not steal).
+      // Keep fundraiser if user entered from fundraiser dashboard.
+      const intent =
+        state.accountIntent === "fundraiser" ? "fundraiser" : "nonprofit";
+      stashAccountIntent(intent);
+
       update({
-        accountIntent: "fundraiser",
+        accountIntent: intent,
         // Working target for AI draft only — not an ownership claim.
         nonprofitProfile: {
           id: selected.id > 0 ? selected.id : undefined,
@@ -191,7 +225,7 @@ export function AiFindOrganization() {
   return (
     <AiFlowShell
       title="Search and select a nonprofit"
-      subtitle="Pick the organization you want to raise for — we’ll email them an invite after you build the campaign."
+      subtitle="Find the organization this campaign is for. If it’s already on ForkUp, you’ll choose how to continue."
       backStep={backStep}
     >
       <div className="relative">

@@ -4,11 +4,11 @@ import { assetSrc } from "@/lib/utils";
 import forkupLogo from "@/assets/forkup-logo-header.png";
 
 export const headerPillClass =
-  "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:border-primary/40";
+  "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:border-primary/40";
 
 /** Solid primary pill for header CTAs (e.g. Save & Exit). Inputs: none. Outputs: class string. */
 export const headerPillPrimaryClass =
-  "inline-flex shrink-0 items-center gap-1.5 rounded-full border border-primary bg-primary px-3.5 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90";
+  "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-primary bg-primary px-3.5 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90";
 
 const headerShellClass = "border-b border-border bg-background/80 backdrop-blur-md";
 

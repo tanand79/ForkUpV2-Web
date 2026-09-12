@@ -69,6 +69,11 @@ export interface CreateCampaignPayload {
   launch: boolean;
   /** When set, update this campaign instead of creating a new one. */
   existingSlug?: string;
+  /** Additive: attach to existing nonprofit by id when known. */
+  nonprofitId?: number;
+  /** Pass 2: launch without account; requires guestEmail. */
+  guestLaunch?: boolean;
+  guestEmail?: string;
   submitForForkupReview?: boolean;
   continueWithoutBusinessMethods?: boolean;
   /** Tight timeline: organizer already has a business/venue confirmed. */
@@ -89,6 +94,10 @@ export interface CreateCampaignResult {
   message: string;
   businessTimingStatus?: string;
   forkupReviewStatus?: string;
+  /** Pass 2 guest launch. */
+  guestLaunch?: boolean;
+  guestClaimEmailSent?: boolean;
+  guestClaimEmail?: string;
   invitationLinks?: {
     businessName: string;
     locationName: string;
@@ -278,7 +287,7 @@ export function buildCreateCampaignPayload(
   state: CampaignState,
   nonprofit: NonprofitProfileInput,
   selectedBusinesses: Business[],
-  options: { launch: boolean },
+  options: { launch: boolean; guestEmail?: string; guestLaunch?: boolean },
 ): CreateCampaignPayload {
   const methods = selectedMethods(state);
   const invitations: CreateCampaignPayload["invitations"] = [];
@@ -337,13 +346,17 @@ export function buildCreateCampaignPayload(
   }
 
   // Brand-new AI/guest drafts often omit contactEmail; Launch requires @.
-  // Prefer profile email, else signed-in account email.
+  // Prefer profile email, else guest email (Pass 2), else signed-in account email.
   const sessionEmail = loadUserSession()?.email?.trim() ?? "";
+  const guestEmail =
+    typeof options.guestEmail === "string" ? options.guestEmail.trim() : "";
   const contactEmail = nonprofit.contactEmail?.includes("@")
     ? nonprofit.contactEmail
-    : sessionEmail.includes("@")
-      ? sessionEmail
-      : nonprofit.contactEmail;
+    : guestEmail.includes("@")
+      ? guestEmail
+      : sessionEmail.includes("@")
+        ? sessionEmail
+        : nonprofit.contactEmail;
 
   return {
     nonprofit: {
@@ -353,6 +366,8 @@ export function buildCreateCampaignPayload(
       mission: nonprofit.mission,
       causeCategory: nonprofit.causeCategory,
     },
+    nonprofitId:
+      typeof nonprofit.id === "number" && nonprofit.id > 0 ? nonprofit.id : undefined,
     campaignName: state.title.trim(),
     campaignStory: state.description.trim(),
     campaignGoal: Number.parseInt(state.goal.replace(/\D/g, ""), 10) || 0,
@@ -370,6 +385,8 @@ export function buildCreateCampaignPayload(
     termsAccepted: state.termsAccepted,
     launch: options.launch,
     existingSlug: state.campaignSlug ?? undefined,
+    guestLaunch: options.guestLaunch || undefined,
+    guestEmail: options.guestLaunch && guestEmail.includes("@") ? guestEmail : undefined,
     submitForForkupReview: state.submitForForkupReview || undefined,
     continueWithoutBusinessMethods: state.continueWithoutBusinessMethods || undefined,
     confirmedBusinessName: state.confirmedBusinessName?.trim() || undefined,

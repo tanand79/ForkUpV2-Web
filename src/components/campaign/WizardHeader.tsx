@@ -110,6 +110,7 @@ export function WizardHeader() {
 
   const aiFlowSteps: StepId[] = [
     "ai-find-org",
+    "claimed-npo-chooser",
     "ai-connect-social",
     "ai-analyzing",
     "ai-campaign-ideas",
@@ -130,7 +131,10 @@ export function WizardHeader() {
     step === "super-admin" ||
     step === "auth-forgot-password" ||
     step === "auth-reset-password" ||
-    step === "auth-verify-email"
+    step === "auth-verify-email" ||
+    step === "guest-launch-sent" ||
+    step === "guest-campaign-claim" ||
+    step === "fundraiser-invite-sent"
   ) {
     return null;
   }

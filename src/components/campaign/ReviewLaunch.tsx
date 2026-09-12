@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { isForeignNonprofitTarget } from "@/lib/foreign-nonprofit-target";
 import { stashAccountIntent } from "@/lib/campaign-auth";
+import { getAuthToken } from "@/lib/auth-storage";
 
 function formatDate(d: string) {
   if (!d) return "";
@@ -120,6 +121,9 @@ export function ReviewLaunch() {
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
   const [launchError, setLaunchError] = useState<string | null>(null);
+  /** Pass 2: mandatory when launching without a signed-in account. */
+  const [guestEmail, setGuestEmail] = useState("");
+  const isGuestLaunch = typeof window !== "undefined" && !getAuthToken();
   /** Shown after Launch when campaign entered ForkUp review (short timeline only). */
   const [reviewSentOpen, setReviewSentOpen] = useState(false);
 
@@ -168,6 +172,15 @@ export function ReviewLaunch() {
       return;
     }
 
+    const guestLaunchNow = !getAuthToken();
+    const guestEmailTrimmed = guestEmail.trim().toLowerCase();
+    if (guestLaunchNow && !guestEmailTrimmed.includes("@")) {
+      setLaunchError(
+        "Enter your email so we can send a link to manage this campaign on any device.",
+      );
+      return;
+    }
+
     setLaunching(true);
     setLaunchError(null);
     setPrepDone(0);
@@ -181,11 +194,21 @@ export function ReviewLaunch() {
         state,
         state.nonprofitProfile,
         selectedBusinesses,
-        { launch: !isPostLaunchEdit },
+        {
+          launch: !isPostLaunchEdit,
+          guestLaunch: guestLaunchNow && !isPostLaunchEdit,
+          guestEmail: guestLaunchNow ? guestEmailTrimmed : undefined,
+        },
       );
-      const result = state.campaignSlug
-        ? await updateCampaign(state.campaignSlug, payload)
-        : await createCampaign(payload);
+      // Guest create only — updates of existing slug still need an account later.
+      if (guestLaunchNow && state.campaignSlug && !isPostLaunchEdit) {
+        // Allow create path by clearing existing slug for guest first launch.
+        payload.existingSlug = undefined;
+      }
+      const result =
+        state.campaignSlug && !guestLaunchNow
+          ? await updateCampaign(state.campaignSlug, payload)
+          : await createCampaign(payload);
       const gallery = buildCampaignGalleryPayload(state);
       if (gallery.length > 0) {
         try {
@@ -223,6 +246,15 @@ export function ReviewLaunch() {
         setTimeout(() => {
           setLaunching(false);
           setPrepDone(0);
+          if (result.guestLaunch) {
+            goTo("guest-launch-sent", {
+              query: {
+                email: result.guestClaimEmail || guestEmailTrimmed,
+                slug: result.slug,
+              },
+            });
+            return;
+          }
           if (sentForReview) {
             setReviewSentOpen(true);
           } else {
@@ -737,6 +769,26 @@ export function ReviewLaunch() {
                 : "I\u2019m ready to launch this campaign."}
             </span>
           </label>
+          {isGuestLaunch && !isPostLaunchEdit && (
+            <div className="mt-4 space-y-2">
+              <label className="block text-sm font-semibold" htmlFor="guest-launch-email">
+                Your email (required)
+              </label>
+              <input
+                id="guest-launch-email"
+                type="email"
+                autoComplete="email"
+                value={guestEmail}
+                onChange={(e) => setGuestEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none ring-primary/30 focus:ring-2"
+              />
+              <p className="text-xs text-muted-foreground">
+                We&apos;ll email a private link so you can manage this campaign on any device.
+                No account needed to launch.
+              </p>
+            </div>
+          )}
           {businessInviteMissing && (
             <p className="mt-3 text-sm font-medium text-destructive" role="alert">
               Please invite a business.

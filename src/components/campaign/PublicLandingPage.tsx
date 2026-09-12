@@ -144,14 +144,15 @@ export function PublicLandingPage() {
     );
   };
 
-  // Nonprofit members → own-org create. Everyone else → fundraiser find-org path.
+  // Nonprofit members → own-org create. Everyone else → search NPO (nonprofit path).
   const startCampaign = () => {
     if (state.nonprofitMemberships.length > 0 || state.nonprofitProfile) {
       stashAccountIntent("nonprofit");
       goTo("start");
       return;
     }
-    stashAccountIntent("fundraiser");
+    // Pass 1: create via NPO search — not fundraiser-by-default.
+    stashAccountIntent("nonprofit");
     goTo("ai-find-org");
   };
 

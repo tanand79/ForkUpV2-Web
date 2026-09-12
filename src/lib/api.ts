@@ -166,6 +166,36 @@ export function createCampaign(payload: CreateCampaignPayload) {
   });
 }
 
+/**
+ * Pass 2: load guest claim link metadata.
+ * GET /api/guest-campaign-claim/:token
+ */
+export function fetchGuestCampaignClaim(token: string) {
+  return fetchJson<{
+    slug: string;
+    campaignName: string;
+    guestEmail: string;
+    nonprofitId: number;
+    expired: boolean;
+    alreadyClaimed: boolean;
+  }>(`/api/guest-campaign-claim/${encodeURIComponent(token)}`);
+}
+
+/**
+ * Pass 2: claim guest campaign (auth required).
+ * POST /api/guest-campaign-claim/:token
+ */
+export function postGuestCampaignClaim(token: string) {
+  return fetchJson<{
+    ok: boolean;
+    slug: string;
+    nonprofitId: number;
+    campaignName: string;
+  }>(`/api/guest-campaign-claim/${encodeURIComponent(token)}`, {
+    method: "POST",
+  });
+}
+
 export interface BuilderCampaignPartner {
   businessId: number;
   locationId: number;
@@ -1186,12 +1216,18 @@ export function createFundraiserCampaignInvite(body: {
   message?: string | null;
   methods?: CreateCampaignPayload["methods"];
   submitForForkupReview?: boolean;
+  /** Pass 3: required when not signed in. */
+  fundraiserEmail?: string;
+  fundraiserName?: string;
 }) {
   return fetchJson<{
     token: string;
     acceptPath: string;
     campaignSlug: string;
     campaignName: string;
+    nonprofitEmailed?: boolean;
+    nonprofitEmailHint?: string;
+    fundraiserEmail?: string;
   }>("/api/fundraiser/invites", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
