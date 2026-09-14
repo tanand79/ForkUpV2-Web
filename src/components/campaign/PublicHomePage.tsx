@@ -2,20 +2,12 @@
 
 /**
  * Task 1 + 2 (minimal) — Simplified public homepage (`website-landing`).
- * Hero unchanged; live campaigns section shows all filtered campaigns. Marketing at website-marketing.
+ * Pass A: Join Us three-door hero; live campaigns section unchanged. Marketing at website-marketing.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowRight,
-  ChevronDown,
-  Loader2,
-  Menu,
-  Store,
-  X,
-} from "lucide-react";
+import { ArrowRight, ChevronDown, Loader2, Menu, X } from "lucide-react";
 import { assetSrc } from "@/lib/utils";
-import forkupLogo from "@/assets/forkup-logo-transparent.png";
-import heroImage from "@/assets/events-hero.jpg";
+import forkupLogo from "@/assets/forkup-logo-header.png";
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchCampaigns } from "@/lib/api";
 import { resolveDashboardStep, stashAccountIntent, stepForBusinessJoin } from "@/lib/campaign-auth";
@@ -26,6 +18,8 @@ import { CampaignDirectoryCard } from "@/components/campaign/CampaignDirectoryCa
 import { CampaignDatePicker, campaignHasEnded, campaignMatchesDate } from "@/components/campaign/CampaignDatePicker";
 import { NearbyLocationPills } from "@/components/campaign/NearbyLocationPills";
 import { useCampaignNearby } from "@/hooks/use-campaign-nearby";
+import { JoinUsThreeDoorsHero } from "@/components/campaign/JoinUsThreeDoorsHero";
+import { stashBusinessDoor } from "@/lib/business-door";
 
 export function PublicHomePage() {
   const { goTo, state } = useCampaign();
@@ -109,6 +103,16 @@ export function PublicHomePage() {
     goTo(stepForBusinessJoin(isLoggedIn, hasBusiness));
   };
 
+  const joinAsRestaurant = () => {
+    stashBusinessDoor("restaurant");
+    joinAsBusiness();
+  };
+
+  const joinAsLocalBusiness = () => {
+    stashBusinessDoor("local");
+    joinAsBusiness();
+  };
+
   const scrollTo = (id: string) => {
     setMobileOpen(false);
     setMenuOpen(false);
@@ -117,63 +121,99 @@ export function PublicHomePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-border bg-background">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-6">
-          <nav className="hidden items-center gap-1 md:flex" ref={menuRef}>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setMenuOpen((v) => !v)}
-                className="inline-flex items-center gap-1 rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Campaigns
-                <ChevronDown className={`size-4 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
-              </button>
-              {menuOpen && (
-                <div className="absolute left-0 top-full z-50 w-72 pt-2">
-                  <div className="overflow-hidden rounded-2xl border border-border bg-popover p-1.5 shadow-xl">
-                    <button
-                      type="button"
-                      onClick={() => scrollTo("live-campaigns")}
-                      className="block w-full rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-accent"
-                    >
-                      <span className="block text-sm font-semibold">Live Campaigns</span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">Active campaigns happening now.</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        goTo("past-campaigns");
-                      }}
-                      className="block w-full rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-accent"
-                    >
-                      <span className="block text-sm font-semibold">Past Campaigns</span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">Completed campaigns and results.</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        goTo("success-stories");
-                      }}
-                      className="block w-full rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-accent"
-                    >
-                      <span className="block text-sm font-semibold">Success Stories</span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">Featured community impact.</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+          <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => goTo("website-marketing")}
-              className="rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              onClick={() => scrollTo("hero")}
+              className="flex shrink-0 items-center rounded-lg"
+              aria-label="ForkUp home"
             >
-              About ForkUp
+              <img
+                src={assetSrc(forkupLogo)}
+                alt="ForkUp"
+                width={160}
+                height={80}
+                className="h-10 w-auto object-contain"
+              />
             </button>
-          </nav>
+            <nav className="hidden items-center gap-1 md:flex" ref={menuRef}>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((v) => !v)}
+                  className="inline-flex items-center gap-1 rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Campaigns
+                  <ChevronDown className={`size-4 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
+                </button>
+                {menuOpen && (
+                  <div className="absolute left-0 top-full z-50 w-72 pt-2">
+                    <div className="overflow-hidden rounded-2xl border border-border bg-popover p-1.5 shadow-xl">
+                      <button
+                        type="button"
+                        onClick={() => scrollTo("live-campaigns")}
+                        className="block w-full rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-accent"
+                      >
+                        <span className="block text-sm font-semibold">Live Campaigns</span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          Active campaigns happening now.
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          goTo("past-campaigns");
+                        }}
+                        className="block w-full rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-accent"
+                      >
+                        <span className="block text-sm font-semibold">Past Campaigns</span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          Completed campaigns and results.
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          goTo("success-stories");
+                        }}
+                        className="block w-full rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-accent"
+                      >
+                        <span className="block text-sm font-semibold">Success Stories</span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          Featured community impact.
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => scrollTo("how-it-works")}
+                className="rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                How It Works
+              </button>
+              <button
+                type="button"
+                onClick={() => goTo("success-stories")}
+                className="rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Impact
+              </button>
+              <button
+                type="button"
+                onClick={() => goTo("website-marketing")}
+                className="rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                About Us
+              </button>
+            </nav>
+          </div>
 
           <div className="flex items-center gap-2">
             {isLoggedIn && (
@@ -187,12 +227,6 @@ export function PublicHomePage() {
             )}
             <button
               type="button"
-              onClick={joinAsBusiness}
-              className="hidden rounded-full border border-border px-3.5 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent sm:inline-flex"
-            >
-              Join as Business
-            </button>
-            <button
               onClick={startCampaign}
               className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-md shadow-primary/20 transition-all hover:bg-primary-dark hover:-translate-y-0.5 active:scale-95"
             >
@@ -202,7 +236,7 @@ export function PublicHomePage() {
             <button
               type="button"
               onClick={() => setMobileOpen((v) => !v)}
-              className="inline-flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent sm:hidden"
+              className="inline-flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent md:hidden"
               aria-label="Menu"
             >
               {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
@@ -231,88 +265,55 @@ export function PublicHomePage() {
             </button>
             <button
               type="button"
-              onClick={() => goTo("website-marketing")}
+              onClick={() => scrollTo("how-it-works")}
               className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-accent"
             >
-              About ForkUp
+              How It Works
             </button>
             <button
               type="button"
-              onClick={joinAsBusiness}
+              onClick={() => goTo("success-stories")}
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-accent"
+            >
+              Impact
+            </button>
+            <button
+              type="button"
+              onClick={() => goTo("website-marketing")}
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-accent"
+            >
+              About Us
+            </button>
+            <button
+              type="button"
+              onClick={startCampaign}
               className="mt-2 block w-full rounded-lg bg-primary px-3 py-2.5 text-left text-sm font-semibold text-primary-foreground"
             >
-              Join as Business
+              I&apos;m a Nonprofit or Charity
+            </button>
+            <button
+              type="button"
+              onClick={joinAsRestaurant}
+              className="mt-1 block w-full rounded-lg border border-border px-3 py-2.5 text-left text-sm font-semibold"
+            >
+              I&apos;m a Restaurant
+            </button>
+            <button
+              type="button"
+              onClick={joinAsLocalBusiness}
+              className="mt-1 block w-full rounded-lg border border-border px-3 py-2.5 text-left text-sm font-semibold"
+            >
+              I&apos;m a Local Business
             </button>
           </div>
         )}
       </header>
 
-      {/* Hero — unchanged from marketing page */}
-      <section id="hero" className="relative overflow-hidden border-b border-border">
-        <div className="absolute inset-0">
-          <img
-            src={assetSrc(heroImage)}
-            alt="Neighbors dining and shopping at local businesses at golden hour"
-            width={1920}
-            height={1080}
-            className="h-full w-full object-cover"
-          />
-          <div className="absolute inset-0 bg-foreground/78" />
-        </div>
-
-        <div className="relative mx-auto max-w-6xl px-5 pb-8 pt-4 sm:px-6 md:pb-10 md:pt-5">
-          <div className="mx-auto max-w-4xl space-y-3 text-center text-background animate-rise">
-            <div className="flex flex-col items-center gap-1">
-              <img
-                src={assetSrc(forkupLogo)}
-                alt="ForkUp"
-                width={380}
-                height={190}
-                className="h-[100px] w-auto object-contain md:h-[120px]"
-              />
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-background/90">
-                Do good through everyday spending
-              </p>
-            </div>
-            <h1 className="mx-auto max-w-3xl font-display text-2xl font-semibold leading-tight tracking-tight sm:text-3xl md:max-w-4xl md:text-4xl lg:text-[2.75rem]">
-              Raise more by bringing your community and
-              <br />
-              local businesses together.
-            </h1>
-            <p className="mx-auto max-w-2xl text-base leading-snug text-background/90 md:text-lg">
-              ForkUp connects nonprofits, teams, schools, and community groups with local businesses and
-              supporters to build campaigns, drive participation, and track the impact in one place.
-            </p>
-
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <button
-                onClick={startCampaign}
-                className="group inline-flex items-center gap-2 rounded-full bg-primary px-7 py-3.5 text-base font-semibold text-primary-foreground shadow-xl shadow-primary/20 transition-all hover:bg-primary-dark hover:-translate-y-0.5 active:scale-95"
-              >
-                Start a Campaign
-                <ArrowRight className="size-5 transition-transform group-hover:translate-x-1" />
-              </button>
-              <button
-                type="button"
-                onClick={joinAsBusiness}
-                className="inline-flex items-center gap-2 rounded-full border-2 border-background/60 bg-background/10 px-6 py-3.5 text-base font-semibold text-background backdrop-blur-md transition-all hover:bg-background/20 hover:-translate-y-0.5 active:scale-95"
-              >
-                <Store className="size-5" />
-                Join as Business
-              </button>
-              <button
-                onClick={() => scrollTo("live-campaigns")}
-                className="inline-flex items-center gap-2 rounded-full border border-background/50 bg-background/10 px-6 py-3 text-sm font-semibold text-background backdrop-blur-md transition-all hover:bg-background/20"
-              >
-                Explore Live Campaigns
-              </button>
-            </div>
-            <p className="pt-1 text-sm text-background/80">
-              Create a campaign in minutes — or join one as a local business partner.
-            </p>
-          </div>
-        </div>
-      </section>
+      <JoinUsThreeDoorsHero
+        onNonprofit={startCampaign}
+        onRestaurant={joinAsRestaurant}
+        onLocalBusiness={joinAsLocalBusiness}
+      />
 
       <main className="mx-auto max-w-6xl px-5 pb-12 pt-4 sm:px-6 md:pb-16 md:pt-6">
         <section id="live-campaigns" className="scroll-mt-24">
@@ -395,27 +396,6 @@ export function PublicHomePage() {
           </div>
         </section>
       </main>
-
-      <section className="border-t border-border bg-muted/30">
-        <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 px-5 py-8 sm:flex-row sm:items-center sm:px-6">
-          <div className="flex items-start gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-              <Store className="size-5 text-primary" />
-            </div>
-            <div>
-              <p className="font-semibold text-foreground">Local business?</p>
-              <p className="text-sm text-muted-foreground">Join a campaign near you.</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={joinAsBusiness}
-            className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
-          >
-            Join as Business <ArrowRight className="size-4" />
-          </button>
-        </div>
-      </section>
 
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-5 py-6 text-sm text-muted-foreground sm:flex-row sm:px-6">

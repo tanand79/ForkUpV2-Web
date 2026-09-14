@@ -27,6 +27,7 @@ import {
 } from "@/lib/api";
 import { formatRespondByLabel } from "@/lib/business-status";
 import { RequestAgainButton } from "@/components/campaign/RequestAgainButton";
+import { BusinessPostStartChecklistPanel } from "@/components/campaign/BusinessPostStartChecklist";
 
 type CollabTab = "pending" | "active" | "completed";
 
@@ -268,6 +269,8 @@ export function BusinessDashboard() {
           Invite a nonprofit
         </button>
       </div>
+
+      <BusinessPostStartChecklistPanel businessId={biz.id} />
 
       <section className="mt-8 grid gap-3 sm:grid-cols-3">
         {summary.map(({ label, value, icon: Icon }) => (

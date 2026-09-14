@@ -83,7 +83,7 @@ export function StartFundraising() {
           {state.aiDrafted || (state.title.trim() && state.description.trim())
             ? "Resume My Campaign"
             : state.nonprofitProfile
-              ? "Build My Campaign"
+              ? "Create My Campaign Draft"
               : "Set Up Organization"}
           <ArrowRight className="size-4" />
         </button>

@@ -788,12 +788,38 @@ export function submitBusinessClaimRequest(body: {
   supportsShopAndDonate?: boolean;
   supportsServiceGiveback?: boolean;
   supportsGuestBartending?: boolean;
+  /** Pass C2: Join Us door — restaurant | local */
+  joinDoorType?: "restaurant" | "local";
 }) {
   return fetchJson<BusinessClaimRequestResult>("/api/profiles/businesses/claim-request", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Pass C2 — post-start checklist for a business (required vs later).
+ * Inputs: businessId. Outputs: joinDoorType + required/later checklist items.
+ */
+export type BusinessPostStartChecklistItem = {
+  id: string;
+  label: string;
+  status: "done" | "needed" | "optional";
+  when: "required" | "later";
+  hint: string;
+};
+
+export type BusinessPostStartChecklist = {
+  joinDoorType: "restaurant" | "local" | null;
+  required: BusinessPostStartChecklistItem[];
+  later: BusinessPostStartChecklistItem[];
+};
+
+export function fetchBusinessPostStartChecklist(businessId: number) {
+  return fetchJson<BusinessPostStartChecklist>(
+    `/api/business/${businessId}/post-start-checklist`,
+  );
 }
 
 // ─── Business → nonprofit campaign invites ───────────────────────────────────

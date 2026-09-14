@@ -353,9 +353,9 @@ export function ReviewLaunch() {
     <>
       <main className="mx-auto max-w-3xl px-5 py-10 pb-48 sm:px-6 sm:py-12">
         <div className="animate-rise mb-8 text-center">
-          <p className="text-xs font-semibold uppercase tracking-wider text-primary">Review &amp; Launch</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-primary">Review campaign draft</p>
           <h1 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">
-            You&rsquo;re about to launch something meaningful.
+            You&rsquo;re about to create your campaign draft.
           </h1>
           <p className="mt-3 text-pretty text-muted-foreground">
             Take one final look before your campaign goes live. Once launched, ForkUp will help you
@@ -766,7 +766,7 @@ export function ReviewLaunch() {
             <span className="text-sm font-semibold">
               {isPostLaunchEdit
                 ? "I confirm these campaign updates."
-                : "I\u2019m ready to launch this campaign."}
+                : "I\u2019m ready to create my campaign draft."}
             </span>
           </label>
           {isGuestLaunch && !isPostLaunchEdit && (
@@ -785,7 +785,7 @@ export function ReviewLaunch() {
               />
               <p className="text-xs text-muted-foreground">
                 We&apos;ll email a private link so you can manage this campaign on any device.
-                No account needed to launch.
+                No account needed to create your draft. Deeper setup comes after email.
               </p>
             </div>
           )}
@@ -820,8 +820,8 @@ export function ReviewLaunch() {
                     ? "Your changes will be saved without re-launching."
                     : "Almost there. Complete the remaining items above, then save."
                   : canLaunch
-                    ? "Your campaign is ready to launch."
-                    : "Almost there. Complete the remaining items above and we\u2019ll prepare your campaign for launch."}
+                    ? "Your campaign draft is ready."
+                    : "Almost there. Complete the remaining items above and we\u2019ll prepare your campaign draft."}
             </span>
             <button
               onClick={handleLaunch}
@@ -836,7 +836,7 @@ export function ReviewLaunch() {
               ) : (
                 <>
                   <Rocket className="size-4" />
-                  Launch Campaign
+                  Create My Campaign Draft
                 </>
               )}
             </button>

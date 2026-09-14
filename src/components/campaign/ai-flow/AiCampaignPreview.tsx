@@ -1221,7 +1221,7 @@ export function AiCampaignPreview() {
                   state.nonprofitMemberships,
                 )
               ? "Send invite to nonprofit"
-              : "Continue"}
+              : "Continue to create draft"}
         </button>
       </div>
       {inviteError ? (

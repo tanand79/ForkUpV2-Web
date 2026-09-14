@@ -3,6 +3,7 @@
 /**
  * Business AI onboarding (Tasks 6–9): website → AI draft → review → pick campaign → done.
  * Minimal UI — matches existing BusinessClaim form styling; does not replace manual claim.
+ * Pass B: role-aware CTA copy (Create My Restaurant/Business Profile) from Join Us door hint.
  */
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -33,6 +34,12 @@ import { getAuthToken } from "@/lib/auth-storage";
 import { loadUserSession, syncAuthSession } from "@/lib/auth-session";
 import { stashRoleHint, prepareBusinessJoinAuth } from "@/lib/campaign-auth";
 import { useClientMounted } from "@/lib/use-client-mounted";
+import {
+  businessDoorRoleLabel,
+  businessProfileCtaLabel,
+  readBusinessDoor,
+  type BusinessDoor,
+} from "@/lib/business-door";
 
 type Phase = "website" | "analyzing" | "review" | "campaign" | "done";
 
@@ -41,6 +48,7 @@ export function BusinessAiOnboarding() {
   const searchParams = useSearchParams();
   const inviteToken = searchParams.get("token")?.trim() ?? "";
   const mounted = useClientMounted();
+  const [businessDoor, setBusinessDoor] = useState<BusinessDoor | null>(null);
 
   const [phase, setPhase] = useState<Phase>("website");
   const [draft, setDraft] = useState<BusinessAiDraft>(() => loadBusinessAiDraft() ?? defaultBusinessAiDraft());
@@ -50,6 +58,14 @@ export function BusinessAiOnboarding() {
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [doneEmail, setDoneEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!mounted) return;
+    setBusinessDoor(readBusinessDoor());
+  }, [mounted]);
+
+  const profileCta = businessProfileCtaLabel(businessDoor);
+  const roleWord = businessDoorRoleLabel(businessDoor);
 
   useEffect(() => {
     if (inviteToken) {
@@ -174,6 +190,7 @@ export function BusinessAiOnboarding() {
         supportsShopAndDonate: draft.supportsShop,
         supportsServiceGiveback: draft.supportsService,
         supportsGuestBartending: draft.supportsBartending,
+        joinDoorType: businessDoor ?? readBusinessDoor() ?? undefined,
       });
 
       if (result.action === "access_requested") {
@@ -258,21 +275,25 @@ export function BusinessAiOnboarding() {
           <Store className="size-5" />
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Quick business setup</p>
-          <h1 className="text-2xl font-extrabold tracking-tight">Build your profile from your website</h1>
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+            Quick {roleWord} setup
+          </p>
+          <h1 className="text-2xl font-extrabold tracking-tight">
+            Create your {roleWord} profile from your website
+          </h1>
         </div>
       </div>
       <p className="mt-3 text-sm text-muted-foreground">
-        No account needed to start — enter your website, confirm a few details, pick a campaign, and
-        finish.
+        No account needed to start — confirm a few details, optionally pick a campaign, then create
+        your profile draft. Deeper setup comes after email.
       </p>
 
       {phase === "done" && (
         <div className="mt-10 rounded-2xl border border-border bg-card p-6 text-center">
           <CheckCircle2 className="mx-auto size-10 text-primary" />
-          <h2 className="mt-4 text-xl font-bold">You&apos;re set up!</h2>
+          <h2 className="mt-4 text-xl font-bold">Profile draft created</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Your business profile is saved
+            Your {roleWord} profile draft is saved
             {doneEmail ? (
               <>
                 {" "}
@@ -280,7 +301,8 @@ export function BusinessAiOnboarding() {
               </>
             ) : (
               "."
-            )}
+            )}{" "}
+            You can finish verification, ACH, and campaign details later.
           </p>
           <div className="mt-6 flex flex-col gap-2">
             {getAuthToken() ? (
@@ -508,7 +530,7 @@ export function BusinessAiOnboarding() {
             onClick={() => void finishOnboarding()}
             className="inline-flex w-full items-center justify-center text-sm font-semibold text-muted-foreground hover:text-foreground"
           >
-            Skip campaign — finish now
+            Skip campaign — {profileCta}
           </button>
         </div>
       )}
@@ -516,7 +538,8 @@ export function BusinessAiOnboarding() {
       {phase !== "done" && phase === "campaign" && (
         <div className="mt-8 space-y-4">
           <p className="text-sm text-muted-foreground">
-            Choose a live campaign to join. You can accept a formal invite after your profile is saved.
+            Choose a live campaign to join. You can accept a formal invite after your profile draft is
+            saved.
           </p>
           {loadingCampaigns && (
             <div className="flex justify-center py-8">
@@ -525,7 +548,8 @@ export function BusinessAiOnboarding() {
           )}
           {!loadingCampaigns && campaigns.length === 0 && (
             <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-              No live campaigns right now. You can finish setup and join when campaigns are available.
+              No live campaigns right now. You can create your profile draft and join when campaigns
+              are available.
             </p>
           )}
           <div className="max-h-80 space-y-2 overflow-y-auto">
@@ -554,7 +578,7 @@ export function BusinessAiOnboarding() {
             className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"
           >
             {submitting ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-            Finish setup
+            {profileCta}
           </button>
         </div>
       )}
