@@ -1681,6 +1681,63 @@ export function submitVirtualDonation(
   );
 }
 
+/**
+ * Start Stripe Checkout for an online donation.
+ * Inputs: campaign slug + donor fields
+ * Outputs: { url, sessionId, donationId, publishableKey } — redirect browser to url
+ *
+ * Changelog: Pass 3 — Stripe online donation integration.
+ */
+export function startStripeDonationCheckout(
+  slug: string,
+  body: {
+    amount: number;
+    donorName?: string;
+    email: string;
+    anonymous?: boolean;
+    attributionCode?: string;
+  },
+) {
+  return fetchJson<{
+    url: string;
+    sessionId: string;
+    donationId: number;
+    publishableKey: string;
+  }>(`/api/campaigns/${slug}/donations/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Confirm a paid Stripe Checkout session (after success redirect).
+ * Inputs: slug, session_id from Stripe return URL
+ * Outputs: { success, amount?, raised?, alreadyCompleted? }
+ *
+ * Changelog: Pass 3 — Stripe online donation integration.
+ */
+export function confirmStripeDonationCheckout(slug: string, sessionId: string) {
+  return fetchJson<{
+    success: boolean;
+    amount?: number;
+    raised?: number;
+    alreadyCompleted?: boolean;
+  }>(
+    `/api/campaigns/${slug}/donations/confirm-checkout?session_id=${encodeURIComponent(sessionId)}`,
+  );
+}
+
+/**
+ * Public Stripe config (publishable key only).
+ * Changelog: Pass 3 — Stripe online donation integration.
+ */
+export function fetchStripeConfig() {
+  return fetchJson<{ configured: boolean; publishableKey: string | null }>(
+    `/api/stripe/config`,
+  );
+}
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 export interface AuthUser {

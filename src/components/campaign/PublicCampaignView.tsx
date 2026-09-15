@@ -18,6 +18,7 @@ import type { CampaignDetail, ParticipatingLocation } from "@/lib/campaign-types
 import { submitParticipation, fetchCampaignDonations, fetchCampaignImages } from "@/lib/api";
 import { buildReceiptUploadHref } from "@/lib/receipt-upload-href";
 import { DonationModal } from "@/components/campaign/DonationModal";
+import { PublicCampaignDonationReturn } from "@/components/campaign/PublicCampaignDonationReturn";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
 import { PublicCampaignDonationsFeed } from "@/components/campaign/PublicCampaignDonationsFeed";
 import { PublicCampaignFundraisingPanel } from "@/components/campaign/PublicCampaignFundraisingPanel";
@@ -683,15 +684,22 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
       )}
 
       {!isPreviewNotLive && (
-        <DonationModal
-          open={donateOpen}
-          onOpenChange={(open) => {
-            setDonateOpen(open);
-            if (!open) setDonationRefreshKey((k) => k + 1);
-          }}
-          campaignSlug={campaign.slug}
-          nonprofitName={campaign.nonprofit}
-        />
+        <>
+          <PublicCampaignDonationReturn
+            campaignSlug={campaign.slug}
+            nonprofitName={campaign.nonprofit}
+            onConfirmed={() => setDonationRefreshKey((k) => k + 1)}
+          />
+          <DonationModal
+            open={donateOpen}
+            onOpenChange={(open) => {
+              setDonateOpen(open);
+              if (!open) setDonationRefreshKey((k) => k + 1);
+            }}
+            campaignSlug={campaign.slug}
+            nonprofitName={campaign.nonprofit}
+          />
+        </>
       )}
     </div>
   );
