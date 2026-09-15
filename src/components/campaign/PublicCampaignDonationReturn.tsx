@@ -93,7 +93,7 @@ export function PublicCampaignDonationReturn({
 
   return (
     <Dialog
-      open={status !== "idle"}
+      open
       onOpenChange={(open) => {
         if (!open) setStatus("idle");
       }}
