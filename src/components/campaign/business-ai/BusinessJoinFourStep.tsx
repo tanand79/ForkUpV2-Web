@@ -28,7 +28,7 @@ import type { CampaignListItem } from "@/lib/campaign-types";
 import { campaignHasEnded } from "@/components/campaign/CampaignDatePicker";
 import { getAuthToken } from "@/lib/auth-storage";
 import { syncAuthSession } from "@/lib/auth-session";
-import { stashRoleHint, prepareBusinessJoinAuth } from "@/lib/campaign-auth";
+import { stashRoleHint, prepareBusinessJoinAuth, stashClaimLockEmail } from "@/lib/campaign-auth";
 import { useClientMounted } from "@/lib/use-client-mounted";
 import {
   businessDoorRoleLabel,
@@ -735,7 +735,10 @@ export function BusinessJoinFourStep() {
                 type="button"
                 onClick={() => {
                   prepareBusinessJoinAuth();
-                  goTo("auth-login");
+                  if (draft.email) stashClaimLockEmail(draft.email);
+                  goTo("auth-login", {
+                    query: { email: draft.email || undefined, token: undefined },
+                  });
                 }}
                 className="rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground"
               >

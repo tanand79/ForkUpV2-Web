@@ -23,7 +23,7 @@ import { useSearchParams } from "next/navigation";
 import { useCampaign } from "@/lib/campaign-context";
 import { stateFromBusinessInvite } from "@/lib/campaign-flow";
 import { syncAuthSession } from "@/lib/auth-session";
-import { stashAuthReturnStep, stashRoleHint } from "@/lib/campaign-auth";
+import { stashAuthReturnStep, stashRoleHint, stashClaimLockEmail } from "@/lib/campaign-auth";
 import { getAuthToken } from "@/lib/auth-storage";
 import { useClientMounted } from "@/lib/use-client-mounted";
 import {
@@ -324,7 +324,10 @@ export function NonprofitClaim() {
       });
       stashRoleHint("nonprofit");
       stashAuthReturnStep("nonprofit-claim");
-      goTo("auth-login");
+      if (contactEmail.trim()) stashClaimLockEmail(contactEmail.trim());
+      goTo("auth-login", {
+        query: { email: contactEmail.trim() || undefined, token: undefined },
+      });
       return;
     }
     setLoading(true);

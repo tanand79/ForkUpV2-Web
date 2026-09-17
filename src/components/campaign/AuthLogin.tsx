@@ -41,6 +41,17 @@ export function AuthLogin({
   /** Optional: called after successful register (before onSuccess). */
   onRegistered,
 
+  /**
+   * Additive: prefill email (claim mail / guest draft). Existing callers omit this.
+   */
+  initialEmail,
+
+  /**
+   * Additive: when true, email is read-only and submit always uses initialEmail.
+   * Used for claim-mail + manual Create account so OTP cannot go to another address.
+   */
+  lockEmail = false,
+
 }: {
 
   intent?: AccountIntent;
@@ -61,13 +72,24 @@ export function AuthLogin({
 
   onRegistered?: (email: string) => void | Promise<void>;
 
+  initialEmail?: string;
+
+  lockEmail?: boolean;
+
 }) {
 
   const copy = ACCOUNT_INTENT_COPY[intent];
 
+  const lockedNormalized =
+    lockEmail && initialEmail && isValidEmail(initialEmail)
+      ? normalizeEmail(initialEmail)
+      : "";
+
   const [mode, setMode] = useState<"login" | "register">(initialMode);
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() =>
+    initialEmail && isValidEmail(initialEmail) ? normalizeEmail(initialEmail) : "",
+  );
 
   const [password, setPassword] = useState("");
 
@@ -104,7 +126,11 @@ export function AuthLogin({
 
   useEffect(() => {
 
-    setEmail("");
+    if (lockedNormalized) {
+      setEmail(lockedNormalized);
+    } else {
+      setEmail("");
+    }
 
     setPassword("");
 
@@ -116,7 +142,13 @@ export function AuthLogin({
 
     setEmailTaken(false);
 
-  }, [intent, mode]);
+  }, [intent, mode, lockedNormalized]);
+
+  // Claim/draft lock may arrive after first paint — keep field in sync.
+  useEffect(() => {
+    if (!lockedNormalized) return;
+    setEmail(lockedNormalized);
+  }, [lockedNormalized]);
 
 
 
@@ -166,7 +198,13 @@ export function AuthLogin({
 
 
 
-    const normalized = normalizeEmail(email);
+    const normalized = lockedNormalized || normalizeEmail(email);
+
+    if (lockedNormalized && normalizeEmail(email) !== lockedNormalized) {
+      setError(`Use ${lockedNormalized} for this claim link / draft.`);
+      setEmail(lockedNormalized);
+      return;
+    }
 
     const validationError = emailValidationMessage(normalized);
 
@@ -306,6 +344,7 @@ export function AuthLogin({
             required
             value={email}
             onChange={(e) => {
+              if (lockedNormalized) return;
               setEmail(e.target.value);
               setEmailTaken(false);
               setInfo(null);
@@ -316,12 +355,19 @@ export function AuthLogin({
             data-lpignore="true"
             data-1p-ignore="true"
             data-form-type="other"
-            readOnly={!allowAutofill}
-            onFocus={() => setAllowAutofill(true)}
+            readOnly={Boolean(lockedNormalized) || !allowAutofill}
+            onFocus={() => {
+              if (!lockedNormalized) setAllowAutofill(true);
+            }}
             className={`h-12 w-full rounded-xl border bg-card px-4 text-sm ${
               emailError ? "border-destructive" : "border-border"
-            }`}
+            } ${lockedNormalized ? "cursor-not-allowed opacity-90" : ""}`}
           />
+          {lockedNormalized ? (
+            <p className="text-xs text-muted-foreground">
+              This email is locked to your claim / draft. Sign up or sign in with this address only.
+            </p>
+          ) : null}
           {emailError && <p className="text-xs text-destructive">{emailError}</p>}
           {info && !emailError && (
             <p

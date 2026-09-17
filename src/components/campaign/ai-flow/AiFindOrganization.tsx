@@ -3,7 +3,11 @@
 /**
  * AI flow — Find & select nonprofit (create-via-NPO / fundraisers / guests).
  *
- * On confirm:
+ * Phases (same screen, no new ?step=):
+ * - find — search + nearby radius
+ * - confirm — "We found you" card (Step 2 reference); Yes → existing confirm path
+ *
+ * On confirm (Yes, that's us):
  * - Claimed in ForkUp → claimed-npo-chooser (fundraiser vs request access)
  * - Otherwise → AI connect-social as nonprofit (or fundraiser if that intent was set)
  *
@@ -11,7 +15,7 @@
  * diverted into own-org AI create.
  */
 import { useEffect, useState } from "react";
-import { CheckCircle2, Globe, Hash, Loader2, MapPin, ShieldCheck } from "lucide-react";
+import { ArrowRight, CheckCircle2, Loader2, MapPin, Pencil } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import {
   enrichUsNonprofit,
@@ -30,6 +34,9 @@ import {
 } from "@/hooks/use-browser-location";
 import { SearchRadiusControl } from "@/components/campaign/SearchRadiusControl";
 import { AiFlowShell } from "./AiFlowShell";
+
+/** Local UI phase for find → confirm (mirrors business join Step 2). */
+type FindOrgPhase = "find" | "confirm";
 
 /**
  * Geocode a US ZIP via Zippopotam (no key) so nearby search can center on it.
@@ -60,6 +67,7 @@ async function geocodeUsZipClient(
 
 export function AiFindOrganization() {
   const { update, goTo, state, startNewCampaign } = useCampaign();
+  const [phase, setPhase] = useState<FindOrgPhase>("find");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<OrganizationSearchCandidate | null>(null);
   const [busy, setBusy] = useState(false);
@@ -72,6 +80,13 @@ export function AiFindOrganization() {
     ? nearbyQueryParams(browserLocation, radiusMiles)
     : undefined;
   const parsedZip = parseOrgNameAndZip(query).zip;
+
+  /** Return to search (Edit / Search again / Back from confirm). */
+  const returnToSearch = () => {
+    setPhase("find");
+    setSelected(null);
+    setError(null);
+  };
 
   useEffect(() => {
     // Nonprofit organizers (membership) only create for their own org.
@@ -99,6 +114,7 @@ export function AiFindOrganization() {
     setSelected(candidate);
     setQuery(candidate.organizationName);
     setError(null);
+    setPhase("confirm");
 
     if (candidate.source === "irs_us" && candidate.ein && !candidate.website) {
       try {
@@ -215,6 +231,9 @@ export function AiFindOrganization() {
   };
 
   const locationLabel = [selected?.city, selected?.state].filter(Boolean).join(", ");
+  const websiteFound = Boolean(selected?.website?.trim());
+  const locationFound = Boolean(selected?.city || selected?.state);
+  const logoFound = Boolean(selected?.logoUrl?.trim());
 
   // Nonprofit Create Campaign: Back returns to dashboard (not public landing).
   const backStep =
@@ -222,114 +241,123 @@ export function AiFindOrganization() {
       ? "nonprofit-dashboard"
       : "website-landing";
 
+  const isConfirm = phase === "confirm" && selected;
+
   return (
     <AiFlowShell
-      title="Search and select a nonprofit"
-      subtitle="Find the organization this campaign is for. If it’s already on ForkUp, you’ll choose how to continue."
-      backStep={backStep}
+      title={isConfirm ? "We found you!" : "Search and select a nonprofit"}
+      subtitle={
+        isConfirm
+          ? "Here's what we found. We'll use this to build your campaign."
+          : "Find the organization this campaign is for. If it’s already on ForkUp, you’ll choose how to continue."
+      }
+      backStep={isConfirm ? undefined : backStep}
+      onBack={isConfirm ? returnToSearch : undefined}
     >
-      <div className="relative">
-        <label className="mb-2 block text-sm font-semibold">Organization name</label>
-        <input
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setSelected(null);
-          }}
-          placeholder="YMCA - 23220"
-          className="w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm outline-none ring-primary/30 focus:ring-2"
-          disabled={busy}
-        />
-        <OrganizationNameSuggest
-          query={query}
-          enabled={!busy && !selected}
-          onSelect={(c) => void onSelect(c)}
-          nearby={nearby ?? null}
-        />
-      </div>
-
-      <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-foreground">
-        <input
-          type="checkbox"
-          checked={useNearbyFilter}
-          onChange={(e) => {
-            const on = e.target.checked;
-            setUseNearbyFilter(on);
-            setSelected(null);
-            if (!on) browserLocation.setLocationOverride(null);
-          }}
-          className="size-4 rounded border-border accent-primary text-primary"
-          style={{ accentColor: "var(--color-primary, #A65A3A)" }}
-        />
-        <span className="inline-flex items-center gap-1.5">
-          <MapPin className="size-3.5 text-muted-foreground" />
-          Search near my location
-        </span>
-      </label>
-
-      <SearchRadiusControl
-        enabled={useNearbyFilter}
-        valueMiles={radiusMiles}
-        onChange={(miles) => {
-          setRadiusMiles(miles);
-          setSelected(null);
-        }}
-        latitude={browserLocation.latitude}
-        longitude={browserLocation.longitude}
-      />
-
-      {selected && (
-        <div className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <div className="flex items-start gap-3">
-            <OrganizationAvatar
-              organizationName={selected.organizationName}
-              logoUrl={selected.logoUrl}
-              website={selected.website}
-              className="size-12"
+      {phase === "find" && (
+        <>
+          <div className="relative">
+            <label className="mb-2 block text-sm font-semibold">Organization name</label>
+            <input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setSelected(null);
+              }}
+              placeholder="YMCA - 23220"
+              className="w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm outline-none ring-primary/30 focus:ring-2"
+              disabled={busy}
             />
-            <div className="min-w-0 flex-1">
-              <h2 className="font-semibold">{selected.organizationName}</h2>
+            <OrganizationNameSuggest
+              query={query}
+              enabled={!busy}
+              onSelect={(c) => void onSelect(c)}
+              nearby={nearby ?? null}
+            />
+          </div>
+
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={useNearbyFilter}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setUseNearbyFilter(on);
+                setSelected(null);
+                if (!on) browserLocation.setLocationOverride(null);
+              }}
+              className="size-4 rounded border-border accent-primary text-primary"
+              style={{ accentColor: "var(--color-primary, #A65A3A)" }}
+            />
+            <span className="inline-flex items-center gap-1.5">
+              <MapPin className="size-3.5 text-muted-foreground" />
+              Search near my location
+            </span>
+          </label>
+
+          <SearchRadiusControl
+            enabled={useNearbyFilter}
+            valueMiles={radiusMiles}
+            onChange={(miles) => {
+              setRadiusMiles(miles);
+              setSelected(null);
+            }}
+            latitude={browserLocation.latitude}
+            longitude={browserLocation.longitude}
+          />
+        </>
+      )}
+
+      {isConfirm && selected && (
+        <div className="space-y-4">
+          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+            <div className="relative flex h-40 items-center justify-center bg-muted/40">
+              {selected.logoUrl ? (
+                <img
+                  src={selected.logoUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <OrganizationAvatar
+                  organizationName={selected.organizationName}
+                  logoUrl={selected.logoUrl}
+                  website={selected.website}
+                  className="size-20"
+                />
+              )}
+              <button
+                type="button"
+                onClick={returnToSearch}
+                className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-border bg-card/95 px-3 py-1 text-xs font-semibold text-foreground shadow-sm hover:bg-card"
+              >
+                <Pencil className="size-3" />
+                Edit
+              </button>
+            </div>
+            <div className="space-y-2 p-5">
+              <h2 className="text-lg font-bold tracking-tight">
+                {selected.organizationName}
+              </h2>
               {locationLabel ? (
-                <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <p className="inline-flex items-center gap-1 text-sm text-muted-foreground">
                   <MapPin className="size-3.5" />
                   {locationLabel}
                 </p>
               ) : null}
-              {(selected.verified || selected.verificationStatus === "verified") && (
-                <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
-                  <ShieldCheck className="size-3.5" />
-                  Verified Nonprofit
-                </p>
-              )}
+              <ul className="mt-3 space-y-1.5 text-sm">
+                <ConfirmCheckRow ok={websiteFound} label="Website found" />
+                <ConfirmCheckRow ok={locationFound} label="Location found" />
+                <ConfirmCheckRow ok={logoFound} label="Logo found" />
+              </ul>
             </div>
-          </div>
-
-          <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-            {selected.website ? (
-              <p className="inline-flex items-center gap-2 break-all">
-                <Globe className="size-3.5 shrink-0" />
-                {selected.website}
-              </p>
-            ) : null}
-            {selected.ein ? (
-              <p className="inline-flex items-center gap-2">
-                <Hash className="size-3.5 shrink-0" />
-                EIN {selected.ein}
-              </p>
-            ) : null}
-            {selected.mission ? (
-              <p className="pt-1 text-foreground/90">
-                <span className="font-semibold text-foreground">Mission · </span>
-                {selected.mission}
-              </p>
-            ) : null}
           </div>
 
           <button
             type="button"
             disabled={busy}
             onClick={() => confirmOrganization()}
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark disabled:opacity-60"
           >
             {busy ? (
               <>
@@ -338,14 +366,19 @@ export function AiFindOrganization() {
               </>
             ) : (
               <>
-                <CheckCircle2 className="size-4" />
-                Continue with this organization
+                Yes, that&apos;s us
+                <ArrowRight className="size-4" />
               </>
             )}
           </button>
-          <p className="mt-3 text-center text-xs text-muted-foreground">
-            Next you can add social or website links. We never post without permission.
-          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={returnToSearch}
+            className="w-full text-center text-sm font-semibold text-muted-foreground hover:text-foreground disabled:opacity-60"
+          >
+            Not correct? Search again
+          </button>
         </div>
       )}
 
@@ -355,5 +388,21 @@ export function AiFindOrganization() {
         </p>
       ) : null}
     </AiFlowShell>
+  );
+}
+
+/**
+ * Checklist row for the confirm ("We found you") card.
+ * Inputs: ok (whether the signal was found), label.
+ * Output: list item with check icon styling.
+ */
+function ConfirmCheckRow({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <li className="flex items-center gap-2">
+      <CheckCircle2
+        className={`size-4 ${ok ? "text-emerald-600" : "text-muted-foreground/40"}`}
+      />
+      <span className={ok ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+    </li>
   );
 }

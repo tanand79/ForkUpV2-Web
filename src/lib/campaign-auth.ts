@@ -205,6 +205,38 @@ export function consumeAuthReturnStep(): StepId | null {
 }
 
 const AUTH_INITIAL_MODE_KEY = "forkup-auth-initial-mode";
+/** Guest/claim flows: signup must use this email only (prefill + lock). */
+const CLAIM_LOCK_EMAIL_KEY = "forkup-claim-lock-email";
+
+/**
+ * Remember the email that owns a guest claim / draft before signup.
+ * Inputs: raw email. Outputs: stored normalized when valid.
+ */
+export function stashClaimLockEmail(email: string) {
+  if (typeof window === "undefined") return;
+  const normalized = email.trim().toLowerCase();
+  if (!normalized.includes("@")) return;
+  sessionStorage.setItem(CLAIM_LOCK_EMAIL_KEY, normalized);
+}
+
+/**
+ * Read claim/draft lock email without clearing (signup screen prefill).
+ * Inputs: none. Outputs: normalized email or null.
+ */
+export function peekClaimLockEmail(): string | null {
+  if (typeof window === "undefined") return null;
+  const raw = sessionStorage.getItem(CLAIM_LOCK_EMAIL_KEY)?.trim().toLowerCase() || "";
+  return raw.includes("@") ? raw : null;
+}
+
+/**
+ * Clear claim/draft lock email after claim or finished auth.
+ * Inputs: none. Outputs: session key removed.
+ */
+export function clearClaimLockEmail() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(CLAIM_LOCK_EMAIL_KEY);
+}
 
 /** Open sign-up after guest Join Us — return to dashboard (draft already saved). */
 export function prepareBusinessJoinAuth() {

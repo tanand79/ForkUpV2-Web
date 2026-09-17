@@ -32,7 +32,7 @@ import { campaignHasEnded } from "@/components/campaign/CampaignDatePicker";
 import type { CampaignListItem } from "@/lib/campaign-types";
 import { getAuthToken } from "@/lib/auth-storage";
 import { loadUserSession, syncAuthSession } from "@/lib/auth-session";
-import { stashRoleHint, prepareBusinessJoinAuth } from "@/lib/campaign-auth";
+import { stashRoleHint, prepareBusinessJoinAuth, stashClaimLockEmail } from "@/lib/campaign-auth";
 import { useClientMounted } from "@/lib/use-client-mounted";
 import {
   businessDoorRoleLabel,
@@ -318,7 +318,11 @@ export function BusinessAiOnboarding() {
                 type="button"
                 onClick={() => {
                   prepareBusinessJoinAuth();
-                  goTo("auth-login");
+                  const emailForLock = doneEmail || draft.contactEmail.trim();
+                  if (emailForLock) stashClaimLockEmail(emailForLock);
+                  goTo("auth-login", {
+                    query: { email: emailForLock || undefined, token: undefined },
+                  });
                 }}
                 className="rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground"
               >

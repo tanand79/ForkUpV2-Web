@@ -14,7 +14,7 @@ import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { getAuthToken } from "@/lib/auth-storage";
-import { stashAuthReturnStep, stashAccountIntent } from "@/lib/campaign-auth";
+import { stashAuthReturnStep, stashAccountIntent, stashClaimLockEmail, clearClaimLockEmail } from "@/lib/campaign-auth";
 import { fetchGuestCampaignClaim, postGuestCampaignClaim } from "@/lib/api";
 import { syncAuthSession, loadUserSession, clearAuthAndSession } from "@/lib/auth-session";
 
@@ -73,6 +73,7 @@ export function GuestCampaignClaim() {
     stashAuthReturnStep("guest-campaign-claim");
     sessionStorage.setItem("forkup-auth-initial-mode", "register");
     sessionStorage.setItem("forkup-guest-claim-token", token);
+    if (info?.guestEmail) stashClaimLockEmail(info.guestEmail);
     goTo("auth-login", { query: { email: info?.guestEmail, token: undefined } });
   };
 
@@ -104,6 +105,7 @@ export function GuestCampaignClaim() {
         },
       });
       sessionStorage.removeItem("forkup-guest-claim-token");
+      clearClaimLockEmail();
       goTo("nonprofit-dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not claim campaign");

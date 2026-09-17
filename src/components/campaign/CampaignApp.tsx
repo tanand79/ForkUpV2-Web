@@ -11,8 +11,12 @@ import {
   resolvePostAuthStep,
   shouldSkipBusinessAiOnboarding,
   stashRoleHint,
+  peekClaimLockEmail,
+  stashClaimLockEmail,
+  clearClaimLockEmail,
   type AccountIntent,
 } from "@/lib/campaign-auth";
+import { isValidEmail, normalizeEmail } from "@/lib/email-validation";
 import { syncAuthSession, buildSessionPatch } from "@/lib/auth-session";
 import { ensureGuestNonprofitLinked } from "@/lib/link-guest-nonprofit";
 import { ensureGuestBusinessLinked } from "@/lib/link-guest-business";
@@ -151,6 +155,8 @@ function AuthLoginScreen() {
   const [finishing, setFinishing] = useState(false);
   /** One-shot register open from AI flow after guest continue was removed. */
   const [initialMode, setInitialMode] = useState<"login" | "register">("login");
+  /** Claim mail / guest draft email — prefill + lock on signup. */
+  const [lockedEmail, setLockedEmail] = useState("");
 
   useEffect(() => {
     // Guest AI find-org already chose a target → lock fundraiser before optional picker runs.
@@ -169,6 +175,19 @@ function AuthLoginScreen() {
     } else if (hint === "business") {
       setInitialMode("register");
     }
+
+    const fromQuery =
+      typeof window !== "undefined"
+        ? (new URLSearchParams(window.location.search).get("email") ?? "").trim()
+        : "";
+    const fromStash = peekClaimLockEmail() ?? "";
+    const resolved = normalizeEmail(fromQuery || fromStash);
+    if (isValidEmail(resolved)) {
+      stashClaimLockEmail(resolved);
+      setLockedEmail(resolved);
+      if (!savedMode) setInitialMode("register");
+    }
+
     setMounted(true);
   }, [state.accountIntent, state.nonprofitProfile]);
 
@@ -177,6 +196,13 @@ function AuthLoginScreen() {
     try {
       consumeRoleHint();
       const returnStep = consumeAuthReturnStep();
+      // Keep lock until Guest*Claim succeeds; clear for other return paths (manual Create account).
+      if (
+        returnStep !== "guest-campaign-claim" &&
+        returnStep !== "guest-business-claim"
+      ) {
+        clearClaimLockEmail();
+      }
 
       // Capture guest ownership clues before session patch can clear local profile.
       const pendingNonprofitId = state.nonprofitProfile?.id ?? null;
@@ -431,6 +457,8 @@ function AuthLoginScreen() {
           <AuthLogin
             intent={lockFundraiserDraft ? "fundraiser" : roleHint}
             initialMode={initialMode}
+            initialEmail={lockedEmail || undefined}
+            lockEmail={Boolean(lockedEmail)}
             onSuccess={async (selectedRole) => {
               if (isAwaitingEmailVerify()) {
                 return;
