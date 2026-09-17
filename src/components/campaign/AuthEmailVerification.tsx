@@ -28,6 +28,8 @@ const PENDING_INTENT_KEY = "forkup-post-verify-intent";
 const AWAITING_KEY = "forkup-awaiting-email-verify";
 const RUN_FINISH_KEY = "forkup-run-post-verify-finish";
 const PENDING_AUTH_TOKEN_KEY = "forkup-pending-auth-token";
+/** Signup email for verify screen — survives history.pushState / useSearchParams mismatch. */
+const PENDING_VERIFY_EMAIL_KEY = "forkup-pending-verify-email";
 
 /**
  * After soft-gate verify Continue, AuthLoginScreen finishes post-auth navigation.
@@ -42,6 +44,17 @@ export function stashPostVerifyIntent(intent: string) {
   if (typeof window === "undefined") return;
   sessionStorage.setItem(PENDING_INTENT_KEY, intent);
   sessionStorage.setItem(AWAITING_KEY, "1");
+}
+
+/**
+ * Remember signup email for the verify step.
+ * Inputs: raw email. Outputs: stored when valid.
+ */
+export function stashPendingVerifyEmail(email: string) {
+  if (typeof window === "undefined") return;
+  const normalized = normalizeEmail(email);
+  if (!isValidEmail(normalized)) return;
+  sessionStorage.setItem(PENDING_VERIFY_EMAIL_KEY, normalized);
 }
 
 /** Hold register session token until email verify/continue (do not treat as signed-in yet). */
@@ -64,10 +77,31 @@ export function promotePendingAuthToken(): boolean {
 export function clearPendingSignupAuth() {
   if (typeof window === "undefined") return;
   sessionStorage.removeItem(PENDING_AUTH_TOKEN_KEY);
+  sessionStorage.removeItem(PENDING_VERIFY_EMAIL_KEY);
   sessionStorage.removeItem(PENDING_INTENT_KEY);
   sessionStorage.removeItem(AWAITING_KEY);
   sessionStorage.removeItem(RUN_FINISH_KEY);
   clearAuthAndSession();
+}
+
+/**
+ * Resolve verify email from Next params, window search (pushState), or session stash.
+ * Inputs: optional email from useSearchParams. Outputs: normalized email or "".
+ */
+function resolveVerifyEmail(paramEmail: string): string {
+  const fromWindow =
+    typeof window !== "undefined"
+      ? (new URLSearchParams(window.location.search).get("email") ?? "").trim()
+      : "";
+  const fromStash =
+    typeof window !== "undefined"
+      ? (sessionStorage.getItem(PENDING_VERIFY_EMAIL_KEY) ?? "").trim()
+      : "";
+  for (const candidate of [paramEmail, fromWindow, fromStash]) {
+    const normalized = normalizeEmail(candidate);
+    if (isValidEmail(normalized)) return normalized;
+  }
+  return "";
 }
 
 export function consumePostVerifyFinishIntent(): string | null {
@@ -106,11 +140,19 @@ export function AuthVerifyEmail() {
   const { goTo } = useCampaign();
   const params = useSearchParams();
   /** Only treat long hex tokens as email-link verification (ignore stale short/empty tokens). */
-  const rawToken = (params.get("token") ?? "").trim();
+  const rawToken =
+    (params.get("token") ?? "").trim() ||
+    (typeof window !== "undefined"
+      ? (new URLSearchParams(window.location.search).get("token") ?? "").trim()
+      : "");
   const tokenFromUrl = /^[a-f0-9]{32,}$/i.test(rawToken) ? rawToken : "";
   const emailFromUrl = (params.get("email") ?? "").trim();
 
-  const [email] = useState(() => normalizeEmail(emailFromUrl));
+  const [email, setEmail] = useState(() => resolveVerifyEmail(emailFromUrl));
+  /** When false, show editable email field (pushState / missing query recovery). */
+  const [emailLocked, setEmailLocked] = useState(() =>
+    isValidEmail(resolveVerifyEmail(emailFromUrl)),
+  );
   const [code, setCode] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +163,21 @@ export function AuthVerifyEmail() {
 
   const knownEmail = isValidEmail(email);
   const displayEmail = knownEmail ? maskEmail(email) : "";
+
+  // Recover email if first paint missed pushState / session stash.
+  useEffect(() => {
+    if (knownEmail) {
+      stashPendingVerifyEmail(email);
+      return;
+    }
+    const recovered = resolveVerifyEmail(params.get("email") ?? "");
+    if (isValidEmail(recovered)) {
+      setEmail(recovered);
+      setEmailLocked(true);
+      stashPendingVerifyEmail(recovered);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot recover on mount
+  }, []);
 
   const completeAfterVerify = (sessionToken?: string) => {
     if (sessionToken) {
@@ -233,6 +290,22 @@ export function AuthVerifyEmail() {
             {message}
           </p>
         )}
+        {!emailLocked ? (
+          <label className="block space-y-1.5">
+            <span className="text-sm font-semibold">Email</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(normalizeEmail(e.target.value));
+                if (error) setError(null);
+              }}
+              placeholder="you@example.com"
+              autoComplete="email"
+              className={fieldClass}
+            />
+          </label>
+        ) : null}
         <label className="block space-y-1.5">
           <span className="text-sm font-semibold">6-digit code</span>
           <input

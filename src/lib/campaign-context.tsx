@@ -278,6 +278,8 @@ export type StepId =
   | "nonprofit-claim"
   | "business-claim"
   | "business-ai-onboarding"
+  /** Pass D2 — Restaurant / Local 4-step giveback join (name → confirm → giveback → email). */
+  | "business-giveback-join"
   | "business-invites-nonprofit"
   | "nonprofit-accepts-invite"
   | "fundraiser-invite-accept"
@@ -311,6 +313,7 @@ export type StepId =
   | "ai-continue-guest"
   | "guest-launch-sent"
   | "guest-campaign-claim"
+  | "guest-business-claim"
   | "fundraiser-invite-sent"
   // Lovable Review Your Campaign (after Prepare My Draft) — not the old details/media tabs.
   | "campaign-review"
@@ -1535,7 +1538,7 @@ export function CampaignProvider({
     if (!stepRequiresAuth(step)) return;
     if (isCampaignAuthenticated()) return;
 
-    if (step === "business-ai-onboarding") {
+    if (step === "business-ai-onboarding" || step === "business-giveback-join") {
       sessionStorage.setItem("forkup-auth-initial-mode", "register");
     }
     stashAuthReturnStep(step);
@@ -1568,7 +1571,8 @@ export function CampaignProvider({
       expected !== step &&
       expected !== "nonprofit-claim" &&
       expected !== "business-claim" &&
-      expected !== "business-ai-onboarding"
+      expected !== "business-ai-onboarding" &&
+      expected !== "business-giveback-join"
     ) {
       goTo(expected);
     }

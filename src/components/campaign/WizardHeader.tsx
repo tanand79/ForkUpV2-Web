@@ -37,6 +37,7 @@ const POST_CREATION_STEPS: StepId[] = [
   "nonprofit-claim",
   "business-claim",
   "business-ai-onboarding",
+  "business-giveback-join",
   "business-invites-nonprofit",
   "nonprofit-accepts-invite",
   "nonprofit-dashboard",
@@ -134,6 +135,7 @@ export function WizardHeader() {
     step === "auth-verify-email" ||
     step === "guest-launch-sent" ||
     step === "guest-campaign-claim" ||
+    step === "guest-business-claim" ||
     step === "fundraiser-invite-sent"
   ) {
     return null;

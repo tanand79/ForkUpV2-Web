@@ -65,3 +65,45 @@ export function generateBusinessDraft(website: string) {
     body: JSON.stringify({ website }),
   });
 }
+
+/** Pass D1/D2 — find restaurant/local business from a typed name. */
+export type FindBusinessProfileResult = {
+  businessName: string;
+  website: string;
+  businessType: string;
+  about: string;
+  contactEmail: string;
+  phone: string;
+  city: string;
+  state: string;
+  address: string;
+  zip: string;
+  locations: { locationName: string; city: string; state: string; address?: string }[];
+  logoUrl: string | null;
+  imageUrls: string[];
+  checks: {
+    websiteFound: boolean;
+    logoFound: boolean;
+    photosFound: boolean;
+    locationFound: boolean;
+  };
+  locationSourceUrl: string | null;
+  joinDoorType: "restaurant" | "local" | null;
+  confirmationStatus: string;
+  provider: string;
+};
+
+/**
+ * POST /api/find-business-profile
+ * Inputs: businessName, optional joinDoorType.
+ * Outputs: confirmation card payload (website, location, photos, checks).
+ */
+export function findBusinessProfile(body: {
+  businessName: string;
+  joinDoorType?: "restaurant" | "local";
+}) {
+  return fetchJson<FindBusinessProfileResult>("/api/find-business-profile", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}

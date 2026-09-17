@@ -36,7 +36,8 @@ export function PublicHomePage() {
     goTo(
       dashboard === "nonprofit-claim" ||
       dashboard === "business-claim" ||
-      dashboard === "business-ai-onboarding"
+      dashboard === "business-ai-onboarding" ||
+      dashboard === "business-giveback-join"
         ? "account-hub"
         : dashboard,
     );

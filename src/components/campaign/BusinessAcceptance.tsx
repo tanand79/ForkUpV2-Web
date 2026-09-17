@@ -422,7 +422,11 @@ export function BusinessAcceptance() {
                       state.businessMemberships.length > 0 || Boolean(state.businessProfile?.id);
                     const authed = Boolean(getAuthToken());
                     const next = stepForBusinessJoin(authed, hasBusiness);
-                    if (next === "business-ai-onboarding" || next === "auth-login") {
+                    if (
+                      next === "business-ai-onboarding" ||
+                      next === "business-giveback-join" ||
+                      next === "auth-login"
+                    ) {
                       goTo(next, { query: { token } });
                       return;
                     }
@@ -430,7 +434,7 @@ export function BusinessAcceptance() {
                   }}
                   className="font-semibold underline"
                 >
-                  Set up your business from your website
+                  Set up your business
                 </button>
               </p>
             </div>

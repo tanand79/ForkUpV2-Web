@@ -196,6 +196,36 @@ export function postGuestCampaignClaim(token: string) {
   });
 }
 
+/**
+ * Guest business claim: load claim link metadata.
+ * GET /api/guest-business-claim/:token
+ */
+export function fetchGuestBusinessClaim(token: string) {
+  return fetchJson<{
+    slug: string;
+    businessName: string;
+    guestEmail: string;
+    businessId: number;
+    expired: boolean;
+    alreadyClaimed: boolean;
+  }>(`/api/guest-business-claim/${encodeURIComponent(token)}`);
+}
+
+/**
+ * Guest business claim: attach signed-in user (auth required).
+ * POST /api/guest-business-claim/:token
+ */
+export function postGuestBusinessClaim(token: string) {
+  return fetchJson<{
+    ok: boolean;
+    slug: string;
+    businessId: number;
+    businessName: string;
+  }>(`/api/guest-business-claim/${encodeURIComponent(token)}`, {
+    method: "POST",
+  });
+}
+
 export interface BuilderCampaignPartner {
   businessId: number;
   locationId: number;
@@ -766,6 +796,8 @@ export interface BusinessClaimRequestResult {
   riskLevel: "low" | "medium" | "high";
   business: BusinessProfile;
   message?: string;
+  /** Guest join: claim manage link emailed when true. */
+  claimEmailSent?: boolean;
 }
 
 /**
@@ -790,6 +822,14 @@ export function submitBusinessClaimRequest(body: {
   supportsGuestBartending?: boolean;
   /** Pass C2: Join Us door — restaurant | local */
   joinDoorType?: "restaurant" | "local";
+  /** Pass D3: Giveback / cause prefs from 4-step join */
+  joinGivebackMode?:
+    | "restaurant_dine_percent"
+    | "percent_of_purchase"
+    | "dollar_per_visit"
+    | "special_offer";
+  joinCauseMode?: "pick_now" | "forkup_match";
+  joinPreferredCampaignSlug?: string;
 }) {
   return fetchJson<BusinessClaimRequestResult>("/api/profiles/businesses/claim-request", {
     method: "POST",

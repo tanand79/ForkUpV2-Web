@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ArrowRight, HeartHandshake, Megaphone, Plus, Store, Users } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { getAuthToken } from "@/lib/auth-storage";
@@ -21,7 +22,12 @@ const ROLE_ICONS: Record<UserRole, typeof HeartHandshake> = {
 
 export function AccountHub() {
   const { goTo, state, switchActiveRole } = useCampaign();
-  const signedIn = Boolean(getAuthToken());
+  /** Avoid SSR/client token mismatch (hydration). */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  const signedIn = mounted && Boolean(getAuthToken());
 
   const avail = roleAvailability(
     state.nonprofitMemberships.length,

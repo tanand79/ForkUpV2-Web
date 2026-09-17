@@ -15,6 +15,7 @@ import {
 } from "@/lib/campaign-auth";
 import { syncAuthSession, buildSessionPatch } from "@/lib/auth-session";
 import { ensureGuestNonprofitLinked } from "@/lib/link-guest-nonprofit";
+import { ensureGuestBusinessLinked } from "@/lib/link-guest-business";
 import {
   isForeignNonprofitTarget,
   isFundraiserOrgDraftLocked,
@@ -70,6 +71,7 @@ import { FundraiserAcceptsInvite } from "@/components/campaign/FundraiserAccepts
 import { FundraiserDashboard } from "@/components/campaign/FundraiserDashboard";
 import { GuestLaunchSent } from "@/components/campaign/GuestLaunchSent";
 import { GuestCampaignClaim } from "@/components/campaign/GuestCampaignClaim";
+import { GuestBusinessClaim } from "@/components/campaign/GuestBusinessClaim";
 import { FundraiserInviteSent } from "@/components/campaign/FundraiserInviteSent";
 import { PublicLandingPage } from "@/components/campaign/PublicLandingPage";
 import { PublicHomePage } from "@/components/campaign/PublicHomePage";
@@ -95,6 +97,7 @@ import {
   isAwaitingEmailVerify,
   promotePendingAuthToken,
   stashPostVerifyIntent,
+  stashPendingVerifyEmail,
   clearPendingSignupAuth,
 } from "@/components/campaign/AuthEmailVerification";
 import { ChooseOrganizerMode } from "@/components/campaign/ChooseOrganizerMode";
@@ -113,6 +116,7 @@ import {
   ClaimedNpoChooser,
 } from "@/components/campaign/ai-flow";
 import { BusinessAiOnboarding } from "@/components/campaign/business-ai/BusinessAiOnboarding";
+import { BusinessJoinFourStep } from "@/components/campaign/business-ai/BusinessJoinFourStep";
 
 /**
  * Purpose: Detect post-auth return into an in-progress campaign builder/launch path.
@@ -141,7 +145,7 @@ function isCampaignContinuationStep(step: StepId | null): boolean {
 }
 
 function AuthLoginScreen() {
-  const { goTo, switchActiveRole, update, state } = useCampaign();
+  const { goTo, switchActiveRole, update, state, setBusinessProfile } = useCampaign();
   const [mounted, setMounted] = useState(false);
   const [roleHint, setRoleHint] = useState<AccountIntent>("nonprofit");
   const [finishing, setFinishing] = useState(false);
@@ -178,6 +182,8 @@ function AuthLoginScreen() {
       const pendingNonprofitId = state.nonprofitProfile?.id ?? null;
       const pendingCampaignSlug = state.campaignSlug ?? null;
       const pendingNonprofitProfile = state.nonprofitProfile;
+      const pendingBusinessId = state.businessProfile?.id ?? null;
+      const pendingBusinessProfile = state.businessProfile;
       const isBrandNewOrgDraft =
         !!pendingNonprofitProfile?.organizationName?.trim() &&
         !(
@@ -244,6 +250,23 @@ function AuthLoginScreen() {
         }
       }
 
+      // Guest Join Us business draft → attach after signup/verify.
+      if (role === "business" && pendingBusinessId) {
+        try {
+          const linkedBiz = await ensureGuestBusinessLinked({
+            businessId: pendingBusinessId,
+            alreadyLinkedIds: (session?.businessMemberships ?? [])
+              .map((m) => m.id)
+              .filter((id): id is number => typeof id === "number"),
+          });
+          if (linkedBiz) {
+            session = await syncAuthSession(role, { force: true });
+          }
+        } catch {
+          /* best-effort — server verify also links by contact email */
+        }
+      }
+
       if (!session) {
         // Token is already saved — send user to hub; dashboard will retry sync.
         goTo(
@@ -301,13 +324,23 @@ function AuthLoginScreen() {
         update({ nonprofitProfile: pendingNonprofitProfile });
       }
 
+      if (
+        role === "business" &&
+        pendingBusinessProfile &&
+        (session.businessMemberships?.length ?? 0) === 0
+      ) {
+        update({ businessProfile: pendingBusinessProfile });
+        setBusinessProfile(pendingBusinessProfile);
+      }
+
       const inviteToken =
         typeof window !== "undefined"
           ? new URLSearchParams(window.location.search).get("token")?.trim() || undefined
           : undefined;
 
       if (
-        returnStep === "business-ai-onboarding" &&
+        (returnStep === "business-ai-onboarding" ||
+          returnStep === "business-giveback-join") &&
         shouldSkipBusinessAiOnboarding(
           session.businessMemberships.length,
           Boolean(session.businessProfile?.id),
@@ -327,8 +360,12 @@ function AuthLoginScreen() {
         session.businessMemberships.length,
       );
 
-      if (destination === "business-ai-onboarding" && inviteToken) {
-        goTo("business-ai-onboarding", { query: { token: inviteToken } });
+      if (
+        (destination === "business-ai-onboarding" ||
+          destination === "business-giveback-join") &&
+        inviteToken
+      ) {
+        goTo(destination, { query: { token: inviteToken } });
         return;
       }
 
@@ -403,6 +440,7 @@ function AuthLoginScreen() {
             onRegistered={(registeredEmail) => {
               const intent = lockFundraiserDraft ? "fundraiser" : roleHint;
               stashPostVerifyIntent(intent);
+              stashPendingVerifyEmail(registeredEmail);
               // Clear any leftover ?token= so we do not auto-verify and show a false error.
               goTo("auth-verify-email", {
                 query: { email: registeredEmail, token: undefined },
@@ -494,6 +532,8 @@ function WizardBody() {
           <BusinessAiOnboarding />
         </Suspense>
       );
+    case "business-giveback-join":
+      return <BusinessJoinFourStep />;
     case "business-invites-nonprofit":
       return <BusinessInvitesNonprofit />;
     case "nonprofit-accepts-invite":
@@ -587,6 +627,12 @@ function WizardBody() {
       return (
         <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-primary" /></div>}>
           <GuestCampaignClaim />
+        </Suspense>
+      );
+    case "guest-business-claim":
+      return (
+        <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-primary" /></div>}>
+          <GuestBusinessClaim />
         </Suspense>
       );
     case "fundraiser-invite-sent":

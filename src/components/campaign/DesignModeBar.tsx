@@ -42,6 +42,7 @@ const SECTIONS: Section[] = [
       { id: "nonprofit-claim", label: "Nonprofit Claim / Create Profile" },
       { id: "business-claim", label: "Business Claim / Create Profile" },
       { id: "business-ai-onboarding", label: "Business AI Onboarding (Tasks 6–9)" },
+      { id: "business-giveback-join", label: "Business Giveback Join (Pass D2 — 4 steps)" },
       { id: "business-acceptance", label: "Business Acceptance Flow" },
     ],
   },

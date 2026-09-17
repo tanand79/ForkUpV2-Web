@@ -18,9 +18,11 @@ export type AccountIntent = UserRole;
 const BUSINESS_STEPS: StepId[] = [
   "business-claim",
   "business-ai-onboarding",
+  "business-giveback-join",
   "business-invites-nonprofit",
   "business-dashboard",
   "ach-settings",
+  "guest-business-claim",
 ];
 
 const DASHBOARD_STEPS: StepId[] = [
@@ -95,6 +97,7 @@ export function roleHintFromStep(step: StepId): UserRole | null {
     step === "ai-continue-guest" ||
     step === "guest-launch-sent" ||
     step === "guest-campaign-claim" ||
+    step === "guest-business-claim" ||
     step === "fundraiser-invite-sent" ||
     step === "methods"
   ) {
@@ -203,16 +206,16 @@ export function consumeAuthReturnStep(): StepId | null {
 
 const AUTH_INITIAL_MODE_KEY = "forkup-auth-initial-mode";
 
-/** Open sign-up (not sign-in) before business AI onboarding for new visitors. */
+/** Open sign-up after guest Join Us — return to dashboard (draft already saved). */
 export function prepareBusinessJoinAuth() {
   stashRoleHint("business");
   if (typeof window === "undefined") return;
   sessionStorage.setItem(AUTH_INITIAL_MODE_KEY, "register");
-  stashAuthReturnStep("business-ai-onboarding");
+  stashAuthReturnStep("business-dashboard");
 }
 
 /**
- * Destination for "Join as Business" — guest-first quick setup (Task 12).
+ * Destination for "Join as Business" — guest-first 4-step giveback join (Pass D2).
  */
 export function stepForBusinessJoin(
   isAuthenticated: boolean,
@@ -222,7 +225,7 @@ export function stepForBusinessJoin(
   if (isAuthenticated && hasBusinessProfile) {
     return "business-dashboard";
   }
-  return "business-ai-onboarding";
+  return "business-giveback-join";
 }
 
 /** Existing business accounts should not re-run AI claim onboarding after sign-in. */
