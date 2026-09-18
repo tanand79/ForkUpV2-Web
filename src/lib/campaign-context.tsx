@@ -249,6 +249,11 @@ function loadDraft(): CampaignDraft | null {
         confirmedMethod: savedState.confirmedMethod ?? "",
         confirmedStatus: savedState.confirmedStatus ?? "",
         confirmedNotes: savedState.confirmedNotes ?? "",
+        inviteSenderUserId:
+          typeof savedState.inviteSenderUserId === "number" &&
+          savedState.inviteSenderUserId > 0
+            ? savedState.inviteSenderUserId
+            : null,
         lockedBusinessPartners: Array.isArray(savedState.lockedBusinessPartners)
           ? savedState.lockedBusinessPartners
           : [],
@@ -280,6 +285,8 @@ export type StepId =
   | "business-ai-onboarding"
   /** Pass D2 — Restaurant / Local 4-step giveback join (name → confirm → giveback → email). */
   | "business-giveback-join"
+  /** Public campaign → business requests to join; NPO accepts. */
+  | "partner-campaign-join"
   | "business-invites-nonprofit"
   | "nonprofit-accepts-invite"
   | "fundraiser-invite-accept"
@@ -629,6 +636,11 @@ export interface CampaignState {
   confirmedStatus: string;
   confirmedNotes: string;
   /**
+   * Org member (users.id) used as email From display name + Reply-To when
+   * sending business invites. Null = server falls back to org-name enrichment.
+   */
+  inviteSenderUserId: number | null;
+  /**
    * Deadline for businesses to accept their invitation. Once this date passes
    * the participating business list is finalized and the campaign moves from
    * the Invitation Phase into Ready To Launch.
@@ -745,6 +757,7 @@ const initialState: CampaignState = {
   confirmedMethod: "",
   confirmedStatus: "",
   confirmedNotes: "",
+  inviteSenderUserId: null,
   invitationCloseDate: "",
   invitationsClosed: false,
   methodTiming: {},

@@ -7,6 +7,7 @@ import {
   roleAvailability,
   type UserRole,
 } from "@/lib/user-roles";
+import { stashPartnerJoinExistingLogin } from "@/lib/partner-join-intent";
 
 const RETURN_KEY = "forkup-auth-return-step";
 const ROLE_HINT_KEY = "forkup-login-role-hint";
@@ -19,6 +20,7 @@ const BUSINESS_STEPS: StepId[] = [
   "business-claim",
   "business-ai-onboarding",
   "business-giveback-join",
+  "partner-campaign-join",
   "business-invites-nonprofit",
   "business-dashboard",
   "ach-settings",
@@ -46,6 +48,7 @@ export const CAMPAIGN_AUTH_STEPS: StepId[] = [
   "supporter-dashboard",
   "business-claim",
   "business-invites-nonprofit",
+  "partner-campaign-join",
   "choose-organizer-mode",
   // Guest may build Online Donations + Ambassador drafts (3-word Quick Start + review).
   // Launch / business partners / settlement still require auth via later steps.
@@ -238,12 +241,37 @@ export function clearClaimLockEmail() {
   sessionStorage.removeItem(CLAIM_LOCK_EMAIL_KEY);
 }
 
-/** Open sign-up after guest Join Us — return to dashboard (draft already saved). */
+/** Open sign-up after guest Join Us — return to partner join or dashboard. */
 export function prepareBusinessJoinAuth() {
   stashRoleHint("business");
   if (typeof window === "undefined") return;
   sessionStorage.setItem(AUTH_INITIAL_MODE_KEY, "register");
+  // Prefer returning to the public-campaign join flow when that intent is active.
+  try {
+    const raw = sessionStorage.getItem("forkup-partner-join-intent");
+    if (raw) {
+      const parsed = JSON.parse(raw) as { campaignSlug?: string };
+      if (parsed?.campaignSlug) {
+        stashAuthReturnStep("partner-campaign-join");
+        return;
+      }
+    }
+  } catch {
+    /* fall through */
+  }
   stashAuthReturnStep("business-dashboard");
+}
+
+/**
+ * Existing ForkUp business signing in from public-campaign join (Find screen).
+ * Opens login (not register) and returns to partner-campaign-join.
+ */
+export function prepareExistingBusinessPartnerJoinAuth() {
+  stashRoleHint("business");
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(AUTH_INITIAL_MODE_KEY, "login");
+  stashAuthReturnStep("partner-campaign-join");
+  stashPartnerJoinExistingLogin();
 }
 
 /**

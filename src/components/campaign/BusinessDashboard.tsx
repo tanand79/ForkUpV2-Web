@@ -28,6 +28,8 @@ import {
 import { formatRespondByLabel } from "@/lib/business-status";
 import { RequestAgainButton } from "@/components/campaign/RequestAgainButton";
 import { BusinessPostStartChecklistPanel } from "@/components/campaign/BusinessPostStartChecklist";
+import { EmailTemplatesPanel } from "@/components/campaign/EmailTemplatesPanel";
+import { flushPendingPartnerJoinRequest } from "@/lib/partner-join-intent";
 
 type CollabTab = "pending" | "active" | "completed";
 
@@ -144,6 +146,17 @@ export function BusinessDashboard() {
   useEffect(() => {
     loadCollaborations();
   }, [loadCollaborations]);
+
+  // After public-campaign join intent + signup/claim — submit pending request.
+  useEffect(() => {
+    if (!getAuthToken() || !biz?.id) return;
+    void flushPendingPartnerJoinRequest({
+      businessId: biz.id,
+      locationId: biz.locationId || undefined,
+    }).then((status) => {
+      if (status === "submitted") loadCollaborations();
+    });
+  }, [biz?.id, biz?.locationId, loadCollaborations]);
 
   const grouped = useMemo(() => {
     const pending: BusinessCollaboration[] = [];
@@ -271,6 +284,15 @@ export function BusinessDashboard() {
       </div>
 
       <BusinessPostStartChecklistPanel businessId={biz.id} />
+
+      <div className="mt-8">
+        <EmailTemplatesPanel
+          scopeType="business"
+          scopeId={biz.id}
+          title="Email templates"
+          description="Edit nonprofit invite copy, set the From name, preview, and send."
+        />
+      </div>
 
       <section className="mt-8 grid gap-3 sm:grid-cols-3">
         {summary.map(({ label, value, icon: Icon }) => (

@@ -18,6 +18,7 @@ import { getAuthToken } from "@/lib/auth-storage";
 import { stashAuthReturnStep, stashAccountIntent, stashClaimLockEmail, clearClaimLockEmail } from "@/lib/campaign-auth";
 import { fetchGuestBusinessClaim, postGuestBusinessClaim } from "@/lib/api";
 import { syncAuthSession, loadUserSession, clearAuthAndSession } from "@/lib/auth-session";
+import { flushPendingPartnerJoinRequest } from "@/lib/partner-join-intent";
 
 type ClaimInfo = {
   slug: string;
@@ -113,6 +114,7 @@ export function GuestBusinessClaim() {
       switchActiveRole("business", result.businessId);
       sessionStorage.removeItem("forkup-guest-business-claim-token");
       clearClaimLockEmail();
+      void flushPendingPartnerJoinRequest({ businessId: result.businessId });
       goTo("business-dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not claim business");

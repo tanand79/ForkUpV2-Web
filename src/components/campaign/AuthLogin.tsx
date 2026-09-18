@@ -87,6 +87,10 @@ export function AuthLogin({
 
   const [mode, setMode] = useState<"login" | "register">(initialMode);
 
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
+
   const [email, setEmail] = useState(() =>
     initialEmail && isValidEmail(initialEmail) ? normalizeEmail(initialEmail) : "",
   );

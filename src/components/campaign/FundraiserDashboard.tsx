@@ -12,9 +12,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Loader2, Megaphone } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
-import { fetchMyFundraiserInvites, type FundraiserMyInvite } from "@/lib/api";
+import {
+  fetchCurrentUser,
+  fetchMyFundraiserInvites,
+  type FundraiserMyInvite,
+} from "@/lib/api";
 import { stashAccountIntent } from "@/lib/campaign-auth";
 import { campaignPublicPath } from "@/lib/campaign-paths";
+import { EmailTemplatesPanel } from "@/components/campaign/EmailTemplatesPanel";
+import { getAuthToken } from "@/lib/auth-storage";
 
 /**
  * Human-readable invite + campaign status for the fundraiser list.
@@ -58,6 +64,7 @@ export function FundraiserDashboard() {
   const [invites, setInvites] = useState<FundraiserMyInvite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<number | null>(null);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -72,6 +79,13 @@ export function FundraiserDashboard() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!getAuthToken()) return;
+    void fetchCurrentUser()
+      .then((u) => setUserId(u.id))
+      .catch(() => setUserId(null));
+  }, []);
 
   const startForNonprofit = () => {
     stashAccountIntent("fundraiser");
@@ -101,6 +115,17 @@ export function FundraiserDashboard() {
         Find a nonprofit &amp; start
         <ArrowRight className="size-4" />
       </button>
+
+      {userId ? (
+        <div className="mt-8">
+          <EmailTemplatesPanel
+            scopeType="fundraiser_user"
+            scopeId={userId}
+            title="Email templates"
+            description="Edit your nonprofit invite message, set the From name, preview, and send."
+          />
+        </div>
+      ) : null}
 
       <section className="mt-10">
         <h2 className="font-display text-lg font-bold">Your invitations &amp; campaigns</h2>

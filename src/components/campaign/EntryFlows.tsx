@@ -45,6 +45,7 @@ import {
 } from "@/lib/api";
 import { OrganizationLookupConfirm, ORG_TYPE_OPTIONS } from "@/components/campaign/OrganizationLookupConfirm";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
+import { InviteSenderSelect } from "@/components/campaign/InviteSenderSelect";
 import { loadUserSession } from "@/lib/auth-session";
 import {
   clearBusinessClaimDraft,
@@ -1149,6 +1150,7 @@ export function BusinessInvitesNonprofit() {
   const [loading, setLoading] = useState(false);
   const [sentLink, setSentLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [inviteSenderUserId, setInviteSenderUserId] = useState<number | null>(null);
 
   const availableMethods = METHOD_OPTIONS.filter((m) => {
     if (!biz) return false;
@@ -1187,6 +1189,7 @@ export function BusinessInvitesNonprofit() {
         methodType,
         givebackPercentage: giveback,
         message: message.trim() || undefined,
+        inviteSenderUserId: inviteSenderUserId ?? undefined,
       });
       // Absolute URL so the nonprofit can open the invite when shared outside the app.
       setSentLink(
@@ -1295,6 +1298,13 @@ export function BusinessInvitesNonprofit() {
           <span className="text-sm font-semibold">Message (optional)</span>
           <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} className={field} />
         </label>
+
+        <InviteSenderSelect
+          organizationType="business"
+          organizationId={biz.id}
+          value={inviteSenderUserId}
+          onChange={setInviteSenderUserId}
+        />
 
         {error && <p className="text-sm text-destructive">{error}</p>}
         <button

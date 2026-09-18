@@ -13,6 +13,8 @@ import {
   postCampaignBusinessEmails,
   type BusinessLifecycleEmailKey,
 } from "@/lib/api";
+import { useCampaign } from "@/lib/campaign-context";
+import { InviteSenderSelect } from "@/components/campaign/InviteSenderSelect";
 
 const ACTIONS: {
   key: BusinessLifecycleEmailKey;
@@ -46,13 +48,17 @@ type Props = {
 };
 
 export function BusinessEmailActions({ slug }: Props) {
+  const { state, update } = useCampaign();
   const [loading, setLoading] = useState<BusinessLifecycleEmailKey | null>(null);
 
   const run = async (templateKey: BusinessLifecycleEmailKey) => {
     if (!slug) return;
     setLoading(templateKey);
     try {
-      const res = await postCampaignBusinessEmails(slug, { templateKey });
+      const res = await postCampaignBusinessEmails(slug, {
+        templateKey,
+        inviteSenderUserId: state.inviteSenderUserId ?? undefined,
+      });
       if (res.sent > 0) {
         toast.success(
           `Sent ${res.sent} email${res.sent === 1 ? "" : "s"} (${res.templateKey}).`,
@@ -80,6 +86,16 @@ export function BusinessEmailActions({ slug }: Props) {
         (8) send automatically from the campaign flow. Nothing is shown publicly until a business
         accepts.
       </p>
+      {state.nonprofitProfile?.id ? (
+        <div className="mt-4 max-w-md">
+          <InviteSenderSelect
+            organizationType="nonprofit"
+            organizationId={state.nonprofitProfile.id}
+            value={state.inviteSenderUserId}
+            onChange={(userId) => update({ inviteSenderUserId: userId })}
+          />
+        </div>
+      ) : null}
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {ACTIONS.map((a) => (
           <button

@@ -32,8 +32,10 @@ import { formatRespondByLabel, SETUP_STATUS_LABEL, MARKETING_READY_LABEL, SETTLE
 import { campaignPublicPath } from "@/lib/campaign-paths";
 import { netAfterPlatformFee } from "@/lib/platform-config";
 import { BusinessEmailActions } from "./BusinessEmailActions";
+import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
 import { CampaignVisibilityPanel } from "./CampaignVisibilityPanel";
 import { SuccessEngineActionList } from "./SuccessEngineActionList";
+import { CampaignPartnerJoinRequestsPanel } from "./CampaignPartnerJoinRequestsPanel";
 
 function formatDate(d: string) {
   if (!d) return "—";
@@ -743,7 +745,21 @@ export function CampaignDashboard() {
       )}
 
       {(state.campaignSlug || apiDashboard?.slug) && (
-        <div className="animate-rise mb-8 [animation-delay:80ms]">
+        <CampaignPartnerJoinRequestsPanel
+          slug={state.campaignSlug || apiDashboard?.slug || ""}
+        />
+      )}
+
+      {(state.campaignSlug || apiDashboard?.slug) && (
+        <div className="animate-rise mb-8 space-y-6 [animation-delay:80ms]">
+          {state.nonprofitProfile?.id ? (
+            <EmailTemplatesPanel
+              scopeType="nonprofit"
+              scopeId={state.nonprofitProfile.id}
+              title="Email templates & compose"
+              description="Edit invite and lifecycle message content, set the From name, preview, and send. Saved templates are used when you send business emails below."
+            />
+          ) : null}
           <BusinessEmailActions slug={state.campaignSlug || apiDashboard?.slug || ""} />
         </div>
       )}

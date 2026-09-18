@@ -9,6 +9,7 @@ import { mapApiBusinessesToUi } from "@/lib/api-businesses";
 import { buildAppendBusinessInvitationsPayload } from "@/lib/builder-submit";
 import { methodsFromApiList } from "@/lib/campaign-flow";
 import { LegacyInviteStatusBadge } from "@/components/campaign/BusinessStatusBadge";
+import { InviteSenderSelect } from "@/components/campaign/InviteSenderSelect";
 import {
   nearbyQueryParams,
   useBrowserLocation,
@@ -277,6 +278,16 @@ export function ChooseBusinesses() {
             <p className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive" role="alert">
               {appendError}
             </p>
+          ) : null}
+          {appendInvites && state.nonprofitProfile?.id ? (
+            <div className="mt-4 max-w-md">
+              <InviteSenderSelect
+                organizationType="nonprofit"
+                organizationId={state.nonprofitProfile.id}
+                value={state.inviteSenderUserId}
+                onChange={(userId) => update({ inviteSenderUserId: userId })}
+              />
+            </div>
           ) : null}
           {appendInvites && appendHydrating ? (
             <p className="mt-2 text-sm text-muted-foreground">Loading campaign methods…</p>

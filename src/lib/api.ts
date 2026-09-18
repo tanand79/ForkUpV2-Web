@@ -253,6 +253,8 @@ export interface BuilderCampaignState {
   featuredYoutubeUrl?: string | null;
   status: string;
   origin: "business_invite" | "nonprofit";
+  /** Additive: persisted invite From person (users.id), when set. */
+  inviteSenderUserId?: number | null;
   methods: string[];
   partners: BuilderCampaignPartner[];
 }
@@ -284,6 +286,7 @@ export function appendCampaignBusinessInvitations(
   body: {
     invitations?: CreateCampaignPayload["invitations"];
     newBusinessInvites?: CreateCampaignPayload["newBusinessInvites"];
+    inviteSenderUserId?: number;
   },
 ) {
   return fetchJson<{
@@ -891,6 +894,8 @@ export function sendNonprofitCampaignInvite(body: {
   givebackPercentage?: number;
   message?: string;
   campaignName?: string;
+  /** Optional: business org member for From display name + Reply-To. */
+  inviteSenderUserId?: number;
 }) {
   return fetchJson<{
     token: string;
@@ -921,6 +926,103 @@ export function declineNonprofitCampaignInvite(token: string, reason?: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reason }),
   });
+}
+
+// ─── Business → NPO: join existing public campaign ───────────────────────────
+
+export type PartnerJoinDoorType = "restaurant" | "local";
+
+export interface PartnerJoinRequest {
+  id: number;
+  campaignId: number;
+  campaignSlug: string;
+  campaignName: string;
+  nonprofitName: string;
+  businessId: number;
+  businessName: string;
+  businessEmail: string | null;
+  locationId: number;
+  locationName: string;
+  city: string | null;
+  state: string | null;
+  methodId: number;
+  methodType: string;
+  methodName: string;
+  doorType: PartnerJoinDoorType | null;
+  requestStatus: "pending" | "accepted" | "declined";
+  proposedGivebackPercentage: number | null;
+  message: string | null;
+  campaignBusinessLocationId: number | null;
+  acceptPath: string | null;
+  createdAt: string;
+  respondedAt: string | null;
+}
+
+/** POST /api/business/campaigns/:slug/partner-join-requests */
+export function createPartnerJoinRequest(
+  slug: string,
+  body: {
+    businessId: number;
+    locationId?: number;
+    methodType?: string;
+    doorType?: PartnerJoinDoorType;
+    message?: string;
+    proposedGivebackPercentage?: number;
+  },
+) {
+  return fetchJson<{ request: PartnerJoinRequest }>(
+    `/api/business/campaigns/${encodeURIComponent(slug)}/partner-join-requests`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+/** GET /api/business/campaigns/:slug/partner-join-requests/mine */
+export function fetchMyPartnerJoinRequests(slug: string, businessId: number) {
+  return fetchJson<{ requests: PartnerJoinRequest[] }>(
+    `/api/business/campaigns/${encodeURIComponent(slug)}/partner-join-requests/mine?businessId=${businessId}`,
+  );
+}
+
+/** GET /api/manage/campaigns/:slug/partner-join-requests */
+export function fetchManagePartnerJoinRequests(
+  slug: string,
+  status: "pending" | "accepted" | "declined" | "all" = "pending",
+) {
+  return fetchJson<{ requests: PartnerJoinRequest[] }>(
+    `/api/manage/campaigns/${encodeURIComponent(slug)}/partner-join-requests?status=${status}`,
+  );
+}
+
+/** POST /api/manage/campaigns/:slug/partner-join-requests/:id/accept */
+export function acceptPartnerJoinRequest(slug: string, requestId: number) {
+  return fetchJson<{
+    request: PartnerJoinRequest;
+    invitationToken: string;
+    acceptPath: string;
+  }>(
+    `/api/manage/campaigns/${encodeURIComponent(slug)}/partner-join-requests/${requestId}/accept`,
+    { method: "POST" },
+  );
+}
+
+/** POST /api/manage/campaigns/:slug/partner-join-requests/:id/decline */
+export function declinePartnerJoinRequest(
+  slug: string,
+  requestId: number,
+  reason?: string,
+) {
+  return fetchJson<{ request: PartnerJoinRequest }>(
+    `/api/manage/campaigns/${encodeURIComponent(slug)}/partner-join-requests/${requestId}/decline`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    },
+  );
 }
 
 // ─── Business invitations ────────────────────────────────────────────────────
@@ -1285,6 +1387,8 @@ export function createFundraiserCampaignInvite(body: {
   /** Pass 3: required when not signed in. */
   fundraiserEmail?: string;
   fundraiserName?: string;
+  /** Optional: signed-in fundraiser user id for From display name + Reply-To. */
+  inviteSenderUserId?: number;
 }) {
   return fetchJson<{
     token: string;
@@ -1437,7 +1541,11 @@ export type BusinessLifecycleEmailKey =
 
 export function postCampaignBusinessEmails(
   slug: string,
-  body: { templateKey: BusinessLifecycleEmailKey; invitationId?: number },
+  body: {
+    templateKey: BusinessLifecycleEmailKey;
+    invitationId?: number;
+    inviteSenderUserId?: number;
+  },
 ) {
   return fetchJson<{
     success: boolean;
@@ -1598,6 +1706,148 @@ export function resubmitAccessRequest(body: {
   }>("/api/profiles/access-requests/resubmit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Organization member for invite/email From Name dropdown. */
+export type OrganizationMemberPerson = {
+  userId: number;
+  fullName: string;
+  email: string;
+  role: string;
+};
+
+/**
+ * GET /api/profiles/organization-members
+ * Auth required; caller must be a member (or platform admin).
+ */
+export function fetchOrganizationMembers(params: {
+  organizationType: "nonprofit" | "business";
+  organizationId: number;
+}) {
+  const search = new URLSearchParams({
+    organizationType: params.organizationType,
+    organizationId: String(params.organizationId),
+  });
+  return fetchJson<{ members: OrganizationMemberPerson[] }>(
+    `/api/profiles/organization-members?${search.toString()}`,
+    { headers: { ...authHeaders() } },
+  );
+}
+
+// ─── Editable email templates (org / fundraiser library + compose) ───────────
+
+export type EmailTemplateScopeType = "nonprofit" | "business" | "fundraiser_user";
+
+export type EmailTemplateRecord = {
+  id: number | null;
+  scopeType: EmailTemplateScopeType;
+  scopeId: number;
+  campaignId: number | null;
+  templateKey: string;
+  name: string;
+  subject: string;
+  body: string;
+  defaultSenderUserId: number | null;
+  /** Custom From display name only (not email). Null = use sender person's name. */
+  defaultFromName: string | null;
+  isActive: boolean;
+  source: "database" | "system";
+  canEdit: boolean;
+};
+
+export function fetchEmailTemplates(params: {
+  scopeType: EmailTemplateScopeType;
+  scopeId: number;
+  campaignId?: number | null;
+}) {
+  const search = new URLSearchParams({
+    scopeType: params.scopeType,
+    scopeId: String(params.scopeId),
+  });
+  if (params.campaignId != null && params.campaignId > 0) {
+    search.set("campaignId", String(params.campaignId));
+  }
+  return fetchJson<{
+    scopeType: EmailTemplateScopeType;
+    scopeId: number;
+    campaignId: number | null;
+    templates: EmailTemplateRecord[];
+    placeholders: string[];
+  }>(`/api/email-templates?${search.toString()}`, {
+    headers: { ...authHeaders() },
+  });
+}
+
+export function saveEmailTemplate(body: {
+  scopeType: EmailTemplateScopeType;
+  scopeId: number;
+  campaignId?: number | null;
+  templateKey: string;
+  name?: string;
+  subject: string;
+  body: string;
+  defaultSenderUserId?: number | null;
+  /** Custom From display name only (not email). */
+  defaultFromName?: string | null;
+}) {
+  return fetchJson<{ template: EmailTemplateRecord }>("/api/email-templates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteEmailTemplate(id: number) {
+  return fetchJson<{ success: boolean; revertedToSystem: boolean }>(
+    `/api/email-templates/${id}`,
+    { method: "DELETE", headers: { ...authHeaders() } },
+  );
+}
+
+export function previewEmailTemplate(body: {
+  scopeType: EmailTemplateScopeType;
+  scopeId: number;
+  campaignId?: number | null;
+  templateKey?: string;
+  subject?: string;
+  body?: string;
+  placeholders?: Record<string, string | null | undefined>;
+}) {
+  return fetchJson<{ subject: string; body: string }>("/api/email-templates/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+}
+
+export function sendEmailFromTemplate(body: {
+  scopeType: EmailTemplateScopeType;
+  scopeId: number;
+  campaignId?: number | null;
+  templateKey?: string;
+  to: string;
+  toName?: string;
+  subject?: string;
+  body?: string;
+  senderUserId?: number | null;
+  /** Custom From display name only (not email). */
+  fromName?: string | null;
+  placeholders?: Record<string, string | null | undefined>;
+  emailType?: string;
+  saveAsTemplate?: boolean;
+  name?: string;
+}) {
+  return fetchJson<{
+    success: boolean;
+    status: string;
+    provider: string;
+    messageId: string | null;
+    errorMessage: string | null;
+  }>("/api/email-templates/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
 }

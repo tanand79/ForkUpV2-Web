@@ -38,6 +38,7 @@ const POST_CREATION_STEPS: StepId[] = [
   "business-claim",
   "business-ai-onboarding",
   "business-giveback-join",
+  "partner-campaign-join",
   "business-invites-nonprofit",
   "nonprofit-accepts-invite",
   "nonprofit-dashboard",

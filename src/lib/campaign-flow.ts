@@ -166,6 +166,10 @@ export function stateFromBuilderCampaign(data: BuilderCampaignState): Partial<Ca
   return {
     campaignSlug: data.slug,
     serverCampaignStatus: data.status ?? null,
+    inviteSenderUserId:
+      typeof data.inviteSenderUserId === "number" && data.inviteSenderUserId > 0
+        ? data.inviteSenderUserId
+        : null,
     campaignOrigin: origin,
     organizerMode: "guided",
     title: data.campaignName,

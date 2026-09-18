@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { CampaignProvider, useCampaign, type StepId } from "@/lib/campaign-context";
 import {
@@ -121,6 +121,7 @@ import {
 } from "@/components/campaign/ai-flow";
 import { BusinessAiOnboarding } from "@/components/campaign/business-ai/BusinessAiOnboarding";
 import { BusinessJoinFourStep } from "@/components/campaign/business-ai/BusinessJoinFourStep";
+import { PartnerCampaignJoin } from "@/components/campaign/PartnerCampaignJoin";
 
 /**
  * Purpose: Detect post-auth return into an in-progress campaign builder/launch path.
@@ -157,6 +158,8 @@ function AuthLoginScreen() {
   const [initialMode, setInitialMode] = useState<"login" | "register">("login");
   /** Claim mail / guest draft email — prefill + lock on signup. */
   const [lockedEmail, setLockedEmail] = useState("");
+  /** readAuthInitialMode() consumes storage — only apply once (Strict Mode safe). */
+  const authModeAppliedRef = useRef(false);
 
   useEffect(() => {
     // Guest AI find-org already chose a target → lock fundraiser before optional picker runs.
@@ -169,11 +172,16 @@ function AuthLoginScreen() {
       : (getRoleHint() ?? "nonprofit");
     setRoleHint(hint);
     if (lockedFundraiser) stashRoleHint("fundraiser");
-    const savedMode = readAuthInitialMode();
-    if (savedMode) {
-      setInitialMode(savedMode);
-    } else if (hint === "business") {
-      setInitialMode("register");
+
+    if (!authModeAppliedRef.current) {
+      authModeAppliedRef.current = true;
+      const savedMode = readAuthInitialMode();
+      if (savedMode) {
+        setInitialMode(savedMode);
+      } else if (hint === "business") {
+        // Default new business Join Us to register; existing-business CTAs stash "login".
+        setInitialMode("register");
+      }
     }
 
     const fromQuery =
@@ -185,7 +193,7 @@ function AuthLoginScreen() {
     if (isValidEmail(resolved)) {
       stashClaimLockEmail(resolved);
       setLockedEmail(resolved);
-      if (!savedMode) setInitialMode("register");
+      // Do not force register here — would override "Already on ForkUp? Sign in".
     }
 
     setMounted(true);
@@ -372,10 +380,101 @@ function AuthLoginScreen() {
           Boolean(session.businessProfile?.id),
         )
       ) {
+        // Public-campaign join intent → continue invite/join process, not dashboard.
+        let partnerSlug = "";
+        try {
+          const raw = sessionStorage.getItem("forkup-partner-join-intent");
+          if (raw) {
+            const parsed = JSON.parse(raw) as { campaignSlug?: string };
+            partnerSlug = parsed?.campaignSlug?.trim() || "";
+          }
+        } catch {
+          /* ignore */
+        }
+        if (partnerSlug) {
+          goTo("partner-campaign-join", { query: { campaign: partnerSlug } });
+          return;
+        }
         goTo(
           inviteToken ? "business-acceptance" : "business-dashboard",
           inviteToken ? { query: { token: inviteToken } } : undefined,
         );
+        return;
+      }
+
+      // Prefer explicit return to partner join after signup from a public campaign.
+      if (returnStep === "partner-campaign-join") {
+        const {
+          reconcilePartnerJoinIntentForUser,
+          consumePartnerJoinExistingLogin,
+          markPartnerJoinFindCompleted,
+          stashPartnerJoinIntent,
+        } = await import("@/lib/partner-join-intent");
+
+        const ownedIds = [
+          ...session.businessMemberships.map((b) => b.id),
+          ...(session.businessProfile?.id ? [session.businessProfile.id] : []),
+        ].filter((id) => Number.isFinite(id) && id > 0);
+
+        const intent = reconcilePartnerJoinIntentForUser({
+          userId: session.userId,
+          ownedBusinessIds: ownedIds,
+        });
+        // Consume flag (existing-business sign-in path); owned biz still binds below.
+        consumePartnerJoinExistingLogin();
+
+        const qCampaign =
+          typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("campaign")?.trim() ||
+              ""
+            : "";
+        const campaignSlug = intent?.campaignSlug?.trim() || qCampaign;
+        const doorType = intent?.doorType ?? "restaurant";
+
+        const pickOwnedBiz = (businessId?: number) => {
+          if (businessId && ownedIds.includes(businessId)) {
+            return (
+              session.businessMemberships.find((b) => b.id === businessId) ??
+              (session.businessProfile?.id === businessId
+                ? session.businessProfile
+                : null)
+            );
+          }
+          return null;
+        };
+
+        // Existing ForkUp business — go straight to Send join request (not Find).
+        const ownedBiz =
+          pickOwnedBiz(intent?.businessId) ??
+          session.businessProfile ??
+          session.businessMemberships[0] ??
+          null;
+        if (campaignSlug && ownedBiz?.id) {
+          markPartnerJoinFindCompleted({
+            businessId: ownedBiz.id,
+            locationId:
+              "locationId" in ownedBiz
+                ? Number(ownedBiz.locationId) || undefined
+                : undefined,
+            ownerUserId: session.userId,
+          });
+          goTo("partner-campaign-join", { query: { campaign: campaignSlug } });
+          return;
+        }
+
+        // New account / no business yet — Find My Restaurant.
+        if (campaignSlug) {
+          stashPartnerJoinIntent({
+            campaignSlug,
+            doorType,
+            requireFind: true,
+            findCompleted: false,
+          });
+          goTo("business-giveback-join", { query: { campaign: campaignSlug } });
+          return;
+        }
+
+        goTo("partner-campaign-join");
         return;
       }
 
@@ -562,6 +661,18 @@ function WizardBody() {
       );
     case "business-giveback-join":
       return <BusinessJoinFourStep />;
+    case "partner-campaign-join":
+      return (
+        <Suspense
+          fallback={
+            <div className="flex justify-center py-20">
+              <span className="text-sm text-muted-foreground">Loading join request…</span>
+            </div>
+          }
+        >
+          <PartnerCampaignJoin />
+        </Suspense>
+      );
     case "business-invites-nonprofit":
       return <BusinessInvitesNonprofit />;
     case "nonprofit-accepts-invite":

@@ -28,6 +28,7 @@ import { formatDateUs } from "@/lib/date-only";
 import { campaignPublicPath } from "@/lib/campaign-paths";
 import { OpenCoverResizeControl } from "@/components/campaign/OpenCoverResizeControl";
 import { AiCoverChangeButton } from "@/components/campaign/ai-flow/AiCampaignCoverPicker";
+import { InviteSenderSelect } from "@/components/campaign/InviteSenderSelect";
 import {
   Dialog,
   DialogContent,
@@ -769,6 +770,16 @@ export function ReviewLaunch() {
                 : "I\u2019m ready to create my campaign draft."}
             </span>
           </label>
+          {!isGuestLaunch && state.nonprofitProfile?.id ? (
+            <div className="mt-4">
+              <InviteSenderSelect
+                organizationType="nonprofit"
+                organizationId={state.nonprofitProfile.id}
+                value={state.inviteSenderUserId}
+                onChange={(userId) => update({ inviteSenderUserId: userId })}
+              />
+            </div>
+          ) : null}
           {isGuestLaunch && !isPostLaunchEdit && (
             <div className="mt-4 space-y-2">
               <label className="block text-sm font-semibold" htmlFor="guest-launch-email">

@@ -10,6 +10,7 @@ import {
   type NonprofitProfile,
 } from "@/lib/api";
 import { getAuthToken, setAuthToken } from "@/lib/auth-storage";
+import { clearPartnerJoinIntent } from "@/lib/partner-join-intent";
 import {
   pickDefaultActiveRole,
   roleAvailability,
@@ -20,6 +21,7 @@ const SESSION_KEY = "forkup-user-session";
 const ACTIVE_ROLE_KEY = "forkup-active-role";
 const ACTIVE_NP_KEY = "forkup-active-nonprofit-id";
 const ACTIVE_BIZ_KEY = "forkup-active-business-id";
+const AUTH_RETURN_KEY = "forkup-auth-return-step";
 
 export interface UserSession {
   userId: number;
@@ -338,6 +340,14 @@ export function clearAuthAndSession() {
   clearUserSession();
   syncInFlight = null;
   lastSyncedAt = 0;
+  clearPartnerJoinIntent();
+  try {
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(AUTH_RETURN_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function buildSessionPatch(session: UserSession): {

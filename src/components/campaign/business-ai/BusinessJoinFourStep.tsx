@@ -27,8 +27,8 @@ import { fetchCampaigns } from "@/lib/api";
 import type { CampaignListItem } from "@/lib/campaign-types";
 import { campaignHasEnded } from "@/components/campaign/CampaignDatePicker";
 import { getAuthToken } from "@/lib/auth-storage";
-import { syncAuthSession } from "@/lib/auth-session";
-import { stashRoleHint, prepareBusinessJoinAuth, stashClaimLockEmail } from "@/lib/campaign-auth";
+import { loadUserSession, syncAuthSession } from "@/lib/auth-session";
+import { stashRoleHint, prepareBusinessJoinAuth, prepareExistingBusinessPartnerJoinAuth, stashClaimLockEmail } from "@/lib/campaign-auth";
 import { useClientMounted } from "@/lib/use-client-mounted";
 import {
   businessDoorRoleLabel,
@@ -48,6 +48,11 @@ import {
   type CauseMode,
   type LocalGivebackMode,
 } from "@/lib/business-join-four-step-draft";
+import {
+  flushPendingPartnerJoinRequest,
+  markPartnerJoinFindCompleted,
+  readPartnerJoinIntent,
+} from "@/lib/partner-join-intent";
 
 type Phase = "find" | "confirm" | "giveback" | "email" | "done";
 
@@ -124,13 +129,27 @@ export function BusinessJoinFourStep() {
   const [claimEmailSent, setClaimEmailSent] = useState(false);
   const [campaigns, setCampaigns] = useState<CampaignListItem[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+  const [partnerJoinSubmitted, setPartnerJoinSubmitted] = useState(false);
+  /** Client-only: campaign slug from session intent (avoids SSR hydration mismatch). */
+  const [partnerJoinCampaignSlug, setPartnerJoinCampaignSlug] = useState<string | null>(null);
 
   useEffect(() => {
     if (!mounted) return;
     const d = readBusinessDoor();
-    setDoor(d);
+    const intent = readPartnerJoinIntent();
+    setDoor(d ?? intent?.doorType ?? null);
+    setPartnerJoinCampaignSlug(intent?.campaignSlug?.trim() || null);
     setDraft((prev) => {
-      const next = { ...prev, door: d ?? prev.door };
+      const next = {
+        ...prev,
+        door: d ?? intent?.doorType ?? prev.door,
+        ...(intent?.campaignSlug
+          ? {
+              causeMode: "pick_now" as CauseMode,
+              selectedCampaignSlug: intent.campaignSlug,
+            }
+          : {}),
+      };
       saveBusinessJoinDraft(next);
       return next;
     });
@@ -138,10 +157,28 @@ export function BusinessJoinFourStep() {
 
   useEffect(() => {
     if (!mounted || !getAuthToken()) return;
+    const intent = readPartnerJoinIntent();
+    // Explicit “Find a different restaurant” — do not auto-skip Find.
+    if (intent?.forceFind) return;
     const hasBusiness =
       state.businessMemberships.length > 0 || Boolean(state.businessProfile?.id);
     if (!hasBusiness) return;
-    goTo("business-dashboard");
+    // Already signed in with a business + partner join intent → Send request UI.
+    if (intent?.campaignSlug) {
+      const biz = state.businessProfile ?? state.businessMemberships[0];
+      if (biz?.id) {
+        markPartnerJoinFindCompleted({
+          businessId: biz.id,
+          locationId: biz.locationId || undefined,
+          ownerUserId: loadUserSession()?.userId,
+        });
+        goTo("partner-campaign-join", {
+          query: { campaign: intent.campaignSlug },
+        });
+        return;
+      }
+    }
+    if (!intent) goTo("business-dashboard");
   }, [mounted, state.businessMemberships.length, state.businessProfile?.id, goTo]);
 
   const roleWord = businessDoorRoleLabel(door);
@@ -277,6 +314,12 @@ export function BusinessJoinFourStep() {
       switchActiveRole("business", business.id);
       stashRoleHint("business");
 
+      markPartnerJoinFindCompleted({
+        businessId: business.id,
+        locationId: primary.id,
+        ownerUserId: loadUserSession()?.userId,
+      });
+
       if (getAuthToken()) {
         try {
           await linkUserOrganization({
@@ -288,6 +331,11 @@ export function BusinessJoinFourStep() {
         } catch {
           /* optional */
         }
+        const flush = await flushPendingPartnerJoinRequest({
+          businessId: business.id,
+          locationId: primary.id,
+        });
+        if (flush === "submitted") setPartnerJoinSubmitted(true);
       }
 
       if (draft.selectedCampaignSlug) {
@@ -314,6 +362,15 @@ export function BusinessJoinFourStep() {
       }
 
       clearBusinessJoinDraft();
+
+      const joinIntent = readPartnerJoinIntent();
+      if (joinIntent?.campaignSlug && getAuthToken()) {
+        goTo("partner-campaign-join", {
+          query: { campaign: joinIntent.campaignSlug },
+        });
+        return;
+      }
+
       setPhase("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to join ForkUp");
@@ -368,6 +425,12 @@ export function BusinessJoinFourStep() {
 
       {phase === "find" && (
         <div className="mt-8 space-y-4">
+          {mounted && partnerJoinCampaignSlug ? (
+            <p className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
+              Joining a campaign — new {roleWord}s find below; existing ForkUp businesses can
+              sign in and skip find.
+            </p>
+          ) : null}
           <p className="text-sm text-muted-foreground">
             Enter your {roleWord} name or website.
           </p>
@@ -392,6 +455,49 @@ export function BusinessJoinFourStep() {
             {isRestaurant ? "menu, photos and location" : "photos, location and public information"}
             — or use the URL you paste.
           </p>
+          {mounted && state.businessProfile?.id && partnerJoinCampaignSlug ? (
+            <button
+              type="button"
+              onClick={() => {
+                markPartnerJoinFindCompleted({
+                  businessId: state.businessProfile!.id,
+                  locationId: state.businessProfile!.locationId || undefined,
+                  ownerUserId: loadUserSession()?.userId,
+                });
+                switchActiveRole("business", state.businessProfile!.id);
+                goTo("partner-campaign-join", {
+                  query: { campaign: partnerJoinCampaignSlug },
+                });
+              }}
+              className="w-full rounded-xl border border-border px-4 py-3 text-left text-sm transition-colors hover:bg-accent"
+            >
+              <span className="font-semibold">
+                Use existing {state.businessProfile.businessName}
+              </span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Skip find and send a join request for this profile
+              </span>
+            </button>
+          ) : null}
+          {mounted && partnerJoinCampaignSlug && !getAuthToken() ? (
+            <button
+              type="button"
+              onClick={() => {
+                prepareExistingBusinessPartnerJoinAuth();
+                goTo("auth-login", {
+                  query: { campaign: partnerJoinCampaignSlug, token: undefined },
+                });
+              }}
+              className="w-full rounded-xl border border-border px-4 py-3 text-left text-sm transition-colors hover:bg-accent"
+            >
+              <span className="font-semibold">
+                Already on ForkUp? Sign in
+              </span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Use your existing {roleWord} account — skip Find My {isRestaurant ? "Restaurant" : "Business"}
+              </span>
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={finding}
@@ -711,7 +817,13 @@ export function BusinessJoinFourStep() {
                 </>
               ) : null}
               .
-              {claimEmailSent || !getAuthToken() ? (
+              {partnerJoinSubmitted ? (
+                <>
+                  {" "}
+                  Your request to join the campaign was sent to the nonprofit — they&apos;ll
+                  review and invite you if approved.
+                </>
+              ) : claimEmailSent || !getAuthToken() ? (
                 <>
                   {" "}
                   Check your inbox for a claim link so you can manage it on any device.
@@ -722,13 +834,23 @@ export function BusinessJoinFourStep() {
             </p>
           )}
           <div className="mt-6 flex flex-col gap-2">
-            {!doneAccessRequested && getAuthToken() ? (
+            {!doneAccessRequested && mounted && getAuthToken() ? (
               <button
                 type="button"
-                onClick={() => goTo("business-dashboard")}
+                onClick={() => {
+                  if (partnerJoinCampaignSlug) {
+                    goTo("partner-campaign-join", {
+                      query: { campaign: partnerJoinCampaignSlug },
+                    });
+                    return;
+                  }
+                  goTo("business-dashboard");
+                }}
                 className="rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground"
               >
-                Go to business dashboard
+                {partnerJoinCampaignSlug
+                  ? "Continue to join campaign"
+                  : "Go to business dashboard"}
               </button>
             ) : !doneAccessRequested ? (
               <button

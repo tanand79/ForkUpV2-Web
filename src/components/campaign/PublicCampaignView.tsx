@@ -17,6 +17,7 @@ import { resolveCampaignImage } from "@/lib/campaign-images";
 import type { CampaignDetail, ParticipatingLocation } from "@/lib/campaign-types";
 import { submitParticipation, fetchCampaignDonations, fetchCampaignImages } from "@/lib/api";
 import { buildReceiptUploadHref } from "@/lib/receipt-upload-href";
+import { beginPublicCampaignPartnerJoin } from "@/lib/partner-join-intent";
 import { DonationModal } from "@/components/campaign/DonationModal";
 import { PublicCampaignDonationReturn } from "@/components/campaign/PublicCampaignDonationReturn";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
@@ -427,6 +428,8 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
   const [donateOpen, setDonateOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [donationRefreshKey, setDonationRefreshKey] = useState(0);
+  const [joinBusy, setJoinBusy] = useState(false);
+  const [joinMessage, setJoinMessage] = useState<string | null>(null);
 
   /** Scheduled approved campaign — show preview, block donate/participate. */
   const isPreviewNotLive = campaign.campaignStatus === "ready_to_launch";
@@ -434,6 +437,21 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
   const showGuestBartending = campaign.methods.some(
     (m) => m.methodType === "guest_bartending_event",
   );
+  const hasBusinessMethod = campaign.methods.some(
+    (m) =>
+      m.requiresBusinessAcceptance ||
+      [
+        "dine_and_donate",
+        "shop_and_donate",
+        "service_giveback",
+        "guest_bartending_event",
+      ].includes(m.methodType),
+  );
+  const showJoinAsBusiness =
+    hasBusinessMethod &&
+    !isPreviewNotLive &&
+    (campaign.campaignStatus === "live" ||
+      campaign.campaignStatus === "invitation_phase");
   const guestVenues = campaign.participatingLocations.filter(isGuestBartendingLocation);
   const givebackVenues = campaign.participatingLocations.filter(
     (loc) => !isGuestBartendingLocation(loc),
@@ -497,6 +515,22 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
     }
   };
 
+  const handleJoinAsBusiness = (doorType: "restaurant" | "local") => {
+    setJoinBusy(true);
+    setJoinMessage(null);
+    try {
+      const { nextStep } = beginPublicCampaignPartnerJoin({
+        campaignSlug: campaign.slug,
+        doorType,
+      });
+      window.location.href = `/?step=${nextStep}&campaign=${encodeURIComponent(campaign.slug)}`;
+    } catch (err) {
+      setJoinMessage(err instanceof Error ? err.message : "Could not start join");
+    } finally {
+      setJoinBusy(false);
+    }
+  };
+
   const panelProps = {
     raised: campaign.raised,
     goal: campaign.goal,
@@ -505,10 +539,15 @@ export function PublicCampaignView({ campaign }: { campaign: CampaignDetail }) {
     donationCount: donationsData?.totalCount,
     showDonate: showDonations && !isPreviewNotLive,
     showLocations: showParticipateTarget && !isPreviewNotLive,
+    showJoinAsBusiness,
+    joinBusy,
+    joinMessage,
     copied,
     onDonate: () => setDonateOpen(true),
     onShare: () => void handleShare(),
     onParticipate: scrollToLocations,
+    onJoinAsRestaurant: () => void handleJoinAsBusiness("restaurant"),
+    onJoinAsLocalBusiness: () => void handleJoinAsBusiness("local"),
   };
 
   return (

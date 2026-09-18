@@ -41,6 +41,7 @@ import {
 } from "@/lib/nonprofit-dashboard-campaigns";
 import { netAfterPlatformFee } from "@/lib/platform-config";
 import { RequestAgainButton } from "@/components/campaign/RequestAgainButton";
+import { EmailTemplatesPanel } from "@/components/campaign/EmailTemplatesPanel";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   invalidateNonprofitDashboardCache,
@@ -960,6 +961,17 @@ export function NonprofitDashboard() {
           {creatingCampaign ? "Preparing ideas…" : "Create New Campaign"}
         </button>
       </div>
+
+      {state.nonprofitProfile?.id ? (
+        <div className="mt-8">
+          <EmailTemplatesPanel
+            scopeType="nonprofit"
+            scopeId={state.nonprofitProfile.id}
+            title="Email templates"
+            description="Manage invite and partner email content for your organization. Edit the From name and message before sending."
+          />
+        </div>
+      ) : null}
 
       {loading && (
         <div className="mt-12 flex justify-center py-8">

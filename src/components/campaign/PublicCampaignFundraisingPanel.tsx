@@ -28,10 +28,16 @@ export interface PublicCampaignFundraisingPanelProps {
   donationCount?: number;
   showDonate: boolean;
   showLocations: boolean;
+  /** Show restaurant / local business join CTAs (live campaigns with business methods). */
+  showJoinAsBusiness?: boolean;
+  joinBusy?: boolean;
+  joinMessage?: string | null;
   copied: boolean;
   onDonate: () => void;
   onShare: () => void;
   onParticipate: () => void;
+  onJoinAsRestaurant?: () => void;
+  onJoinAsLocalBusiness?: () => void;
   /** Compact layout for mobile inline block */
   compact?: boolean;
 }
@@ -44,10 +50,15 @@ export function PublicCampaignFundraisingPanel({
   donationCount,
   showDonate,
   showLocations,
+  showJoinAsBusiness = false,
+  joinBusy = false,
+  joinMessage = null,
   copied,
   onDonate,
   onShare,
   onParticipate,
+  onJoinAsRestaurant,
+  onJoinAsLocalBusiness,
   compact = false,
 }: PublicCampaignFundraisingPanelProps) {
   const displayRaised = netAfterPlatformFee(raised);
@@ -127,6 +138,36 @@ export function PublicCampaignFundraisingPanel({
             <MapPin className="size-4" />
             Where to participate
           </button>
+        )}
+        {showJoinAsBusiness && (
+          <>
+            <div className="my-1 border-t border-border/80 pt-2.5">
+              <p className="mb-2 text-center text-xs font-medium text-muted-foreground">
+                Own a restaurant or local business?
+              </p>
+              <button
+                type="button"
+                disabled={joinBusy}
+                onClick={onJoinAsRestaurant}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-primary/40 bg-primary/5 px-5 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-60"
+              >
+                <Store className="size-4" />
+                Join as a restaurant
+              </button>
+              <button
+                type="button"
+                disabled={joinBusy}
+                onClick={onJoinAsLocalBusiness}
+                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full border border-border bg-background px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-secondary/60 disabled:opacity-60"
+              >
+                <Store className="size-4" />
+                Join as a local business
+              </button>
+            </div>
+            {joinMessage && (
+              <p className="text-center text-xs font-medium text-primary">{joinMessage}</p>
+            )}
+          </>
         )}
       </div>
     </div>
