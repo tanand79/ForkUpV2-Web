@@ -255,6 +255,8 @@ export interface BuilderCampaignState {
   origin: "business_invite" | "nonprofit";
   /** Additive: persisted invite From person (users.id), when set. */
   inviteSenderUserId?: number | null;
+  /** Additive: custom From display name when set. */
+  inviteFromName?: string | null;
   methods: string[];
   partners: BuilderCampaignPartner[];
 }
@@ -287,6 +289,7 @@ export function appendCampaignBusinessInvitations(
     invitations?: CreateCampaignPayload["invitations"];
     newBusinessInvites?: CreateCampaignPayload["newBusinessInvites"];
     inviteSenderUserId?: number;
+    inviteFromName?: string;
   },
 ) {
   return fetchJson<{
@@ -894,8 +897,10 @@ export function sendNonprofitCampaignInvite(body: {
   givebackPercentage?: number;
   message?: string;
   campaignName?: string;
-  /** Optional: business org member for From display name + Reply-To. */
+  /** Optional: business org member for Reply-To. */
   inviteSenderUserId?: number;
+  /** Optional: custom From display name only (not email). */
+  inviteFromName?: string;
 }) {
   return fetchJson<{
     token: string;
@@ -1387,8 +1392,10 @@ export function createFundraiserCampaignInvite(body: {
   /** Pass 3: required when not signed in. */
   fundraiserEmail?: string;
   fundraiserName?: string;
-  /** Optional: signed-in fundraiser user id for From display name + Reply-To. */
+  /** Optional: signed-in fundraiser user id for Reply-To. */
   inviteSenderUserId?: number;
+  /** Optional: custom From display name only (not email). */
+  inviteFromName?: string;
 }) {
   return fetchJson<{
     token: string;
@@ -1545,6 +1552,7 @@ export function postCampaignBusinessEmails(
     templateKey: BusinessLifecycleEmailKey;
     invitationId?: number;
     inviteSenderUserId?: number;
+    inviteFromName?: string;
   },
 ) {
   return fetchJson<{
@@ -1746,6 +1754,8 @@ export type EmailTemplateRecord = {
   scopeId: number;
   campaignId: number | null;
   templateKey: string;
+  /** System catalog key this variant belongs to. */
+  baseTemplateKey?: string | null;
   name: string;
   subject: string;
   body: string;
@@ -1785,6 +1795,8 @@ export function saveEmailTemplate(body: {
   scopeId: number;
   campaignId?: number | null;
   templateKey: string;
+  /** System catalog key when saving a person variant (Anand / Supraja). */
+  baseTemplateKey?: string | null;
   name?: string;
   subject: string;
   body: string;

@@ -45,7 +45,7 @@ import {
 } from "@/lib/api";
 import { OrganizationLookupConfirm, ORG_TYPE_OPTIONS } from "@/components/campaign/OrganizationLookupConfirm";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
-import { InviteSenderSelect } from "@/components/campaign/InviteSenderSelect";
+import { InviteFromNameField } from "@/components/campaign/InviteFromNameField";
 import { loadUserSession } from "@/lib/auth-session";
 import {
   clearBusinessClaimDraft,
@@ -1143,6 +1143,7 @@ export function BusinessInvitesNonprofit() {
   const biz = state.businessProfile;
   const [methodType, setMethodType] = useState("dine_and_donate");
   const [nonprofitQuery, setNonprofitQuery] = useState("");
+  const [debouncedNonprofitQuery, setDebouncedNonprofitQuery] = useState("");
   const [nonprofits, setNonprofits] = useState<NonprofitProfile[]>([]);
   const [selectedNp, setSelectedNp] = useState<NonprofitProfile | null>(null);
   const [message, setMessage] = useState("");
@@ -1150,7 +1151,7 @@ export function BusinessInvitesNonprofit() {
   const [loading, setLoading] = useState(false);
   const [sentLink, setSentLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [inviteSenderUserId, setInviteSenderUserId] = useState<number | null>(null);
+  const [inviteFromName, setInviteFromName] = useState("");
 
   const availableMethods = METHOD_OPTIONS.filter((m) => {
     if (!biz) return false;
@@ -1166,6 +1167,34 @@ export function BusinessInvitesNonprofit() {
       setMethodType(availableMethods[0].value);
     }
   }, [availableMethods, methodType]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedNonprofitQuery(nonprofitQuery.trim()), 300);
+    return () => clearTimeout(t);
+  }, [nonprofitQuery]);
+
+  useEffect(() => {
+    if (!debouncedNonprofitQuery) {
+      setNonprofits([]);
+      return;
+    }
+    // Selection active — don't refetch / reopen (debounced query lags behind)
+    if (selectedNp) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const results = await searchNonprofits(debouncedNonprofitQuery);
+        if (!cancelled) setNonprofits(results);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Search failed");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedNonprofitQuery, selectedNp]);
 
   const search = async () => {
     if (!nonprofitQuery.trim()) return;
@@ -1189,7 +1218,7 @@ export function BusinessInvitesNonprofit() {
         methodType,
         givebackPercentage: giveback,
         message: message.trim() || undefined,
-        inviteSenderUserId: inviteSenderUserId ?? undefined,
+        inviteFromName: inviteFromName.trim() || undefined,
       });
       // Absolute URL so the nonprofit can open the invite when shared outside the app.
       setSentLink(
@@ -1272,7 +1301,15 @@ export function BusinessInvitesNonprofit() {
         <div className="space-y-2">
           <span className="text-sm font-semibold">Find nonprofit</span>
           <div className="flex gap-2">
-            <input value={nonprofitQuery} onChange={(e) => setNonprofitQuery(e.target.value)} placeholder="Search by name" className={field} />
+            <input
+              value={nonprofitQuery}
+              onChange={(e) => {
+                setNonprofitQuery(e.target.value);
+                if (selectedNp) setSelectedNp(null);
+              }}
+              placeholder="Search by name"
+              className={field}
+            />
             <button type="button" onClick={() => void search()} className="shrink-0 rounded-full border border-border px-4 text-sm font-semibold">
               Search
             </button>
@@ -1283,7 +1320,13 @@ export function BusinessInvitesNonprofit() {
                 <li key={np.id}>
                   <button
                     type="button"
-                    onClick={() => setSelectedNp(np)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setSelectedNp(np);
+                      setNonprofitQuery(np.organizationName);
+                      setDebouncedNonprofitQuery(np.organizationName);
+                      setNonprofits([]);
+                    }}
                     className={`w-full rounded-lg px-3 py-2 text-left text-sm ${selectedNp?.id === np.id ? "bg-primary/10 font-semibold" : "hover:bg-secondary"}`}
                   >
                     {np.organizationName}
@@ -1299,11 +1342,9 @@ export function BusinessInvitesNonprofit() {
           <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} className={field} />
         </label>
 
-        <InviteSenderSelect
-          organizationType="business"
-          organizationId={biz.id}
-          value={inviteSenderUserId}
-          onChange={setInviteSenderUserId}
+        <InviteFromNameField
+          value={inviteFromName}
+          onChange={setInviteFromName}
         />
 
         {error && <p className="text-sm text-destructive">{error}</p>}

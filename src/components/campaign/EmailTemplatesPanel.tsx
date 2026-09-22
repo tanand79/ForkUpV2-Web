@@ -1,8 +1,9 @@
 /**
  * Email template library + compose/send (role dashboards).
  *
- * Purpose: Compact page trigger opens a modal with template edit / From name /
- * preview / send. SMTP From address stays platform.
+ * Purpose: Compact page trigger opens a modal with multi-person templates
+ * (From name = Anand / Supraja), preview, and send. SMTP From address stays
+ * platform. Invite send matches template by From name; else system copy.
  *
  * Inputs: scopeType + scopeId (+ optional campaignId for campaign override).
  * Outputs: trigger card + dialog; calls /api/email-templates/*.
@@ -10,7 +11,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronRight, Loader2, Mail, Save, Send, Trash2 } from "lucide-react";
+import { ChevronRight, Loader2, Mail, Plus, Save, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   deleteEmailTemplate,
@@ -43,12 +44,51 @@ type Props = {
   className?: string;
 };
 
+function baseKeyOf(t: EmailTemplateRecord): string {
+  const base =
+    typeof t.baseTemplateKey === "string" && t.baseTemplateKey.trim()
+      ? t.baseTemplateKey.trim()
+      : t.templateKey;
+  return base;
+}
+
+function optionLabel(t: EmailTemplateRecord): string {
+  if (t.source === "system") return `${t.name} (system)`;
+  if (t.defaultFromName?.trim()) {
+    return `${t.defaultFromName.trim()} — ${t.name}`;
+  }
+  return `${t.name} (saved)`;
+}
+
+function applyTemplateToForm(
+  t: EmailTemplateRecord,
+  setters: {
+    setSelectedKey: (v: string) => void;
+    setBaseTemplateKey: (v: string) => void;
+    setName: (v: string) => void;
+    setFromName: (v: string) => void;
+    setSubject: (v: string) => void;
+    setBody: (v: string) => void;
+    setTemplateId: (v: number | null) => void;
+    setCanEdit: (v: boolean) => void;
+  },
+) {
+  setters.setSelectedKey(t.templateKey);
+  setters.setBaseTemplateKey(baseKeyOf(t));
+  setters.setName(t.name);
+  setters.setFromName(t.defaultFromName ?? "");
+  setters.setSubject(t.subject);
+  setters.setBody(t.body);
+  setters.setTemplateId(t.id);
+  setters.setCanEdit(t.canEdit);
+}
+
 export function EmailTemplatesPanel({
   scopeType,
   scopeId,
   campaignId = null,
   title = "Email templates",
-  description = "Edit message content, From name, preview, and send.",
+  description = "Add per-person templates (From name), preview, and send.",
   className,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -57,6 +97,7 @@ export function EmailTemplatesPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string>("");
+  const [baseTemplateKey, setBaseTemplateKey] = useState<string>("");
   const [name, setName] = useState("");
   const [fromName, setFromName] = useState("");
   const [subject, setSubject] = useState("");
@@ -68,38 +109,47 @@ export function EmailTemplatesPanel({
   const [previewBody, setPreviewBody] = useState<string | null>(null);
   const [busy, setBusy] = useState<"save" | "send" | "preview" | "delete" | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!scopeId || !getAuthToken()) {
-      setTemplates([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetchEmailTemplates({
-        scopeType,
-        scopeId,
-        campaignId,
-      });
-      setTemplates(res.templates);
-      setPlaceholders(res.placeholders ?? []);
-      const first = res.templates[0];
-      if (first) {
-        setSelectedKey(first.templateKey);
-        setName(first.name);
-        setFromName(first.defaultFromName ?? "");
-        setSubject(first.subject);
-        setBody(first.body);
-        setTemplateId(first.id);
-        setCanEdit(first.canEdit);
+  const refresh = useCallback(
+    async (preferKey?: string) => {
+      if (!scopeId || !getAuthToken()) {
+        setTemplates([]);
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load templates");
-    } finally {
-      setLoading(false);
-    }
-  }, [scopeType, scopeId, campaignId]);
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetchEmailTemplates({
+          scopeType,
+          scopeId,
+          campaignId,
+        });
+        setTemplates(res.templates);
+        setPlaceholders(res.placeholders ?? []);
+        const keep =
+          (preferKey
+            ? res.templates.find((t) => t.templateKey === preferKey)
+            : null) || res.templates[0];
+        if (keep) {
+          applyTemplateToForm(keep, {
+            setSelectedKey,
+            setBaseTemplateKey,
+            setName,
+            setFromName,
+            setSubject,
+            setBody,
+            setTemplateId,
+            setCanEdit,
+          });
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load templates");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [scopeType, scopeId, campaignId],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -109,41 +159,67 @@ export function EmailTemplatesPanel({
   const selectTemplate = (key: string) => {
     const t = templates.find((x) => x.templateKey === key);
     if (!t) return;
-    setSelectedKey(key);
-    setName(t.name);
-    setFromName(t.defaultFromName ?? "");
-    setSubject(t.subject);
-    setBody(t.body);
-    setTemplateId(t.id);
-    setCanEdit(t.canEdit);
+    applyTemplateToForm(t, {
+      setSelectedKey,
+      setBaseTemplateKey,
+      setName,
+      setFromName,
+      setSubject,
+      setBody,
+      setTemplateId,
+      setCanEdit,
+    });
     setPreviewSubject(null);
     setPreviewBody(null);
   };
 
+  /** Start a new person variant under the current system email type. */
+  const onAddTemplate = () => {
+    if (!canEdit) return;
+    const base =
+      baseTemplateKey ||
+      selectedKey ||
+      templates.find((t) => t.source === "system")?.templateKey ||
+      "custom";
+    const systemRow =
+      templates.find((t) => t.source === "system" && t.templateKey === base) ||
+      templates.find((t) => t.source === "system");
+    setSelectedKey(base);
+    setBaseTemplateKey(base);
+    setTemplateId(null);
+    setFromName("");
+    setName("");
+    setSubject(systemRow?.subject ?? subject);
+    setBody(systemRow?.body ?? body);
+    setPreviewSubject(null);
+    setPreviewBody(null);
+    toast.info("Enter a From name (e.g. Anand), edit copy, then Save template.");
+  };
+
   const onSave = async () => {
     if (!canEdit) return;
+    const trimmedFrom = fromName.trim();
+    if (!trimmedFrom) {
+      toast.error("From name is required to save a person template (e.g. Anand).");
+      return;
+    }
     setBusy("save");
     try {
+      const base = baseTemplateKey || selectedKey || "custom";
       const res = await saveEmailTemplate({
         scopeType,
         scopeId,
         campaignId,
-        templateKey: selectedKey || "custom",
-        name: name.trim() || selectedKey,
+        templateKey: selectedKey || base,
+        baseTemplateKey: base,
+        name: name.trim() || `${trimmedFrom} — ${base}`,
         subject,
         body,
         defaultSenderUserId: null,
-        defaultFromName: fromName.trim() || null,
+        defaultFromName: trimmedFrom,
       });
       toast.success("Template saved");
-      setTemplateId(res.template.id);
-      await refresh();
-      setSelectedKey(res.template.templateKey);
-      setName(res.template.name);
-      setFromName(res.template.defaultFromName ?? "");
-      setSubject(res.template.subject);
-      setBody(res.template.body);
-      setCanEdit(res.template.canEdit);
+      await refresh(res.template.templateKey);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -156,10 +232,10 @@ export function EmailTemplatesPanel({
     setBusy("delete");
     try {
       await deleteEmailTemplate(templateId);
-      toast.success("Reverted to system default");
-      await refresh();
+      toast.success("Person template removed");
+      await refresh(baseTemplateKey || undefined);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to revert");
+      toast.error(err instanceof Error ? err.message : "Failed to remove");
     } finally {
       setBusy(null);
     }
@@ -263,21 +339,34 @@ export function EmailTemplatesPanel({
             <p className="text-sm text-destructive">{error}</p>
           ) : (
             <div className="space-y-4">
-              <label className="block space-y-1.5">
-                <span className="text-sm font-semibold">Template</span>
-                <select
-                  className={field}
-                  value={selectedKey}
-                  onChange={(e) => selectTemplate(e.target.value)}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <label className="block min-w-0 flex-1 space-y-1.5">
+                  <span className="text-sm font-semibold">Template</span>
+                  <select
+                    className={field}
+                    value={selectedKey}
+                    onChange={(e) => selectTemplate(e.target.value)}
+                  >
+                    {templates.map((t) => (
+                      <option
+                        key={`${t.source}-${t.id ?? "sys"}-${t.templateKey}`}
+                        value={t.templateKey}
+                      >
+                        {optionLabel(t)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  disabled={!canEdit || busy !== null}
+                  onClick={onAddTemplate}
+                  className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-border px-4 text-sm font-semibold disabled:opacity-50"
                 >
-                  {templates.map((t) => (
-                    <option key={t.templateKey} value={t.templateKey}>
-                      {t.name}
-                      {t.source === "database" ? " (edited)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <Plus className="size-3.5" />
+                  Add template
+                </button>
+              </div>
 
               <label className="block space-y-1.5">
                 <span className="text-sm font-semibold">From name</span>
@@ -286,13 +375,12 @@ export function EmailTemplatesPanel({
                   value={fromName}
                   disabled={!canEdit}
                   onChange={(e) => setFromName(e.target.value)}
-                  placeholder="Name shown as From on the email"
+                  placeholder="e.g. Anand or Supraja"
                   maxLength={255}
                 />
                 <span className="text-xs text-muted-foreground">
-                  Name only — the sending address stays ForkUp. Click Save template
-                  to keep this name. Leave blank to use the organization default
-                  name.
+                  Required to save. Invites that use this From name send this
+                  template; if none match, ForkUp sends the system template.
                 </span>
               </label>
 
@@ -382,7 +470,7 @@ export function EmailTemplatesPanel({
                     ) : (
                       <Trash2 className="size-3.5" />
                     )}
-                    Revert to default
+                    Remove template
                   </button>
                 ) : null}
               </div>

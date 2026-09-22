@@ -28,7 +28,7 @@ import { formatDateUs } from "@/lib/date-only";
 import { campaignPublicPath } from "@/lib/campaign-paths";
 import { OpenCoverResizeControl } from "@/components/campaign/OpenCoverResizeControl";
 import { AiCoverChangeButton } from "@/components/campaign/ai-flow/AiCampaignCoverPicker";
-import { InviteSenderSelect } from "@/components/campaign/InviteSenderSelect";
+import { InviteFromNameField } from "@/components/campaign/InviteFromNameField";
 import {
   Dialog,
   DialogContent,
@@ -772,11 +772,9 @@ export function ReviewLaunch() {
           </label>
           {!isGuestLaunch && state.nonprofitProfile?.id ? (
             <div className="mt-4">
-              <InviteSenderSelect
-                organizationType="nonprofit"
-                organizationId={state.nonprofitProfile.id}
-                value={state.inviteSenderUserId}
-                onChange={(userId) => update({ inviteSenderUserId: userId })}
+              <InviteFromNameField
+                value={state.inviteFromName}
+                onChange={(name) => update({ inviteFromName: name })}
               />
             </div>
           ) : null}

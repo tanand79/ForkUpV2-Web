@@ -170,6 +170,8 @@ export function stateFromBuilderCampaign(data: BuilderCampaignState): Partial<Ca
       typeof data.inviteSenderUserId === "number" && data.inviteSenderUserId > 0
         ? data.inviteSenderUserId
         : null,
+    inviteFromName:
+      typeof data.inviteFromName === "string" ? data.inviteFromName.trim() : "",
     campaignOrigin: origin,
     organizerMode: "guided",
     title: data.campaignName,

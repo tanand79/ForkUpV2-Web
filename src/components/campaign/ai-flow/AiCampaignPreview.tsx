@@ -57,7 +57,7 @@ import { fetchAiCampaignSession } from "@/lib/api-ai-campaign-flow";
 import { createFundraiserCampaignInvite, uploadImage } from "@/lib/api";
 import { campaignMethodsForApi } from "@/lib/builder-submit";
 import { TimelineCheckCard } from "@/components/campaign/TimelineCheckCard";
-import { InviteSenderSelect } from "@/components/campaign/InviteSenderSelect";
+import { InviteFromNameField } from "@/components/campaign/InviteFromNameField";
 import {
   loadAiFlowStore,
   loadAiFlowPendingOrg,
@@ -135,7 +135,7 @@ export function AiCampaignPreview() {
   /** Pass 3: mandatory when sending fundraiser invite without signup. */
   const [fundraiserEmail, setFundraiserEmail] = useState("");
   const [fundraiserMessage, setFundraiserMessage] = useState("");
-  const [inviteSenderUserId, setInviteSenderUserId] = useState<number | null>(null);
+  const [inviteFromName, setInviteFromName] = useState("");
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState(
     () => loadAiFlowPendingOrg()?.youtubeUrl?.trim() || "",
@@ -1108,10 +1108,9 @@ export function AiCampaignPreview() {
               className="mt-1.5 w-full resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
             />
           </label>
-          <InviteSenderSelect
-            mode="self"
-            value={inviteSenderUserId}
-            onChange={setInviteSenderUserId}
+          <InviteFromNameField
+            value={inviteFromName}
+            onChange={setInviteFromName}
           />
         </section>
       )}
@@ -1187,7 +1186,7 @@ export function AiCampaignPreview() {
                 methods: campaignMethodsForApi(state),
                 submitForForkupReview: Boolean(state.submitForForkupReview),
                 fundraiserEmail: getAuthToken() ? undefined : guestEmail,
-                inviteSenderUserId: inviteSenderUserId ?? undefined,
+                inviteFromName: inviteFromName.trim() || undefined,
               })
                 .then((res) => {
                   if (getAuthToken()) {

@@ -9,7 +9,7 @@ import { mapApiBusinessesToUi } from "@/lib/api-businesses";
 import { buildAppendBusinessInvitationsPayload } from "@/lib/builder-submit";
 import { methodsFromApiList } from "@/lib/campaign-flow";
 import { LegacyInviteStatusBadge } from "@/components/campaign/BusinessStatusBadge";
-import { InviteSenderSelect } from "@/components/campaign/InviteSenderSelect";
+import { InviteFromNameField } from "@/components/campaign/InviteFromNameField";
 import {
   nearbyQueryParams,
   useBrowserLocation,
@@ -281,11 +281,9 @@ export function ChooseBusinesses() {
           ) : null}
           {appendInvites && state.nonprofitProfile?.id ? (
             <div className="mt-4 max-w-md">
-              <InviteSenderSelect
-                organizationType="nonprofit"
-                organizationId={state.nonprofitProfile.id}
-                value={state.inviteSenderUserId}
-                onChange={(userId) => update({ inviteSenderUserId: userId })}
+              <InviteFromNameField
+                value={state.inviteFromName}
+                onChange={(name) => update({ inviteFromName: name })}
               />
             </div>
           ) : null}

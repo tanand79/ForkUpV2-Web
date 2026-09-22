@@ -254,6 +254,10 @@ function loadDraft(): CampaignDraft | null {
           savedState.inviteSenderUserId > 0
             ? savedState.inviteSenderUserId
             : null,
+        inviteFromName:
+          typeof savedState.inviteFromName === "string"
+            ? savedState.inviteFromName
+            : "",
         lockedBusinessPartners: Array.isArray(savedState.lockedBusinessPartners)
           ? savedState.lockedBusinessPartners
           : [],
@@ -636,10 +640,12 @@ export interface CampaignState {
   confirmedStatus: string;
   confirmedNotes: string;
   /**
-   * Org member (users.id) used as email From display name + Reply-To when
-   * sending business invites. Null = server falls back to org-name enrichment.
+   * Org member (users.id) used as Reply-To when sending business invites.
+   * Null = server falls back to org-name enrichment.
    */
   inviteSenderUserId: number | null;
+  /** Custom From display name for invite/lifecycle emails (not email address). */
+  inviteFromName: string;
   /**
    * Deadline for businesses to accept their invitation. Once this date passes
    * the participating business list is finalized and the campaign moves from
@@ -758,6 +764,7 @@ const initialState: CampaignState = {
   confirmedStatus: "",
   confirmedNotes: "",
   inviteSenderUserId: null,
+  inviteFromName: "",
   invitationCloseDate: "",
   invitationsClosed: false,
   methodTiming: {},
@@ -905,7 +912,12 @@ export function computeChecklist(state: CampaignState): ChecklistItem[] {
           state.methods.donations ||
           state.methods.guestBartending ||
           state.methods.ambassador;
-        const purposeOk = (state.fundsSupport[0] ?? "").trim().length > 0 || !!state.aiDrafted;
+        // Purpose phrase, AI draft flag, OR an already-built title+story (resume/hydrate
+        // does not restore fundsSupport/aiDrafted — without this, Launch stays blocked).
+        const purposeOk =
+          (state.fundsSupport[0] ?? "").trim().length > 0 ||
+          !!state.aiDrafted ||
+          (!!state.title.trim() && !!state.description.trim());
         const complete = any && purposeOk;
         return {
           id,

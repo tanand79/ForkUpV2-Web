@@ -14,7 +14,7 @@ import {
   type BusinessLifecycleEmailKey,
 } from "@/lib/api";
 import { useCampaign } from "@/lib/campaign-context";
-import { InviteSenderSelect } from "@/components/campaign/InviteSenderSelect";
+import { InviteFromNameField } from "@/components/campaign/InviteFromNameField";
 
 const ACTIONS: {
   key: BusinessLifecycleEmailKey;
@@ -57,7 +57,7 @@ export function BusinessEmailActions({ slug }: Props) {
     try {
       const res = await postCampaignBusinessEmails(slug, {
         templateKey,
-        inviteSenderUserId: state.inviteSenderUserId ?? undefined,
+        inviteFromName: state.inviteFromName?.trim() || undefined,
       });
       if (res.sent > 0) {
         toast.success(
@@ -88,11 +88,9 @@ export function BusinessEmailActions({ slug }: Props) {
       </p>
       {state.nonprofitProfile?.id ? (
         <div className="mt-4 max-w-md">
-          <InviteSenderSelect
-            organizationType="nonprofit"
-            organizationId={state.nonprofitProfile.id}
-            value={state.inviteSenderUserId}
-            onChange={(userId) => update({ inviteSenderUserId: userId })}
+          <InviteFromNameField
+            value={state.inviteFromName}
+            onChange={(name) => update({ inviteFromName: name })}
           />
         </div>
       ) : null}

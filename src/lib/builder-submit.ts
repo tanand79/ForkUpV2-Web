@@ -84,10 +84,12 @@ export interface CreateCampaignPayload {
   confirmedStatus?: string | null;
   confirmedNotes?: string | null;
   /**
-   * Optional: organization member used as email From display name + Reply-To.
+   * Optional: organization member used as Reply-To.
    * SMTP From address stays platform smtp_from.
    */
   inviteSenderUserId?: number;
+  /** Optional: custom From display name only (not email). */
+  inviteFromName?: string;
 }
 
 export interface CreateCampaignResult {
@@ -404,6 +406,7 @@ export function buildCreateCampaignPayload(
       typeof state.inviteSenderUserId === "number" && state.inviteSenderUserId > 0
         ? state.inviteSenderUserId
         : undefined,
+    inviteFromName: state.inviteFromName?.trim() || undefined,
   };
 }
 
@@ -418,7 +421,7 @@ export function buildAppendBusinessInvitationsPayload(
   selectedBusinesses: Business[],
 ): Pick<
   CreateCampaignPayload,
-  "invitations" | "newBusinessInvites" | "inviteSenderUserId"
+  "invitations" | "newBusinessInvites" | "inviteSenderUserId" | "inviteFromName"
 > {
   const full = buildCreateCampaignPayload(state, nonprofit, selectedBusinesses, {
     launch: false,
@@ -427,6 +430,7 @@ export function buildAppendBusinessInvitationsPayload(
     invitations: full.invitations,
     newBusinessInvites: full.newBusinessInvites,
     inviteSenderUserId: full.inviteSenderUserId,
+    inviteFromName: full.inviteFromName,
   };
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   CalendarClock,
@@ -114,6 +114,7 @@ export function BusinessDashboard() {
   const [collaborations, setCollaborations] = useState<BusinessCollaboration[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const collaborationsRef = useRef<HTMLElement | null>(null);
 
   // Refresh claim / access-request status from the server on each visit.
   useEffect(() => {
@@ -186,12 +187,32 @@ export function BusinessDashboard() {
 
   const summary = useMemo(
     () => [
-      { label: "Active partnerships", value: String(grouped.active.length), icon: Handshake },
-      { label: "Pending", value: String(grouped.pending.length), icon: Send },
-      { label: "Completed", value: String(grouped.completed.length), icon: Store },
+      {
+        tabId: "active" as const,
+        label: "Active partnerships",
+        value: String(grouped.active.length),
+        icon: Handshake,
+      },
+      {
+        tabId: "pending" as const,
+        label: "Pending",
+        value: String(grouped.pending.length),
+        icon: Send,
+      },
+      {
+        tabId: "completed" as const,
+        label: "Completed",
+        value: String(grouped.completed.length),
+        icon: Store,
+      },
     ],
     [grouped],
   );
+
+  function openCollabTab(tabId: CollabTab) {
+    setTab(tabId);
+    collaborationsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   const cards = grouped[tab];
 
@@ -295,17 +316,19 @@ export function BusinessDashboard() {
       </div>
 
       <section className="mt-8 grid gap-3 sm:grid-cols-3">
-        {summary.map(({ label, value, icon: Icon }) => (
-          <div
+        {summary.map(({ tabId, label, value, icon: Icon }) => (
+          <button
             key={label}
-            className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3"
+            type="button"
+            onClick={() => openCollabTab(tabId)}
+            className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:border-primary/40"
           >
             <Icon className="size-5 shrink-0 text-muted-foreground" />
             <div>
               <p className="text-lg font-bold leading-tight">{value}</p>
               <p className="text-xs font-medium text-muted-foreground">{label}</p>
             </div>
-          </div>
+          </button>
         ))}
       </section>
 
@@ -374,7 +397,7 @@ export function BusinessDashboard() {
         </section>
       )}
 
-      <section className="animate-rise mt-10">
+      <section ref={collaborationsRef} className="animate-rise mt-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-2xl font-extrabold tracking-tight">
             Campaign collaborations

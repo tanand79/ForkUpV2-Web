@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus,
   ArrowRight,
@@ -136,6 +136,10 @@ export function NonprofitDashboard() {
   /** Selected campaign slugs for My Campaigns multi-select / bulk delete. */
   const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const campaignsRef = useRef<HTMLElement | null>(null);
+  const pendingInvitesRef = useRef<HTMLElement | null>(null);
+  const partnerUpdatesRef = useRef<HTMLElement | null>(null);
+  const nextStepsRef = useRef<HTMLElement | null>(null);
 
   /**
    * Create New Campaign — run AI analyze then open idea picker.
@@ -514,17 +518,63 @@ export function NonprofitDashboard() {
 
   const summary = useMemo(
     () => [
-      { label: "Active Campaigns", value: String(grouped.active.length), icon: PlayCircle },
-      { label: "In Review", value: String(inReviewCount), icon: Hourglass },
-      { label: "Draft Campaigns", value: String(draftCount), icon: ClipboardList },
       {
+        target: "active" as const,
+        label: "Active Campaigns",
+        value: String(grouped.active.length),
+        icon: PlayCircle,
+      },
+      {
+        target: "in_review" as const,
+        label: "In Review",
+        value: String(inReviewCount),
+        icon: Hourglass,
+      },
+      {
+        target: "drafts" as const,
+        label: "Draft Campaigns",
+        value: String(draftCount),
+        icon: ClipboardList,
+      },
+      {
+        target: "completed" as const,
+        label: "Completed",
+        value: String(grouped.completed.length),
+        icon: CheckCircle2,
+      },
+      {
+        target: "invites" as const,
         label: "Pending Invites",
         value: String(pendingInvites.length + partnerUpdates.length),
         icon: Store,
       },
     ],
-    [grouped.active.length, inReviewCount, draftCount, pendingInvites.length, partnerUpdates.length],
+    [
+      grouped.active.length,
+      grouped.completed.length,
+      inReviewCount,
+      draftCount,
+      pendingInvites.length,
+      partnerUpdates.length,
+    ],
   );
+
+  function openSummaryTarget(
+    target: "active" | "in_review" | "drafts" | "completed" | "invites",
+  ) {
+    if (target === "invites") {
+      const el =
+        (pendingInvites.length === 0 && partnerUpdates.length > 0
+          ? partnerUpdatesRef.current
+          : null) ??
+        pendingInvitesRef.current ??
+        partnerUpdatesRef.current;
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    setTab(target);
+    campaignsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   const nextSteps = useMemo(() => {
     const items: {
@@ -983,11 +1033,14 @@ export function NonprofitDashboard() {
 
       {!loading && (
         <>
-          {pendingInvites.length > 0 && (
-            <section className="animate-rise mt-8 rounded-3xl border border-primary/30 bg-primary/5 p-6">
-              <h2 className="font-display text-lg font-bold tracking-tight">
-                Partnership invitations
-              </h2>
+          <section
+            ref={pendingInvitesRef}
+            className="animate-rise mt-8 rounded-3xl border border-primary/30 bg-primary/5 p-6"
+          >
+            <h2 className="font-display text-lg font-bold tracking-tight">
+              Partnership invitations
+            </h2>
+            {pendingInvites.length > 0 ? (
               <ul className="mt-4 space-y-3">
                 {pendingInvites.map((inv) => (
                   <li
@@ -1011,8 +1064,12 @@ export function NonprofitDashboard() {
                   </li>
                 ))}
               </ul>
-            </section>
-          )}
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">
+                No pending partnership invitations right now.
+              </p>
+            )}
+          </section>
 
           {campaigns.some((c) => c.forkupReviewStatus === "changes_requested") && (
             <section className="animate-rise mt-8 rounded-3xl border border-amber-500/30 bg-amber-500/5 p-6">
@@ -1059,7 +1116,10 @@ export function NonprofitDashboard() {
           )}
 
           {partnerUpdates.length > 0 && (
-            <section className="animate-rise mt-8 rounded-3xl border border-amber-500/30 bg-amber-500/5 p-6">
+            <section
+              ref={partnerUpdatesRef}
+              className="animate-rise mt-8 rounded-3xl border border-amber-500/30 bg-amber-500/5 p-6"
+            >
               <h2 className="font-display text-lg font-bold tracking-tight">
                 Business partner updates
               </h2>
@@ -1114,7 +1174,10 @@ export function NonprofitDashboard() {
             </section>
           )}
 
-          <section className="animate-rise mt-8 rounded-3xl border border-border bg-card p-6">
+          <section
+            ref={nextStepsRef}
+            className="animate-rise mt-8 rounded-3xl border border-border bg-card p-6"
+          >
             <h2 className="font-display text-lg font-bold tracking-tight">Next Steps</h2>
             {nextSteps.length > 0 ? (
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -1150,6 +1213,28 @@ export function NonprofitDashboard() {
           </section>
 
           <section className="animate-rise mt-10">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+              At a Glance
+            </h2>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {summary.map(({ target, label, value, icon: Icon }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => openSummaryTarget(target)}
+                  className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-primary/40"
+                >
+                  <Icon className="size-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <p className="text-base font-bold leading-tight">{value}</p>
+                    <p className="truncate text-[11px] font-medium text-muted-foreground">{label}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section ref={campaignsRef} className="animate-rise mt-10">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-display text-2xl font-extrabold tracking-tight">My Campaigns</h2>
               <div className="inline-flex rounded-full border border-border bg-card p-1">
@@ -1247,26 +1332,6 @@ export function NonprofitDashboard() {
                   </button>
                 </div>
               )}
-            </div>
-          </section>
-
-          <section className="animate-rise mt-10">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
-              At a Glance
-            </h2>
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {summary.map(({ label, value, icon: Icon }) => (
-                <div
-                  key={label}
-                  className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5"
-                >
-                  <Icon className="size-4 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0">
-                    <p className="text-base font-bold leading-tight">{value}</p>
-                    <p className="truncate text-[11px] font-medium text-muted-foreground">{label}</p>
-                  </div>
-                </div>
-              ))}
             </div>
           </section>
         </>

@@ -113,8 +113,10 @@ export function SiteHeader({
       <div className="mx-auto max-w-5xl px-5 sm:px-6">
         <div className="flex min-h-20 items-center justify-between gap-3 py-2">
           {leading ?? <SiteHeaderLogo href={logoHref} onClick={logoOnClick} />}
-          <div className="flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-2 overflow-x-auto sm:gap-3">
-            {trailing}
+          <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="ml-auto flex w-max flex-nowrap items-center justify-end gap-2 sm:gap-3">
+              {trailing}
+            </div>
           </div>
         </div>
         {below}
