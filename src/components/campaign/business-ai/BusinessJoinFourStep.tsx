@@ -11,9 +11,17 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  Check,
   CheckCircle2,
+  Circle,
+  DollarSign,
+  Gift,
   Loader2,
+  Pencil,
+  Percent,
+  Sparkles,
   Store,
+  Utensils,
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import {
@@ -41,6 +49,7 @@ import {
 } from "@/lib/business-join-query";
 import {
   clearBusinessJoinDraft,
+  clampJoinGivebackPercent,
   defaultBusinessJoinDraft,
   loadBusinessJoinDraft,
   saveBusinessJoinDraft,
@@ -48,13 +57,27 @@ import {
   type CauseMode,
   type LocalGivebackMode,
 } from "@/lib/business-join-four-step-draft";
+import { Slider } from "@/components/ui/slider";
 import {
   flushPendingPartnerJoinRequest,
   markPartnerJoinFindCompleted,
   readPartnerJoinIntent,
 } from "@/lib/partner-join-intent";
+import {
+  looksLikeLogoImageUrl,
+  photoCoverCandidates,
+  probeImageIsSharpEnough,
+} from "@/lib/business-join-images";
 
 type Phase = "find" | "confirm" | "giveback" | "email" | "done";
+
+/** Checklist shown while Find runs — matches real extract (no menu). */
+const FIND_EXTRACT_CHECKLIST = [
+  "Website",
+  "Logo",
+  "Photos",
+  "Location",
+] as const;
 
 /**
  * Map website draft API result into the confirm-card shape used by name find.
@@ -68,6 +91,8 @@ function mapWebsiteDraftToFindResult(
   const address = draft.locations[0]?.address?.trim() || "";
   const imageUrls = draft.imageUrls ?? [];
   const locationFound = Boolean(city || state || address);
+  const logoUrl =
+    imageUrls.find((u) => looksLikeLogoImageUrl(u)) ?? imageUrls[0] ?? null;
   return {
     businessName: draft.businessName?.trim() || "Your business",
     website: draft.website,
@@ -95,12 +120,12 @@ function mapWebsiteDraftToFindResult(
               ...(address ? { address } : {}),
             },
           ],
-    logoUrl: imageUrls[0] ?? null,
+    logoUrl,
     imageUrls,
     checks: {
       websiteFound: Boolean(draft.website),
-      logoFound: imageUrls.length > 0,
-      photosFound: imageUrls.length > 0,
+      logoFound: Boolean(logoUrl),
+      photosFound: imageUrls.some((u) => !looksLikeLogoImageUrl(u)),
       locationFound,
     },
     locationSourceUrl: draft.website || null,
@@ -123,6 +148,12 @@ export function BusinessJoinFourStep() {
   );
   const [error, setError] = useState<string | null>(null);
   const [finding, setFinding] = useState(false);
+  /** Animated checklist index while Find / website extract runs. */
+  const [findProgressIdx, setFindProgressIdx] = useState(0);
+  /** Confirm card Edit/Done — inline correct AI-found fields. */
+  const [editingConfirm, setEditingConfirm] = useState(false);
+  /** Clear venue photos only (no logos / tiny blurry thumbs) for cover + picker. */
+  const [clearPhotoUrls, setClearPhotoUrls] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   /** Done-screen variant when a second email hits a locked guest draft. */
   const [doneAccessRequested, setDoneAccessRequested] = useState(false);
@@ -181,12 +212,113 @@ export function BusinessJoinFourStep() {
     if (!intent) goTo("business-dashboard");
   }, [mounted, state.businessMemberships.length, state.businessProfile?.id, goTo]);
 
+  /** Advance extract checklist while Find API is in flight (mirrors NPO AiAnalyzing). */
+  useEffect(() => {
+    if (!finding) {
+      setFindProgressIdx(0);
+      return;
+    }
+    if (findProgressIdx >= FIND_EXTRACT_CHECKLIST.length) return;
+    const tick = setTimeout(() => setFindProgressIdx((i) => i + 1), 700);
+    return () => clearTimeout(tick);
+  }, [finding, findProgressIdx]);
+
+  /**
+   * Probe scraped images; keep only sharp photos for cover (exclude logos / blur).
+   */
+  useEffect(() => {
+    const found = draft.found;
+    if (!found || phase !== "confirm") {
+      setClearPhotoUrls([]);
+      return;
+    }
+    const candidates = photoCoverCandidates(found.imageUrls, found.logoUrl);
+    let cancelled = false;
+    void (async () => {
+      const sharp: string[] = [];
+      for (const url of candidates) {
+        const ok = await probeImageIsSharpEnough(url);
+        if (cancelled) return;
+        if (ok) sharp.push(url);
+      }
+      if (!cancelled) setClearPhotoUrls(sharp);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.found, phase]);
+
   const roleWord = businessDoorRoleLabel(door);
   const isRestaurant = door !== "local";
 
   const patchDraft = (patch: Partial<BusinessJoinFourStepDraft>) => {
     setDraft((prev) => {
       const next = { ...prev, ...patch };
+      saveBusinessJoinDraft(next);
+      return next;
+    });
+  };
+
+  const givebackPercent = clampJoinGivebackPercent(draft.givebackPercent ?? 15);
+  const GIVEBACK_PRESETS = [10, 15, 20, 25] as const;
+
+  const setGivebackPercent = (value: number) => {
+    patchDraft({ givebackPercent: clampJoinGivebackPercent(value) });
+  };
+
+  /**
+   * Patch the found profile on confirm Edit and refresh checklist flags.
+   * Keeps primary location in sync with city/state/address edits.
+   */
+  const patchFound = (patch: Partial<FindBusinessProfileResult>) => {
+    setDraft((prev) => {
+      if (!prev.found) return prev;
+      const merged: FindBusinessProfileResult = { ...prev.found, ...patch };
+      const city = (merged.city ?? "").trim();
+      const state = (merged.state ?? "").trim();
+      const address = (merged.address ?? "").trim();
+      const imageUrls = merged.imageUrls ?? [];
+      const primary = merged.locations[0];
+      const locations =
+        merged.locations.length > 0
+          ? [
+              {
+                locationName:
+                  primary?.locationName?.trim() ||
+                  merged.businessName.trim() ||
+                  "Main Location",
+                city: city || primary?.city || "",
+                state: state || primary?.state || "",
+                ...(address
+                  ? { address }
+                  : primary?.address
+                    ? { address: primary.address }
+                    : {}),
+              },
+              ...merged.locations.slice(1),
+            ]
+          : [
+              {
+                locationName: merged.businessName.trim() || "Main Location",
+                city,
+                state,
+                ...(address ? { address } : {}),
+              },
+            ];
+      const nextFound: FindBusinessProfileResult = {
+        ...merged,
+        city,
+        state,
+        address,
+        locations,
+        checks: {
+          websiteFound: Boolean(merged.website?.trim()),
+          logoFound: Boolean(merged.logoUrl) || imageUrls.length > 0,
+          photosFound: imageUrls.length > 0 || Boolean(merged.logoUrl),
+          locationFound: Boolean(city || state || address),
+        },
+      };
+      const next = { ...prev, found: nextFound };
       saveBusinessJoinDraft(next);
       return next;
     });
@@ -200,6 +332,7 @@ export function BusinessJoinFourStep() {
     }
     setError(null);
     setFinding(true);
+    setEditingConfirm(false);
     try {
       const doorType = door ?? readBusinessDoor() ?? undefined;
       let found: FindBusinessProfileResult;
@@ -236,6 +369,7 @@ export function BusinessJoinFourStep() {
 
   const goGiveback = () => {
     setError(null);
+    setEditingConfirm(false);
     void loadCauses();
     setPhase("giveback");
   };
@@ -354,6 +488,7 @@ export function BusinessJoinFourStep() {
           JSON.stringify({
             causeMode: draft.causeMode,
             localGivebackMode: draft.localGivebackMode,
+            givebackPercent: draft.givebackPercent,
             door: door ?? null,
           }),
         );
@@ -385,8 +520,26 @@ export function BusinessJoinFourStep() {
       "Location to confirm"
     : "";
 
+  const findExtractPct = Math.min(
+    100,
+    Math.round(((findProgressIdx + 0.5) / FIND_EXTRACT_CHECKLIST.length) * 100),
+  );
+
+  /**
+   * Cover = first sharp photo (never logo). Logo thumb stays the brand mark.
+   */
+  const confirmLogoUrl =
+    draft.found?.logoUrl ||
+    draft.found?.imageUrls.find((u) => looksLikeLogoImageUrl(u)) ||
+    null;
+  const confirmCoverUrl = clearPhotoUrls[0] ?? null;
+
   return (
-    <main className="mx-auto max-w-lg px-5 py-10 sm:px-6">
+    <main
+      className={`mx-auto px-5 py-10 sm:px-6 ${
+        phase === "giveback" && !isRestaurant ? "max-w-2xl" : "max-w-lg"
+      }`}
+    >
       <button
         type="button"
         onClick={() => goTo("website-landing")}
@@ -405,10 +558,11 @@ export function BusinessJoinFourStep() {
             {isRestaurant ? "Restaurant" : "Local business"} — give back
           </p>
           <h1 className="text-2xl font-extrabold tracking-tight">
-            {phase === "find" && `Find your ${roleWord}`}
+            {phase === "find" && finding && "Analyzing your content..."}
+            {phase === "find" && !finding && `Find your ${roleWord}`}
             {phase === "confirm" && "We found you"}
             {phase === "giveback" &&
-              (isRestaurant ? "How you'll give back" : "How would you like to help?")}
+              (isRestaurant ? `Give ${givebackPercent}% Back` : "How would you like to help?")}
             {phase === "email" &&
               (isRestaurant ? "You're ready to ForkUp!" : "You're ready to make an impact!")}
             {phase === "done" &&
@@ -423,7 +577,61 @@ export function BusinessJoinFourStep() {
         </p>
       )}
 
-      {phase === "find" && (
+      {phase === "find" && finding && (
+        <div className="mt-8 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            ForkUp is extracting signals from your public pages.
+          </p>
+          <div className="h-2 overflow-hidden rounded-full bg-secondary">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-500"
+              style={{ width: `${Math.max(8, findExtractPct)}%` }}
+            />
+          </div>
+          <p className="mt-2 text-sm font-semibold">AI is extracting:</p>
+          <div className="space-y-2.5">
+            {FIND_EXTRACT_CHECKLIST.map((label, i) => {
+              const done = i < findProgressIdx;
+              const current =
+                i === findProgressIdx &&
+                findProgressIdx < FIND_EXTRACT_CHECKLIST.length;
+              return (
+                <div
+                  key={label}
+                  className={`flex items-center gap-2.5 rounded-xl border p-3 text-sm transition-colors ${
+                    done
+                      ? "border-emerald-300/60 bg-emerald-50/60"
+                      : current
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-border bg-secondary/30 opacity-60"
+                  }`}
+                >
+                  {done ? (
+                    <CheckCircle2 className="size-4 text-emerald-600" />
+                  ) : current ? (
+                    <Loader2 className="size-4 animate-spin text-primary" />
+                  ) : (
+                    <Circle className="size-4 text-muted-foreground/50" />
+                  )}
+                  <span
+                    className={
+                      done || current ? "font-medium" : "text-muted-foreground"
+                    }
+                  >
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="inline-flex w-full items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+            <Sparkles className="size-3.5 shrink-0 text-primary" />
+            Almost done! Hang tight...
+          </p>
+        </div>
+      )}
+
+      {phase === "find" && !finding && (
         <div className="mt-8 space-y-4">
           {mounted && partnerJoinCampaignSlug ? (
             <p className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
@@ -452,7 +660,7 @@ export function BusinessJoinFourStep() {
           </label>
           <p className="text-xs text-muted-foreground">
             Our AI will find your website,{" "}
-            {isRestaurant ? "menu, photos and location" : "photos, location and public information"}
+            {isRestaurant ? "photos and location" : "photos, location and public information"}
             — or use the URL you paste.
           </p>
           {mounted && state.businessProfile?.id && partnerJoinCampaignSlug ? (
@@ -504,14 +712,8 @@ export function BusinessJoinFourStep() {
             onClick={() => void runFind()}
             className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"
           >
-            {finding ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <>
-                Find My {isRestaurant ? "Restaurant" : "Business"}
-                <ArrowRight className="size-4" />
-              </>
-            )}
+            Find My {isRestaurant ? "Restaurant" : "Business"}
+            <ArrowRight className="size-4" />
           </button>
         </div>
       )}
@@ -522,33 +724,170 @@ export function BusinessJoinFourStep() {
             Here&apos;s what we found. Let us know if this is you.
           </p>
           <div className="overflow-hidden rounded-2xl border border-border bg-card">
-            {(draft.found.imageUrls[0] || draft.found.logoUrl) && (
-              <img
-                src={draft.found.imageUrls[0] || draft.found.logoUrl || ""}
-                alt=""
-                className="h-40 w-full object-cover"
-              />
-            )}
-            <div className="space-y-2 p-4">
-              <div className="flex items-center gap-3">
-                {draft.found.logoUrl && (
-                  <img
-                    src={draft.found.logoUrl}
-                    alt=""
-                    className="size-12 rounded-lg border border-border object-cover"
-                  />
-                )}
-                <div>
-                  <p className="text-lg font-bold">{draft.found.businessName}</p>
-                  <p className="text-sm text-muted-foreground">{locationLine}</p>
+            <div className="relative flex h-44 w-full items-center justify-center overflow-hidden bg-muted/30">
+              {confirmCoverUrl ? (
+                <img
+                  src={confirmCoverUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <p className="px-4 text-center text-xs text-muted-foreground">
+                  No clear photo found — tap Edit to choose one if available
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditingConfirm((v) => !v)}
+                className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full border border-border bg-card/95 px-3 py-1 text-xs font-semibold text-foreground shadow-sm hover:bg-card"
+              >
+                <Pencil className="size-3" />
+                {editingConfirm ? "Done" : "Edit"}
+              </button>
+            </div>
+            <div className="space-y-2 border-t border-border p-4">
+              {editingConfirm ? (
+                <div className="space-y-3">
+                  {clearPhotoUrls.length > 0 ? (
+                    <div>
+                      <p className="mb-2 text-xs font-medium text-muted-foreground">
+                        Choose photo
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {clearPhotoUrls.map((url) => {
+                          const selected = confirmCoverUrl === url;
+                          return (
+                            <button
+                              key={url}
+                              type="button"
+                              onClick={() => {
+                                const rest = draft.found!.imageUrls.filter(
+                                  (u) => u !== url,
+                                );
+                                const logo =
+                                  draft.found!.logoUrl &&
+                                  draft.found!.logoUrl !== url
+                                    ? draft.found!.logoUrl
+                                    : draft.found!.imageUrls.find(
+                                        (u) =>
+                                          u !== url && looksLikeLogoImageUrl(u),
+                                      ) || draft.found!.logoUrl;
+                                patchFound({
+                                  imageUrls: [url, ...rest],
+                                  logoUrl: logo || draft.found!.logoUrl,
+                                });
+                                setClearPhotoUrls((prev) => [
+                                  url,
+                                  ...prev.filter((u) => u !== url),
+                                ]);
+                              }}
+                              className={`size-14 overflow-hidden rounded-lg border-2 bg-muted/20 ${
+                                selected ? "border-primary" : "border-border"
+                              }`}
+                            >
+                              <img
+                                src={url}
+                                alt=""
+                                className="size-full object-cover"
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      No clear photos available to use as cover.
+                    </p>
+                  )}
+                  <label className="block text-sm font-medium">
+                    {isRestaurant ? "Restaurant name" : "Business name"}
+                    <input
+                      className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm"
+                      value={draft.found.businessName}
+                      onChange={(e) =>
+                        patchFound({ businessName: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Website
+                    <input
+                      className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm"
+                      value={draft.found.website}
+                      onChange={(e) => patchFound({ website: e.target.value })}
+                      placeholder="https://"
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block text-sm font-medium">
+                      City
+                      <input
+                        className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm"
+                        value={draft.found.city}
+                        onChange={(e) => patchFound({ city: e.target.value })}
+                      />
+                    </label>
+                    <label className="block text-sm font-medium">
+                      State
+                      <input
+                        className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm"
+                        value={draft.found.state}
+                        onChange={(e) => patchFound({ state: e.target.value })}
+                      />
+                    </label>
+                  </div>
+                  <label className="block text-sm font-medium">
+                    Address
+                    <input
+                      className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm"
+                      value={draft.found.address}
+                      onChange={(e) => patchFound({ address: e.target.value })}
+                      placeholder="Street address (optional)"
+                    />
+                  </label>
                 </div>
-              </div>
-              <ul className="mt-3 space-y-1.5 text-sm">
-                <CheckRow ok={draft.found.checks.websiteFound} label="Website found" />
-                <CheckRow ok={draft.found.checks.logoFound} label="Logo found" />
-                <CheckRow ok={draft.found.checks.photosFound} label="Photos found" />
-                <CheckRow ok={draft.found.checks.locationFound} label="Location found" />
-              </ul>
+              ) : (
+                <>
+                  <div className="flex flex-row items-center gap-3">
+                    {confirmLogoUrl ? (
+                      <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-white">
+                        <img
+                          src={confirmLogoUrl}
+                          alt=""
+                          className="max-h-full max-w-full object-contain p-0.5"
+                        />
+                      </div>
+                    ) : null}
+                    <div className="min-w-0 flex-1 text-left">
+                      <p className="truncate text-lg font-bold">
+                        {draft.found.businessName}
+                      </p>
+                      <p className="truncate text-sm text-muted-foreground">
+                        {locationLine}
+                      </p>
+                    </div>
+                  </div>
+                  <ul className="mt-3 space-y-1.5 text-sm">
+                    <CheckRow
+                      ok={draft.found.checks.websiteFound}
+                      label="Website found"
+                    />
+                    <CheckRow
+                      ok={draft.found.checks.logoFound}
+                      label="Logo found"
+                    />
+                    <CheckRow
+                      ok={draft.found.checks.photosFound}
+                      label="Photos found"
+                    />
+                    <CheckRow
+                      ok={draft.found.checks.locationFound}
+                      label="Location found"
+                    />
+                  </ul>
+                </>
+              )}
             </div>
           </div>
           <button
@@ -562,6 +901,7 @@ export function BusinessJoinFourStep() {
           <button
             type="button"
             onClick={() => {
+              setEditingConfirm(false);
               patchDraft({ found: null });
               setPhase("find");
             }}
@@ -573,128 +913,172 @@ export function BusinessJoinFourStep() {
       )}
 
       {phase === "giveback" && (
-        <div className="mt-8 space-y-5">
+        <div className="mt-8 flex w-full flex-col gap-5">
           {isRestaurant ? (
-            <div className="rounded-2xl border-2 border-primary/40 bg-primary/5 px-5 py-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                Give 15% back
+            <div className="flex w-full flex-col gap-4">
+              <p className="text-sm text-muted-foreground">
+                ForkUp donates {givebackPercent}% of eligible dining proceeds from
+                supporters who dine with you.
               </p>
-              <div className="mt-3 flex items-start gap-3">
-                <CheckCircle2 className="mt-1 size-6 shrink-0 text-primary" />
-                <div>
-                  <p className="text-4xl font-extrabold tracking-tight text-foreground">
-                    15%
+              {/* Refer: single row — utensils | % + caption | green check */}
+              <div className="flex w-full flex-row items-center gap-3 rounded-2xl border border-primary/40 bg-accent/80 px-4 py-4 sm:gap-4 sm:px-5">
+                <Utensils
+                  className="size-7 shrink-0 text-primary sm:size-8"
+                  strokeWidth={1.75}
+                />
+                <div className="flex min-w-0 flex-1 flex-col items-start text-left">
+                  <p className="text-2xl font-extrabold leading-none tracking-tight text-foreground sm:text-3xl">
+                    {givebackPercent}%
                   </p>
-                  <p className="mt-1 text-sm font-medium text-foreground">
+                  <p className="mt-1 text-sm leading-snug text-muted-foreground">
                     of eligible dining proceeds
                   </p>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    ForkUp donates from supporters who dine with you. Make a real
-                    difference with every meal.
+                </div>
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
+                  <Check className="size-3.5" strokeWidth={3} />
+                </div>
+              </div>
+
+              {/* Percentage adjustment toolbar */}
+              <div className="space-y-3 rounded-2xl border border-border bg-card px-4 py-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-foreground">
+                    Adjust giveback percentage
                   </p>
+                  <p className="text-sm font-bold text-primary">{givebackPercent}%</p>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {GIVEBACK_PRESETS.map((g) => {
+                    const active = givebackPercent === g;
+                    return (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setGivebackPercent(g)}
+                        className={`flex h-10 items-center justify-center rounded-xl text-sm font-semibold transition-all ${
+                          active
+                            ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
+                            : "border border-border bg-card hover:bg-secondary"
+                        }`}
+                      >
+                        {g}%
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="space-y-2 pt-1">
+                  <Slider
+                    min={5}
+                    max={50}
+                    step={1}
+                    value={[givebackPercent]}
+                    onValueChange={(vals) => setGivebackPercent(vals[0] ?? 15)}
+                    aria-label="Giveback percentage"
+                  />
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>5%</span>
+                    <span>Typical 10%–20%</span>
+                    <span>50%</span>
+                  </div>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
-              <div className="rounded-2xl border-2 border-primary/40 bg-primary/5 px-5 py-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                  Your give-back choice
-                </p>
-                <div className="mt-3 flex items-start gap-3">
-                  <CheckCircle2 className="mt-1 size-6 shrink-0 text-primary" />
-                  <div>
-                    {draft.localGivebackMode === "percent_of_purchase" && (
-                      <>
-                        <p className="text-sm font-semibold text-primary">Recommended</p>
-                        <p className="text-3xl font-extrabold tracking-tight text-foreground">
-                          % of purchase
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Give a percentage when a ForkUp supporter shops with you.
-                        </p>
-                      </>
-                    )}
-                    {draft.localGivebackMode === "dollar_per_visit" && (
-                      <>
-                        <p className="text-3xl font-extrabold tracking-tight text-foreground">
-                          $ per visit
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Give a set amount for each qualifying customer.
-                        </p>
-                      </>
-                    )}
-                    {draft.localGivebackMode === "special_offer" && (
-                      <>
-                        <p className="text-3xl font-extrabold tracking-tight text-foreground">
-                          Special offer
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Create your own ForkUp give-back offer.
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
+            <div className="flex w-full flex-col gap-3">
               <p className="text-sm text-muted-foreground">
-                How would you like to give back? Choose the option that works best for your
-                business.
+                Choose the option that works best for your business.
               </p>
-              <div className="space-y-2">
+              {/* Mockup: three giveback options side-by-side (not stacked one-by-one). */}
+              <div className="grid w-full grid-cols-3 gap-2 sm:gap-3">
                 {(
                   [
                     {
                       id: "percent_of_purchase" as LocalGivebackMode,
-                      title: "% of Purchase (Recommended)",
+                      title: "% of Purchase",
                       note: "Give a percentage when a ForkUp supporter shops with you.",
+                      recommended: true,
+                      Icon: Percent,
                     },
                     {
                       id: "dollar_per_visit" as LocalGivebackMode,
                       title: "$ Per Visit",
                       note: "Give a set amount for each qualifying customer.",
+                      recommended: false,
+                      Icon: DollarSign,
                     },
                     {
                       id: "special_offer" as LocalGivebackMode,
                       title: "Special Offer",
                       note: "Create your own ForkUp give-back offer.",
+                      recommended: false,
+                      Icon: Gift,
                     },
                   ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => patchDraft({ localGivebackMode: opt.id })}
-                    className={`block w-full rounded-xl border px-4 py-3 text-left text-sm transition-colors ${
-                      draft.localGivebackMode === opt.id
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:bg-accent"
-                    }`}
-                  >
-                    <span className="font-semibold">{opt.title}</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">{opt.note}</span>
-                  </button>
-                ))}
+                ).map((opt) => {
+                  const selected = draft.localGivebackMode === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => patchDraft({ localGivebackMode: opt.id })}
+                      className={`relative flex min-h-[9.5rem] w-full flex-col items-center gap-2 rounded-2xl border-2 px-2 py-3 text-center transition-colors sm:min-h-[10.5rem] sm:px-3 sm:py-4 ${
+                        selected
+                          ? "border-primary bg-primary/5"
+                          : "border-border bg-card hover:bg-accent"
+                      }`}
+                    >
+                      {selected ? (
+                        <CheckCircle2 className="absolute right-1.5 top-1.5 size-4 text-emerald-600 sm:size-5" />
+                      ) : (
+                        <Circle className="absolute right-1.5 top-1.5 size-4 text-muted-foreground/40 sm:size-5" />
+                      )}
+                      <div
+                        className={`flex size-10 shrink-0 items-center justify-center rounded-full sm:size-11 ${
+                          selected
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary text-foreground"
+                        }`}
+                      >
+                        <opt.Icon className="size-5" />
+                      </div>
+                      <span className="text-xs font-bold leading-tight text-foreground sm:text-sm">
+                        {opt.title}
+                      </span>
+                      {opt.recommended ? (
+                        <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white sm:px-2 sm:text-[10px]">
+                          Recommended
+                        </span>
+                      ) : null}
+                      <span className="text-[10px] leading-snug text-muted-foreground sm:text-xs">
+                        {opt.note}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          <div>
-            <p className="text-sm font-medium">Choose a cause to support</p>
-            <div className="mt-2 space-y-2">
+          <div className="flex w-full flex-col gap-2">
+            <p className="text-sm font-semibold text-foreground">
+              Choose a cause to support
+            </p>
+            <div className="flex w-full flex-col gap-2">
               {(
                 [
                   { id: "pick_now" as CauseMode, label: "Select a local cause now" },
-                  { id: "forkup_match" as CauseMode, label: "Let ForkUp match me with local causes" },
+                  {
+                    id: "forkup_match" as CauseMode,
+                    label: "Let ForkUp match me with local causes",
+                  },
                 ] as const
               ).map((opt) => (
                 <label
                   key={opt.id}
-                  className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-sm ${
+                  className={`flex w-full cursor-pointer flex-row items-center gap-2.5 rounded-2xl border px-4 py-3 text-sm ${
                     draft.causeMode === opt.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border"
+                      ? "border-primary bg-primary/5 font-medium"
+                      : "border-border bg-card"
                   }`}
                 >
                   <input
@@ -702,6 +1086,7 @@ export function BusinessJoinFourStep() {
                     name="causeMode"
                     checked={draft.causeMode === opt.id}
                     onChange={() => patchDraft({ causeMode: opt.id })}
+                    className="size-4 accent-primary"
                   />
                   {opt.label}
                 </label>
@@ -710,8 +1095,10 @@ export function BusinessJoinFourStep() {
           </div>
 
           {draft.causeMode === "pick_now" && (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Optional — pick a live campaign now or skip.</p>
+            <div className="flex w-full flex-col gap-2">
+              <p className="text-xs text-muted-foreground">
+                Optional — pick a live campaign now or skip.
+              </p>
               {loadingCampaigns && (
                 <div className="flex justify-center py-4">
                   <Loader2 className="size-5 animate-spin text-primary" />
@@ -722,16 +1109,16 @@ export function BusinessJoinFourStep() {
                   No live campaigns right now — you can still join and match later.
                 </p>
               )}
-              <div className="max-h-48 space-y-2 overflow-y-auto">
+              <div className="flex max-h-48 w-full flex-col gap-2 overflow-y-auto pr-1">
                 {campaigns.map((c) => (
                   <button
                     key={c.slug}
                     type="button"
                     onClick={() => patchDraft({ selectedCampaignSlug: c.slug })}
-                    className={`block w-full rounded-xl border px-3 py-2.5 text-left text-sm ${
+                    className={`block w-full rounded-2xl border px-4 py-3 text-left text-sm ${
                       draft.selectedCampaignSlug === c.slug
                         ? "border-primary bg-primary/5"
-                        : "border-border hover:bg-accent"
+                        : "border-border bg-card hover:bg-accent"
                     }`}
                   >
                     <span className="font-semibold">{c.name}</span>
@@ -750,7 +1137,7 @@ export function BusinessJoinFourStep() {
               setError(null);
               setPhase("email");
             }}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3.5 text-sm font-semibold text-primary-foreground"
           >
             Count Us In
             <ArrowRight className="size-4" />

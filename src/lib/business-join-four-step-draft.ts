@@ -16,10 +16,18 @@ export type BusinessJoinFourStepDraft = {
   nameQuery: string;
   found: FindBusinessProfileResult | null;
   localGivebackMode: LocalGivebackMode;
+  /** Restaurant (and % of purchase) giveback — default 15, range 5–50. */
+  givebackPercent: number;
   causeMode: CauseMode;
   selectedCampaignSlug?: string;
   email: string;
 };
+
+/** Clamp join giveback % to the product range used elsewhere (5–50). */
+export function clampJoinGivebackPercent(value: number): number {
+  if (!Number.isFinite(value)) return 15;
+  return Math.min(50, Math.max(5, Math.round(value)));
+}
 
 /** Default empty draft for the 4-step join funnel. */
 export function defaultBusinessJoinDraft(door: BusinessDoor | null = null): BusinessJoinFourStepDraft {
@@ -28,6 +36,7 @@ export function defaultBusinessJoinDraft(door: BusinessDoor | null = null): Busi
     nameQuery: "",
     found: null,
     localGivebackMode: "percent_of_purchase",
+    givebackPercent: 15,
     causeMode: "pick_now",
     email: "",
   };
@@ -41,7 +50,11 @@ export function loadBusinessJoinDraft(): BusinessJoinFourStepDraft | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as BusinessJoinFourStepDraft;
     if (!parsed || typeof parsed !== "object") return null;
-    return { ...defaultBusinessJoinDraft(), ...parsed };
+    const merged = { ...defaultBusinessJoinDraft(), ...parsed };
+    merged.givebackPercent = clampJoinGivebackPercent(
+      Number(merged.givebackPercent ?? 15),
+    );
+    return merged;
   } catch {
     return null;
   }
