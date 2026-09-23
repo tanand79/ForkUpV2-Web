@@ -30,10 +30,30 @@ import { RequestAgainButton } from "@/components/campaign/RequestAgainButton";
 import { BusinessPostStartChecklistPanel } from "@/components/campaign/BusinessPostStartChecklist";
 import { EmailTemplatesPanel } from "@/components/campaign/EmailTemplatesPanel";
 import { flushPendingPartnerJoinRequest } from "@/lib/partner-join-intent";
+import { BusinessVenueProfile } from "@/components/campaign/business-ai/BusinessVenueProfile";
+import {
+  fetchBusinessVenueImages,
+  findBusinessProfile,
+} from "@/lib/api-business-onboarding";
+import { websiteOriginUrl } from "@/lib/business-join-query";
+import { loadBusinessJoinDraft } from "@/lib/business-join-four-step-draft";
+import {
+  isOpenVenueDay,
+  loadVenueProfileSnapshot,
+  normalizeVenueHours,
+  saveVenueProfileSnapshot,
+  venueFromDashboardBusiness,
+  VENUE_DAYS,
+  type VenueProfileSnapshot,
+} from "@/lib/business-venue-profile";
 
 type CollabTab = "pending" | "active" | "completed";
 
 type StatusTone = "pending" | "active" | "completed";
+
+function hasEligibleHours(hours: VenueProfileSnapshot["hours"]): boolean {
+  return VENUE_DAYS.some((day) => isOpenVenueDay(hours[day]));
+}
 
 const STATUS_TONE: Record<StatusTone, string> = {
   pending: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
@@ -115,6 +135,10 @@ export function BusinessDashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const collaborationsRef = useRef<HTMLElement | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [editingVenue, setEditingVenue] = useState(false);
+  const [venue, setVenue] = useState<VenueProfileSnapshot | null>(null);
+  const [photosLoading, setPhotosLoading] = useState(false);
 
   // Refresh claim / access-request status from the server on each visit.
   useEffect(() => {
@@ -216,6 +240,161 @@ export function BusinessDashboard() {
 
   const cards = grouped[tab];
 
+  function openVenueProfile() {
+    if (!biz) return;
+    const saved = loadVenueProfileSnapshot(biz.id);
+    const draft = loadBusinessJoinDraft();
+    const draftMatches =
+      draft?.found &&
+      draft.found.businessName.trim().toLowerCase() ===
+        biz.businessName.trim().toLowerCase();
+    const found = draftMatches ? draft.found : null;
+    const draftHours = draft ? normalizeVenueHours(draft.discountHours) : null;
+
+    const fallback = venueFromDashboardBusiness({
+      id: biz.id,
+      businessName: biz.businessName,
+      locationName: biz.locationName,
+      dineAndDonate: biz.capabilities.dineAndDonate,
+    });
+
+    const photoUrls =
+      (saved?.photoUrls && saved.photoUrls.length > 0
+        ? saved.photoUrls
+        : null) ??
+      (found?.imageUrls && found.imageUrls.length > 0
+        ? found.imageUrls.filter(Boolean)
+        : null) ??
+      [];
+
+    const savedHours = normalizeVenueHours(saved?.hours ?? null);
+    const hours = hasEligibleHours(savedHours)
+      ? savedHours
+      : draftHours && hasEligibleHours(draftHours)
+        ? draftHours
+        : normalizeVenueHours(found?.discountHours ?? null);
+
+    const base: VenueProfileSnapshot = {
+      ...(saved ?? fallback),
+      businessId: biz.id,
+      businessName: saved?.businessName || biz.businessName,
+      address: saved?.address || found?.address || fallback.address,
+      city: saved?.city || found?.city || "",
+      state: saved?.state || found?.state || "",
+      zip: saved?.zip || found?.zip || "",
+      about: saved?.about || found?.about || "",
+      coverUrl: saved?.coverUrl || photoUrls[0] || found?.logoUrl || null,
+      photoUrls,
+      hours: hasEligibleHours(hours) ? hours : savedHours,
+      eligibleWindow:
+        saved?.eligibleWindow?.trim() ||
+        draft?.eligibleWindow?.trim() ||
+        found?.eligibleWindow?.trim() ||
+        "",
+      isRestaurant:
+        saved?.isRestaurant !== undefined
+          ? saved.isRestaurant
+          : biz.capabilities.dineAndDonate,
+    };
+
+    setVenue(base);
+    setEditingVenue(false);
+    setProfileOpen(true);
+
+    const needsPhotos = base.photoUrls.length === 0 && !base.coverUrl;
+    const needsAbout = !base.about.trim();
+    const needsAddress = !base.address.trim() && !base.city.trim();
+    const needsHours = !hasEligibleHours(base.hours);
+    if (!needsPhotos && !needsAbout && !needsAddress && !needsHours) return;
+
+    setPhotosLoading(needsPhotos);
+    void (async () => {
+      try {
+        const discovered = await findBusinessProfile({
+          businessName: biz.businessName,
+          joinDoorType: biz.capabilities.dineAndDonate ? "restaurant" : "local",
+        });
+        let nextPhotos = Array.isArray(discovered.imageUrls)
+          ? discovered.imageUrls.filter(Boolean)
+          : [];
+        const origin = websiteOriginUrl(discovered.website || "");
+        if (origin) {
+          try {
+            const venueImages = await fetchBusinessVenueImages({
+              websiteUrl: origin,
+              reservationUrl: discovered.reservationUrl || null,
+            });
+            if (venueImages.imageUrls?.length) nextPhotos = venueImages.imageUrls;
+          } catch {
+            /* keep find photos */
+          }
+        }
+        const foundHours = normalizeVenueHours(discovered.discountHours);
+        setVenue((prev) => {
+          if (!prev || prev.businessId !== biz.id) return prev;
+          const next: VenueProfileSnapshot = {
+            ...prev,
+            businessName: prev.businessName || discovered.businessName || biz.businessName,
+            address: prev.address || discovered.address || "",
+            city: prev.city || discovered.city || "",
+            state: prev.state || discovered.state || "",
+            zip: prev.zip || discovered.zip || "",
+            about: prev.about || discovered.about || "",
+            coverUrl:
+              nextPhotos[0] || prev.coverUrl || discovered.logoUrl || null,
+            photoUrls: nextPhotos.length > 0 ? nextPhotos : prev.photoUrls,
+            hours:
+              hasEligibleHours(prev.hours)
+                ? prev.hours
+                : hasEligibleHours(foundHours)
+                  ? foundHours
+                  : prev.hours,
+            eligibleWindow:
+              prev.eligibleWindow || discovered.eligibleWindow?.trim() || "",
+          };
+          saveVenueProfileSnapshot(next);
+          return next;
+        });
+      } catch {
+        /* keep whatever we already show */
+      } finally {
+        setPhotosLoading(false);
+      }
+    })();
+  }
+
+  function changeVenue(patch: Partial<VenueProfileSnapshot>) {
+    setVenue((prev) => {
+      if (!prev) return prev;
+      const next: VenueProfileSnapshot = {
+        ...prev,
+        ...patch,
+        hours: normalizeVenueHours(patch.hours ?? prev.hours),
+        businessId: biz?.id ?? prev.businessId,
+      };
+      saveVenueProfileSnapshot(next);
+      return next;
+    });
+  }
+
+  if (profileOpen && venue) {
+    return (
+      <BusinessVenueProfile
+        profile={venue}
+        editing={editingVenue}
+        photosLoading={photosLoading}
+        onToggleEdit={() => setEditingVenue((v) => !v)}
+        onChange={changeVenue}
+        onBack={() => {
+          setEditingVenue(false);
+          setPhotosLoading(false);
+          setProfileOpen(false);
+        }}
+        backLabel="Back to dashboard"
+      />
+    );
+  }
+
   if (!biz) {
     return (
       <main className="mx-auto max-w-lg px-5 py-12 text-center">
@@ -279,8 +458,16 @@ export function BusinessDashboard() {
           </p>
           <button
             type="button"
-            onClick={() => goTo("business-claim")}
+            onClick={openVenueProfile}
             className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary-dark"
+          >
+            <Store className="size-4" />
+            View profile
+          </button>
+          <button
+            type="button"
+            onClick={() => goTo("business-claim")}
+            className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary-dark"
           >
             <Settings2 className="size-4" />
             Edit business profile

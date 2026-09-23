@@ -74,6 +74,17 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* Lovable VenueProfile theme tokens */
+  --color-venue-canvas: var(--venue-canvas);
+  --color-venue-paper: var(--venue-paper);
+  --color-venue-soft: var(--venue-soft);
+  --color-venue-ink: var(--venue-ink);
+  --color-venue-body: var(--venue-body);
+  --color-venue-muted: var(--venue-muted);
+  --color-venue-line: var(--venue-line);
+  --color-venue-accent: var(--venue-accent);
+  --color-venue-accent-strong: var(--venue-accent-strong);
+  --font-venue-serif: var(--font-display);
 }
 
 :root {
@@ -116,6 +127,17 @@
   --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
   --sidebar-border: oklch(0.929 0.013 255.508);
   --sidebar-ring: oklch(0.704 0.04 256.788);
+  /* Lovable VenueProfile — warm canvas / ink / accent */
+  --venue-canvas: oklch(0.965 0.012 91);
+  --venue-paper: oklch(0.992 0.006 91);
+  --venue-soft: oklch(0.93 0.022 89);
+  --venue-ink: oklch(0.255 0.024 58);
+  --venue-body: oklch(0.43 0.018 60);
+  --venue-muted: oklch(0.59 0.014 65);
+  --venue-line: oklch(0.855 0.02 82);
+  --venue-accent: oklch(0.52 0.09 40);
+  --venue-accent-strong: oklch(0.45 0.09 38);
+  --shadow-venue: 0 18px 55px -30px color-mix(in oklab, var(--venue-ink) 34%, transparent);
 }
 
 .dark {
@@ -198,6 +220,19 @@
 
 .animate-rise { animation: fu-rise 0.5s cubic-bezier(0.32, 0.72, 0, 1) both; }
 .animate-pop { animation: fu-pop 0.4s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+@keyframes venue-reveal {
+  from { opacity: 0.72; transform: scale(1.012); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@utility animate-venue-reveal {
+  animation: venue-reveal 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.font-venue-serif {
+  font-family: var(--font-venue-serif, var(--font-display));
+}
 
 /* ───────────────────────────────────────────────────────────────────────
  * Canonical Public Campaign Page primitives (ported from source of truth).

@@ -5,6 +5,11 @@
  */
 import type { FindBusinessProfileResult } from "@/lib/api-business-onboarding";
 import type { BusinessDoor } from "@/lib/business-door";
+import {
+  defaultVenueHours,
+  normalizeVenueHours,
+  type VenueDiscountHours,
+} from "@/lib/business-venue-profile";
 
 const KEY = "forkup-business-join-four-step";
 
@@ -21,6 +26,10 @@ export type BusinessJoinFourStepDraft = {
   causeMode: CauseMode;
   selectedCampaignSlug?: string;
   email: string;
+  /** Discount Eligible day labels shown on the venue profile. */
+  discountHours: VenueDiscountHours;
+  /** Optional line such as "Eligible 6–9:00pm". */
+  eligibleWindow: string;
 };
 
 /** Clamp join giveback % to the product range used elsewhere (5–50). */
@@ -39,6 +48,8 @@ export function defaultBusinessJoinDraft(door: BusinessDoor | null = null): Busi
     givebackPercent: 15,
     causeMode: "pick_now",
     email: "",
+    discountHours: defaultVenueHours(),
+    eligibleWindow: "",
   };
 }
 
@@ -54,6 +65,9 @@ export function loadBusinessJoinDraft(): BusinessJoinFourStepDraft | null {
     merged.givebackPercent = clampJoinGivebackPercent(
       Number(merged.givebackPercent ?? 15),
     );
+    merged.discountHours = normalizeVenueHours(parsed.discountHours);
+    merged.eligibleWindow =
+      typeof parsed.eligibleWindow === "string" ? parsed.eligibleWindow : "";
     return merged;
   } catch {
     return null;

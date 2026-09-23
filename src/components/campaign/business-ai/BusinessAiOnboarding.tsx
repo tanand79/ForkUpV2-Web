@@ -131,6 +131,9 @@ export function BusinessAiOnboarding() {
                 city: loc.city,
                 state: loc.state,
                 address: loc.address,
+                ...(loc.reservationUrl || result.reservationUrl
+                  ? { reservationUrl: loc.reservationUrl || result.reservationUrl || undefined }
+                  : {}),
               }))
             : [{ locationName: "Main Location", city: result.city, state: result.state }],
         imageUrls: result.imageUrls,
@@ -186,6 +189,7 @@ export function BusinessAiOnboarding() {
         locationName: primary?.locationName?.trim() || "Main Location",
         city: primary?.city?.trim() || draft.city.trim() || undefined,
         state: primary?.state?.trim() || draft.state.trim() || undefined,
+        reservationUrl: primary?.reservationUrl || undefined,
         supportsDineAndDonate: draft.supportsDine,
         supportsShopAndDonate: draft.supportsShop,
         supportsServiceGiveback: draft.supportsService,

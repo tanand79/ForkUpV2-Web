@@ -21,3 +21,18 @@ export function normalizeWebsiteQuery(raw: string): string {
   if (!q) return "";
   return /^https?:\/\//i.test(q) ? q : `https://${q}`;
 }
+
+/**
+ * Strip path/query from a business website so scrapes start at the homepage
+ * (e.g. sovanabistro.com/menus/ → https://www.sovanabistro.com).
+ */
+export function websiteOriginUrl(raw: string): string {
+  const withProto = normalizeWebsiteQuery(raw);
+  if (!withProto) return "";
+  try {
+    const u = new URL(withProto);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return withProto;
+  }
+}

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   AI_MODEL_OPTIONS,
+  DEFAULT_AI_MODEL,
   getAiModel,
   loadAiSettingsFromServer,
   setAiModel,
@@ -29,7 +30,8 @@ const VENDORS: AiModelVendor[] = ["Anthropic", "Amazon"];
  * Inputs: none. Outputs: updates localStorage + server preference when signed in.
  */
 export function AiEngineDropdown() {
-  const [model, setModel] = useState<AiModelId>(() => getAiModel());
+  // SSR + first client paint must match — never read localStorage in useState init.
+  const [model, setModel] = useState<AiModelId>(DEFAULT_AI_MODEL);
   const [open, setOpen] = useState(false);
   const [ready, setReady] = useState(false);
 
@@ -37,6 +39,7 @@ export function AiEngineDropdown() {
     let cancelled = false;
     const sync = () => setModel(getAiModel());
     window.addEventListener("ai-model-changed", sync);
+    setModel(getAiModel());
     if (getAuthToken()) {
       void loadAiSettingsFromServer().finally(() => {
         if (!cancelled) {
@@ -54,6 +57,7 @@ export function AiEngineDropdown() {
   }, []);
 
   const current = AI_MODEL_OPTIONS.find((o) => o.id === model);
+  const label = ready ? (current?.label ?? "AI Engine") : "AI Engine";
 
   const handleSelect = (id: AiModelId) => {
     setAiModel(id);
@@ -71,7 +75,7 @@ export function AiEngineDropdown() {
           title={ready ? `AI Engine: ${current?.label ?? "AI"}` : "AI Engine"}
         >
           <Sparkles className="size-3.5 text-primary" />
-          <span className="hidden sm:inline">{current?.label ?? "AI Engine"}</span>
+          <span className="hidden sm:inline">{label}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72 max-h-[70vh] overflow-y-auto">

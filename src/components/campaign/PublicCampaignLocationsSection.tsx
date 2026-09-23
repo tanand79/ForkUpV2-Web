@@ -22,11 +22,26 @@ import {
   Users,
   Utensils,
 } from "lucide-react";
+import { bookingCtaLabel } from "@/lib/booking-platform";
 import { assetSrc } from "@/lib/utils";
 import { submitParticipation } from "@/lib/api";
+import {
+  fetchBusinessVenueImages,
+  findBusinessProfile,
+} from "@/lib/api-business-onboarding";
+import { websiteOriginUrl } from "@/lib/business-join-query";
+import {
+  loadVenueProfileSnapshot,
+  normalizeVenueHours,
+  isOpenVenueDay,
+  VENUE_DAYS,
+  type VenueProfileSnapshot,
+} from "@/lib/business-venue-profile";
+import { loadBusinessJoinDraft } from "@/lib/business-join-four-step-draft";
 import { buildReceiptUploadHref } from "@/lib/receipt-upload-href";
 import type { ParticipatingLocation } from "@/lib/campaign-types";
 import { ScrollReveal } from "@/components/ScrollReveal";
+import { BusinessVenueProfile } from "@/components/campaign/business-ai/BusinessVenueProfile";
 import forkupLogo from "@/assets/forkup-logo-header.png";
 import bizFallback from "@/assets/biz-restaurant.jpg";
 import coffeeImg from "@/assets/campaign-coffee.jpg";
@@ -78,6 +93,76 @@ const TYPE_CONFIG: Record<
 const PARTY_SIZES = [1, 2, 3, 4, "5+"] as const;
 
 const STORAGE_KEY = "forkup_participant";
+const VENUE_PHOTO_CACHE_PREFIX = "forkup-venue-photos:";
+
+function venuePhotoCacheKey(businessId: number): string {
+  return `${VENUE_PHOTO_CACHE_PREFIX}${businessId}`;
+}
+
+/** Session-cached gallery URLs so repeat opens skip the scrape wait. */
+function loadCachedVenuePhotos(businessId: number): string[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(venuePhotoCacheKey(businessId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    const urls = parsed.filter((u): u is string => typeof u === "string" && u.trim().length > 0);
+    return urls.length > 0 ? urls : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedVenuePhotos(businessId: number, urls: string[]) {
+  if (typeof window === "undefined" || urls.length === 0) return;
+  try {
+    sessionStorage.setItem(venuePhotoCacheKey(businessId), JSON.stringify(urls));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+/** True when at least one weekday has giveback hours set. */
+function hasEligibleHours(hours: VenueProfileSnapshot["hours"]): boolean {
+  return VENUE_DAYS.some((day) => isOpenVenueDay(hours[day]));
+}
+
+/** Reuse join-funnel gallery photos when this browser still has the draft. */
+function photosFromJoinDraft(businessName: string): string[] {
+  const draft = loadBusinessJoinDraft();
+  const found = draft?.found;
+  if (!found) return [];
+  const draftName = found.businessName?.trim().toLowerCase() || "";
+  const want = businessName.trim().toLowerCase();
+  if (draftName && want && draftName !== want) return [];
+  return Array.isArray(found.imageUrls)
+    ? found.imageUrls.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
+    : [];
+}
+
+function aboutFromJoinDraft(businessName: string): string {
+  const draft = loadBusinessJoinDraft();
+  const found = draft?.found;
+  if (!found) return "";
+  const draftName = found.businessName?.trim().toLowerCase() || "";
+  const want = businessName.trim().toLowerCase();
+  if (draftName && want && draftName !== want) return "";
+  return found.about?.trim() || "";
+}
+
+function hoursFromJoinDraft(businessName: string) {
+  const draft = loadBusinessJoinDraft();
+  if (!draft) return null;
+  const found = draft.found;
+  if (found) {
+    const draftName = found.businessName?.trim().toLowerCase() || "";
+    const want = businessName.trim().toLowerCase();
+    if (draftName && want && draftName !== want) return null;
+  }
+  const hours = normalizeVenueHours(draft.discountHours);
+  return hasEligibleHours(hours) ? hours : normalizeVenueHours(found?.discountHours ?? null);
+}
 
 interface Participant {
   firstName: string;
@@ -105,6 +190,22 @@ const inputClassName =
 
 function locKey(loc: ParticipatingLocation): string {
   return `${loc.businessId}-${loc.locationId}-${loc.methodId}`;
+}
+
+/** Open the booking page in this click, before any await, so the browser allows the tab. */
+function openReservationTab(url: string | null | undefined): Window | null {
+  const target = url?.trim();
+  if (!target || typeof window === "undefined") return null;
+  return window.open(target, "_blank");
+}
+
+function releaseReservationTab(tab: Window | null) {
+  if (!tab) return;
+  try {
+    tab.opener = null;
+  } catch {
+    /* ignore */
+  }
 }
 
 function businessTypeFromLoc(loc: ParticipatingLocation): BusinessType {
@@ -139,10 +240,12 @@ function givebackScope(type: BusinessType): string {
 function CaptureForm({
   businessName,
   fieldIdPrefix,
+  reservationUrl,
   onComplete,
 }: {
   businessName: string;
   fieldIdPrefix: string;
+  reservationUrl: string | null;
   onComplete: (p: Participant) => Promise<void>;
 }) {
   const [firstName, setFirstName] = useState("");
@@ -167,6 +270,7 @@ function CaptureForm({
 
     setError(null);
     setSubmitting(true);
+    const bookingTab = openReservationTab(reservationUrl);
     try {
       const participant: Participant = {
         firstName: trimmedName,
@@ -180,7 +284,9 @@ function CaptureForm({
         /* ignore */
       }
       await onComplete(participant);
+      releaseReservationTab(bookingTab);
     } catch (err) {
+      bookingTab?.close();
       setError(err instanceof Error ? err.message : "Could not save your visit");
     } finally {
       setSubmitting(false);
@@ -364,6 +470,8 @@ function LocationCard({
   previewOnly,
   onToggle,
   onConfirmParticipation,
+  onOpenProfile,
+  profileLoading,
 }: {
   loc: ParticipatingLocation;
   isExpanded: boolean;
@@ -376,6 +484,8 @@ function LocationCard({
   previewOnly: boolean;
   onToggle: () => void;
   onConfirmParticipation: (key: string, p: Participant) => Promise<ConfirmedParticipation>;
+  onOpenProfile: () => void;
+  profileLoading: boolean;
 }) {
   const type = businessTypeFromLoc(loc);
   const config = TYPE_CONFIG[type];
@@ -396,9 +506,12 @@ function LocationCard({
     if (!defaultParticipant) return;
     setReuseSubmitting(true);
     setCardError(null);
+    const bookingTab = openReservationTab(loc.reservationUrl);
     try {
       await onConfirmParticipation(key, defaultParticipant);
+      releaseReservationTab(bookingTab);
     } catch (err) {
+      bookingTab?.close();
       setCardError(err instanceof Error ? err.message : "Could not save your visit");
     } finally {
       setReuseSubmitting(false);
@@ -417,14 +530,31 @@ function LocationCard({
     >
       <div className="cursor-pointer" onClick={onToggle}>
         <div className="relative">
-          <img
-            src={config.image}
-            alt={loc.businessName}
-            className={`w-full object-cover transition-all duration-500 ${
-              isExpanded ? "h-56 sm:h-64" : "h-44 sm:h-48"
-            }`}
-          />
-          <div className="absolute top-3 right-3 flex items-center gap-1.5">
+          <button
+            type="button"
+            className="relative block w-full text-left"
+            aria-label={`View ${loc.businessName} profile`}
+            disabled={profileLoading}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenProfile();
+            }}
+          >
+            <img
+              src={config.image}
+              alt={loc.businessName}
+              className={`w-full object-cover transition-all duration-500 ${
+                isExpanded ? "h-56 sm:h-64" : "h-44 sm:h-48"
+              }`}
+            />
+            {profileLoading ? (
+              <span className="absolute inset-0 flex items-center justify-center bg-black/35">
+                <Loader2 className="size-8 animate-spin text-white" aria-hidden />
+                <span className="sr-only">Loading venue profile</span>
+              </span>
+            ) : null}
+          </button>
+          <div className="pointer-events-none absolute top-3 right-3 flex items-center gap-1.5">
             {isMostPopular && (
               <span className="bg-primary text-primary-foreground text-[11px] font-semibold px-2.5 py-1 rounded-full shadow-sm flex items-center gap-1">
                 <Sparkles size={11} /> Most popular
@@ -437,7 +567,7 @@ function LocationCard({
           <img
             src={assetSrc(forkupLogo)}
             alt="ForkUp"
-            className="absolute bottom-3 left-3 h-7 opacity-70"
+            className="pointer-events-none absolute bottom-3 left-3 h-7 opacity-70"
           />
         </div>
 
@@ -511,6 +641,7 @@ function LocationCard({
             <CaptureForm
               businessName={loc.businessName}
               fieldIdPrefix={key}
+              reservationUrl={loc.reservationUrl}
               onComplete={handleCapture}
             />
           )}
@@ -567,14 +698,16 @@ function LocationCard({
                 </span>
               </div>
 
-              {participation.reservationUrl ? (
+              {(participation.reservationUrl || loc.reservationUrl) ? (
                 <a
-                  href={participation.reservationUrl}
+                  href={participation.reservationUrl || loc.reservationUrl || "#"}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full btn-primary text-base py-4 rounded-2xl flex items-center justify-center gap-3 no-underline"
                 >
-                  <span className="font-semibold">Continue to Reservation</span>
+                  <span className="font-semibold">
+                    {bookingCtaLabel(participation.reservationUrl || loc.reservationUrl || "")}
+                  </span>
                   <ExternalLink size={16} />
                 </a>
               ) : (
@@ -623,6 +756,11 @@ export function PublicCampaignLocationsSection({
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [participations, setParticipations] = useState<Record<string, ConfirmedParticipation>>({});
   const [lastParticipant, setLastParticipant] = useState<Participant | null>(null);
+  const [venueProfile, setVenueProfile] = useState<VenueProfileSnapshot | null>(null);
+  const [venueLoc, setVenueLoc] = useState<ParticipatingLocation | null>(null);
+  const [venueReservationUrl, setVenueReservationUrl] = useState<string | null>(null);
+  const [profileLoadingKey, setProfileLoadingKey] = useState<string | null>(null);
+  const [photosLoading, setPhotosLoading] = useState(false);
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "start",
     loop: false,
@@ -646,6 +784,176 @@ export function PublicCampaignLocationsSection({
     setExpandedKey((prev) => (prev === key ? null : key));
   };
 
+  const openVenueProfile = (loc: ParticipatingLocation) => {
+    const key = locKey(loc);
+    const type = businessTypeFromLoc(loc);
+    const isRestaurant = type === "dine";
+
+    const saved = loadVenueProfileSnapshot(loc.businessId);
+    const cachedPhotos = loadCachedVenuePhotos(loc.businessId) ?? [];
+    const draftPhotos = photosFromJoinDraft(loc.businessName);
+    const draftAbout = aboutFromJoinDraft(loc.businessName);
+    const draftHours = hoursFromJoinDraft(loc.businessName);
+    const logo = loc.logoUrl?.trim() || null;
+
+    const photoUrls =
+      (saved?.photoUrls && saved.photoUrls.length > 0
+        ? saved.photoUrls
+        : null) ??
+      (cachedPhotos.length > 0 ? cachedPhotos : null) ??
+      (draftPhotos.length > 0 ? draftPhotos : null) ??
+      (logo ? [logo] : []);
+
+    const savedHours = normalizeVenueHours(saved?.hours ?? null);
+    const hours =
+      hasEligibleHours(savedHours)
+        ? savedHours
+        : draftHours && hasEligibleHours(draftHours)
+          ? draftHours
+          : savedHours;
+
+    const base: VenueProfileSnapshot = {
+      businessId: loc.businessId,
+      businessName: saved?.businessName || loc.businessName,
+      address: saved?.address || loc.address?.trim() || "",
+      city: saved?.city || loc.city || "",
+      state: saved?.state || loc.state || "",
+      zip: saved?.zip || loc.zip?.trim() || "",
+      about: saved?.about || loc.description?.trim() || draftAbout || "",
+      coverUrl: saved?.coverUrl || photoUrls[0] || logo,
+      photoUrls,
+      hours,
+      eligibleWindow:
+        saved?.eligibleWindow?.trim() ||
+        loadBusinessJoinDraft()?.eligibleWindow?.trim() ||
+        "",
+      givebackPercent: loc.givebackPercentage,
+      causeName: nonprofitName,
+      isRestaurant:
+        saved?.isRestaurant !== undefined ? saved.isRestaurant : isRestaurant,
+    };
+
+    setVenueProfile(base);
+    setVenueLoc(loc);
+    const draftReservation =
+      loadBusinessJoinDraft()?.found?.reservationUrl?.trim() || null;
+    const initialBookUrl =
+      loc.reservationUrl?.trim() || draftReservation || null;
+    setVenueReservationUrl(initialBookUrl);
+
+    const hasRealGallery =
+      photoUrls.length > 0 && !(photoUrls.length === 1 && photoUrls[0] === logo);
+    const needsAbout = !base.about.trim();
+    const needsHours = !hasEligibleHours(base.hours);
+    const needsBookUrl = !initialBookUrl;
+    const needsHydrate =
+      !hasRealGallery || needsAbout || needsHours || needsBookUrl;
+
+    if (hasRealGallery) {
+      saveCachedVenuePhotos(loc.businessId, photoUrls);
+      setPhotosLoading(false);
+    }
+    if (!needsHydrate) return;
+
+    // Avoid stacking scrapes for the same card.
+    if (profileLoadingKey === key) return;
+    setProfileLoadingKey(key);
+    if (!hasRealGallery) setPhotosLoading(true);
+    void (async () => {
+      try {
+        let website = loc.website?.trim() || "";
+        let about = base.about;
+        let address = base.address;
+        let city = base.city;
+        let state = base.state;
+        let zip = base.zip;
+        let businessName = base.businessName;
+        let nextPhotos: string[] = hasRealGallery ? [...photoUrls] : [];
+        let nextHours = base.hours;
+        let eligibleWindow = base.eligibleWindow;
+
+        // Always find when about/hours missing — even if website is already known.
+        // (Previously we skipped find when website existed, so about stayed empty.)
+        if (!website || needsAbout || needsHours || needsBookUrl) {
+          try {
+            const found = await findBusinessProfile({
+              businessName: loc.businessName,
+              joinDoorType: isRestaurant ? "restaurant" : "local",
+            });
+            website = website || found.website?.trim() || "";
+            about = about || found.about || "";
+            address = address || found.address || "";
+            city = city || found.city || "";
+            state = state || found.state || "";
+            zip = zip || found.zip || "";
+            businessName = found.businessName?.trim() || businessName;
+            if (!hasRealGallery && Array.isArray(found.imageUrls) && found.imageUrls.length > 0) {
+              nextPhotos = found.imageUrls.filter(Boolean);
+            }
+            const foundHours = normalizeVenueHours(found.discountHours);
+            if (needsHours && hasEligibleHours(foundHours)) {
+              nextHours = foundHours;
+            }
+            eligibleWindow =
+              eligibleWindow || found.eligibleWindow?.trim() || "";
+            const foundBook = found.reservationUrl?.trim();
+            if (foundBook) {
+              setVenueReservationUrl((prev) => prev || foundBook);
+            }
+          } catch {
+            /* keep system fields */
+          }
+        }
+
+        const origin = websiteOriginUrl(website);
+        if (origin && (!hasRealGallery || needsBookUrl)) {
+          try {
+            const venue = await fetchBusinessVenueImages({
+              websiteUrl: origin,
+              reservationUrl: loc.reservationUrl || null,
+            });
+            if (!hasRealGallery && venue.imageUrls?.length) {
+              nextPhotos = venue.imageUrls;
+            }
+            const scrapedBook = venue.reservationUrl?.trim();
+            if (scrapedBook) {
+              setVenueReservationUrl((prev) => prev || scrapedBook);
+            }
+          } catch {
+            /* keep find / draft photos */
+          }
+        }
+
+        if (nextPhotos.length > 0) {
+          saveCachedVenuePhotos(loc.businessId, nextPhotos);
+        }
+
+        const coverUrl = nextPhotos[0] || logo;
+        setVenueProfile((prev) => {
+          if (!prev || prev.businessId !== loc.businessId) return prev;
+          return {
+            ...prev,
+            businessName,
+            address,
+            city,
+            state,
+            zip,
+            about: about || prev.about,
+            coverUrl: nextPhotos.length > 0 ? coverUrl : prev.coverUrl,
+            photoUrls: nextPhotos.length > 0 ? nextPhotos : prev.photoUrls,
+            hours: hasEligibleHours(nextHours) ? nextHours : prev.hours,
+            eligibleWindow: eligibleWindow || prev.eligibleWindow,
+          };
+        });
+      } catch {
+        /* profile already visible */
+      } finally {
+        setProfileLoadingKey((prev) => (prev === key ? null : prev));
+        setPhotosLoading(false);
+      }
+    })();
+  };
+
   const handleConfirmParticipation = async (key: string, p: Participant) => {
     const loc = locations.find((l) => locKey(l) === key);
     if (!loc) throw new Error("Location not found");
@@ -663,7 +971,7 @@ export function PublicCampaignLocationsSection({
 
     const confirmed: ConfirmedParticipation = {
       ...p,
-      reservationUrl: result.reservationUrl ?? loc.reservationUrl,
+      reservationUrl: result.reservationUrl?.trim() || loc.reservationUrl,
     };
     setParticipations((prev) => ({ ...prev, [key]: confirmed }));
     setLastParticipant(p);
@@ -701,6 +1009,38 @@ export function PublicCampaignLocationsSection({
       : "10%–20%";
 
   if (locations.length === 0) return null;
+
+  if (venueProfile) {
+    return (
+      <div className="fixed inset-0 z-50 overflow-y-auto bg-venue-canvas">
+        <BusinessVenueProfile
+          profile={venueProfile}
+          editing={false}
+          readOnly
+          photosLoading={photosLoading}
+          reservationUrl={venueReservationUrl}
+          onBookParticipation={async (p) => {
+            if (!venueLoc) throw new Error("Location not found");
+            await handleConfirmParticipation(locKey(venueLoc), {
+              firstName: p.firstName,
+              email: p.email,
+              partySize: p.partySize,
+              returning: p.returning,
+            });
+          }}
+          onToggleEdit={() => {}}
+          onChange={() => {}}
+          onBack={() => {
+            setPhotosLoading(false);
+            setVenueReservationUrl(null);
+            setVenueLoc(null);
+            setVenueProfile(null);
+          }}
+          backLabel="Back to campaign"
+        />
+      </div>
+    );
+  }
 
   return (
     <section id={id} className="mt-4 scroll-mt-24 pt-2 pb-4 md:mt-6 md:pb-6">
@@ -761,6 +1101,8 @@ export function PublicCampaignLocationsSection({
                       previewOnly={previewOnly}
                       onToggle={() => toggle(key)}
                       onConfirmParticipation={handleConfirmParticipation}
+                      onOpenProfile={() => openVenueProfile(loc)}
+                      profileLoading={false}
                     />
                   </ScrollReveal>
                 </div>

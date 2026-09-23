@@ -27,6 +27,7 @@ import { useCampaign } from "@/lib/campaign-context";
 import {
   findBusinessProfile,
   generateBusinessDraft,
+  fetchBusinessVenueImages,
   type BusinessDraftApiResult,
   type FindBusinessProfileResult,
 } from "@/lib/api-business-onboarding";
@@ -46,6 +47,7 @@ import {
 import {
   looksLikeWebsiteQuery,
   normalizeWebsiteQuery,
+  websiteOriginUrl,
 } from "@/lib/business-join-query";
 import {
   clearBusinessJoinDraft,
@@ -65,11 +67,23 @@ import {
 } from "@/lib/partner-join-intent";
 import {
   looksLikeLogoImageUrl,
-  photoCoverCandidates,
-  probeImageIsSharpEnough,
+  looksLikeDecorativeImageUrl,
+  classifyBusinessImages,
+  venueGalleryPhotoUrls,
+  isResyVenuePhotoUrl,
+  countResyGalleryPhotos,
 } from "@/lib/business-join-images";
+import {
+  isOpenVenueDay,
+  normalizeVenueHours,
+  saveVenueProfileSnapshot,
+  VENUE_DAYS,
+  venueSnapshotFromJoin,
+  type VenueProfileSnapshot,
+} from "@/lib/business-venue-profile";
+import { BusinessVenueProfile } from "@/components/campaign/business-ai/BusinessVenueProfile";
 
-type Phase = "find" | "confirm" | "giveback" | "email" | "done";
+type Phase = "find" | "confirm" | "profile" | "giveback" | "email" | "done";
 
 /** Checklist shown while Find runs — matches real extract (no menu). */
 const FIND_EXTRACT_CHECKLIST = [
@@ -111,6 +125,9 @@ function mapWebsiteDraftToFindResult(
             city: loc.city || city,
             state: loc.state || state,
             ...(loc.address ? { address: loc.address } : address ? { address } : {}),
+            ...(loc.reservationUrl || draft.reservationUrl
+              ? { reservationUrl: loc.reservationUrl || draft.reservationUrl || undefined }
+              : {}),
           }))
         : [
             {
@@ -118,6 +135,7 @@ function mapWebsiteDraftToFindResult(
               city,
               state,
               ...(address ? { address } : {}),
+              ...(draft.reservationUrl ? { reservationUrl: draft.reservationUrl } : {}),
             },
           ],
     logoUrl,
@@ -128,6 +146,10 @@ function mapWebsiteDraftToFindResult(
       photosFound: imageUrls.some((u) => !looksLikeLogoImageUrl(u)),
       locationFound,
     },
+    reservationUrl: draft.reservationUrl ?? draft.locations[0]?.reservationUrl ?? null,
+    bookingPlatform: draft.bookingPlatform ?? null,
+    discountHours: draft.discountHours ?? null,
+    eligibleWindow: draft.eligibleWindow ?? "",
     locationSourceUrl: draft.website || null,
     joinDoorType,
     confirmationStatus: draft.confirmationStatus || "Website Draft",
@@ -152,8 +174,12 @@ export function BusinessJoinFourStep() {
   const [findProgressIdx, setFindProgressIdx] = useState(0);
   /** Confirm card Edit/Done — inline correct AI-found fields. */
   const [editingConfirm, setEditingConfirm] = useState(false);
-  /** Clear venue photos only (no logos / tiny blurry thumbs) for cover + picker. */
+  /** Venue profile Edit/Done after "Yes, that's us". */
+  const [editingProfile, setEditingProfile] = useState(false);
+  /** Clear venue photos only (no logos / wordmark banners) for cover + picker. */
   const [clearPhotoUrls, setClearPhotoUrls] = useState<string[]>([]);
+  /** Logo mark after client classify (never a food photo). */
+  const [classifiedLogoUrl, setClassifiedLogoUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   /** Done-screen variant when a second email hits a locked guest draft. */
   const [doneAccessRequested, setDoneAccessRequested] = useState(false);
@@ -163,6 +189,10 @@ export function BusinessJoinFourStep() {
   const [partnerJoinSubmitted, setPartnerJoinSubmitted] = useState(false);
   /** Client-only: campaign slug from session intent (avoids SSR hydration mismatch). */
   const [partnerJoinCampaignSlug, setPartnerJoinCampaignSlug] = useState<string | null>(null);
+  /** Guard: refresh stale session drafts that predate Resy gallery fetch (once). */
+  const [resyGalleryRefreshAttempted, setResyGalleryRefreshAttempted] = useState(false);
+  /** True while re-fetching venue photos before opening the profile gallery. */
+  const [refreshingGallery, setRefreshingGallery] = useState(false);
 
   useEffect(() => {
     if (!mounted) return;
@@ -224,29 +254,58 @@ export function BusinessJoinFourStep() {
   }, [finding, findProgressIdx]);
 
   /**
-   * Probe scraped images; keep only sharp photos for cover (exclude logos / blur).
+   * Classify scraped images: logo mark vs cover photos (never swap).
+   * Never downgrade a Resy-first gallery once we have image.resy.com URLs.
    */
   useEffect(() => {
     const found = draft.found;
-    if (!found || phase !== "confirm") {
-      setClearPhotoUrls([]);
+    if (!found || (phase !== "confirm" && phase !== "profile")) {
+      if (phase !== "confirm" && phase !== "profile") {
+        setClearPhotoUrls([]);
+        setClassifiedLogoUrl(null);
+      }
       return;
     }
-    const candidates = photoCoverCandidates(found.imageUrls, found.logoUrl);
+    const seed = venueGalleryPhotoUrls(found.imageUrls);
+    const seedResy = countResyGalleryPhotos(seed);
+    if (seed.length > 0) {
+      setClearPhotoUrls((prev) => {
+        const prevResy = countResyGalleryPhotos(prev);
+        if (prevResy > seedResy) return prev;
+        return seed;
+      });
+    }
     let cancelled = false;
     void (async () => {
-      const sharp: string[] = [];
-      for (const url of candidates) {
-        const ok = await probeImageIsSharpEnough(url);
-        if (cancelled) return;
-        if (ok) sharp.push(url);
-      }
-      if (!cancelled) setClearPhotoUrls(sharp);
+      const classified = await classifyBusinessImages(
+        found.imageUrls,
+        found.logoUrl,
+      );
+      if (cancelled) return;
+      const nextPhotos =
+        classified.photoUrls.length > 0 ? classified.photoUrls : seed;
+      const resy = venueGalleryPhotoUrls(found.imageUrls).filter((u) =>
+        isResyVenuePhotoUrl(u),
+      );
+      const merged = [
+        ...new Set(
+          resy.length > 0
+            ? [...resy, ...nextPhotos.filter((u) => !isResyVenuePhotoUrl(u))]
+            : nextPhotos,
+        ),
+      ].slice(0, 16);
+      setClearPhotoUrls((prev) => {
+        const prevResy = countResyGalleryPhotos(prev);
+        const nextResy = countResyGalleryPhotos(merged);
+        if (prevResy > nextResy) return prev;
+        return merged;
+      });
+      setClassifiedLogoUrl(classified.logoUrl);
     })();
     return () => {
       cancelled = true;
     };
-  }, [draft.found, phase]);
+  }, [draft.found?.imageUrls.join("|"), draft.found?.logoUrl, phase]);
 
   const roleWord = businessDoorRoleLabel(door);
   const isRestaurant = door !== "local";
@@ -258,6 +317,64 @@ export function BusinessJoinFourStep() {
       return next;
     });
   };
+
+  /**
+   * Session drafts saved before Resy short-URL gallery support often lack
+   * image.resy.com URLs. Re-run website draft / Find once when photos are stale.
+   */
+  useEffect(() => {
+    if (!mounted || resyGalleryRefreshAttempted || finding || refreshingGallery) return;
+    const found = draft.found;
+    if (!found) return;
+    const hasResyPhotos = countResyGalleryPhotos(found.imageUrls) > 0;
+    if (hasResyPhotos) return;
+    const website = (found.website || "").trim();
+    const q = (draft.nameQuery || found.businessName || "").trim();
+    if (!website && !q) return;
+    setResyGalleryRefreshAttempted(true);
+    const doorType = door ?? readBusinessDoor() ?? undefined;
+    setFinding(true);
+    void (async () => {
+      try {
+        let next: FindBusinessProfileResult;
+        if (website) {
+          const site = websiteOriginUrl(website);
+          const venue = await fetchBusinessVenueImages({
+            websiteUrl: site,
+            reservationUrl:
+              found.reservationUrl ||
+              found.locations.find((l) => l.reservationUrl)?.reservationUrl ||
+              null,
+          });
+          next = {
+            ...found,
+            website: site || found.website,
+            imageUrls: venue.imageUrls?.length ? venue.imageUrls : found.imageUrls,
+            reservationUrl: venue.reservationUrl ?? found.reservationUrl,
+          };
+        } else {
+          next = await findBusinessProfile({
+            businessName: q,
+            joinDoorType: doorType,
+          });
+        }
+        patchDraft({ found: next });
+        setClearPhotoUrls(venueGalleryPhotoUrls(next.imageUrls));
+      } catch {
+        /* keep existing draft; Yes → profile will retry */
+      } finally {
+        setFinding(false);
+      }
+    })();
+  }, [
+    mounted,
+    draft.found,
+    draft.nameQuery,
+    door,
+    finding,
+    refreshingGallery,
+    resyGalleryRefreshAttempted,
+  ]);
 
   const givebackPercent = clampJoinGivebackPercent(draft.givebackPercent ?? 15);
   const GIVEBACK_PRESETS = [10, 15, 20, 25] as const;
@@ -294,6 +411,12 @@ export function BusinessJoinFourStep() {
                   : primary?.address
                     ? { address: primary.address }
                     : {}),
+                ...(primary?.reservationUrl || merged.reservationUrl
+                  ? {
+                      reservationUrl:
+                        primary?.reservationUrl || merged.reservationUrl || undefined,
+                    }
+                  : {}),
               },
               ...merged.locations.slice(1),
             ]
@@ -303,6 +426,7 @@ export function BusinessJoinFourStep() {
                 city,
                 state,
                 ...(address ? { address } : {}),
+                ...(merged.reservationUrl ? { reservationUrl: merged.reservationUrl } : {}),
               },
             ];
       const nextFound: FindBusinessProfileResult = {
@@ -333,11 +457,14 @@ export function BusinessJoinFourStep() {
     setError(null);
     setFinding(true);
     setEditingConfirm(false);
+    setClearPhotoUrls([]);
+    setResyGalleryRefreshAttempted(false);
     try {
       const doorType = door ?? readBusinessDoor() ?? undefined;
       let found: FindBusinessProfileResult;
       if (looksLikeWebsiteQuery(q)) {
-        const website = normalizeWebsiteQuery(q);
+        // Use site origin so /menus/ (etc.) still discovers Resy from the homepage.
+        const website = websiteOriginUrl(q);
         const websiteDraft = await generateBusinessDraft(website);
         found = mapWebsiteDraftToFindResult(websiteDraft, doorType ?? null);
       } else {
@@ -346,7 +473,46 @@ export function BusinessJoinFourStep() {
           joinDoorType: doorType,
         });
       }
-      patchDraft({ found, nameQuery: q });
+
+      // Always pull Resy + site gallery via the dedicated endpoint so Find
+      // is not stuck on a thin AI/social image list.
+      const website = (found.website || "").trim();
+      if (website) {
+        try {
+          const site = websiteOriginUrl(website);
+          const venue = await fetchBusinessVenueImages({
+            websiteUrl: site,
+            reservationUrl: found.reservationUrl,
+          });
+          if (venue.imageUrls?.length) {
+            found = {
+              ...found,
+              website: site || found.website,
+              imageUrls: venue.imageUrls,
+              reservationUrl: venue.reservationUrl ?? found.reservationUrl,
+              checks: {
+                ...found.checks,
+                photosFound: venue.imageUrls.length > 0,
+              },
+            };
+          }
+        } catch {
+          /* keep Find imageUrls */
+        }
+      }
+
+      const hours = normalizeVenueHours(found.discountHours);
+      const hasListedDay = VENUE_DAYS.some((day) => isOpenVenueDay(hours[day]));
+      patchDraft({
+        found,
+        nameQuery: q,
+        ...(hasListedDay ? { discountHours: hours } : {}),
+        ...(found.eligibleWindow?.trim()
+          ? { eligibleWindow: found.eligibleWindow.trim() }
+          : {}),
+      });
+      setClearPhotoUrls(venueGalleryPhotoUrls(found.imageUrls));
+      setResyGalleryRefreshAttempted(true);
       setPhase("confirm");
     } catch (err) {
       setError(err instanceof Error ? err.message : `Could not find that ${roleWord}`);
@@ -406,6 +572,7 @@ export function BusinessJoinFourStep() {
         locationName: loc?.locationName?.trim() || found.businessName.trim(),
         city: loc?.city?.trim() || found.city || undefined,
         state: loc?.state?.trim() || found.state || undefined,
+        reservationUrl: loc?.reservationUrl || found.reservationUrl || undefined,
         supportsDineAndDonate: supportsDine,
         supportsShopAndDonate: supportsShop,
         supportsServiceGiveback: false,
@@ -416,6 +583,21 @@ export function BusinessJoinFourStep() {
         joinPreferredCampaignSlug:
           draft.causeMode === "pick_now" ? draft.selectedCampaignSlug : undefined,
       });
+
+      const causeName =
+        campaigns.find((c) => c.slug === draft.selectedCampaignSlug)?.nonprofit ?? null;
+      const venueSnap = venueSnapshotFromJoin({
+        found,
+        hours: normalizeVenueHours(draft.discountHours),
+        eligibleWindow: draft.eligibleWindow || "",
+        coverUrl: clearPhotoUrls[0] ?? null,
+        photoUrls: clearPhotoUrls,
+        givebackPercent,
+        causeName,
+        isRestaurant,
+        businessId: result.business?.id ?? null,
+      });
+      if (venueSnap?.businessId) saveVenueProfileSnapshot(venueSnap);
 
       if (result.action === "access_requested") {
         setDoneAccessRequested(true);
@@ -514,6 +696,154 @@ export function BusinessJoinFourStep() {
     }
   };
 
+  const openProfile = async () => {
+    setError(null);
+    setEditingConfirm(false);
+    setEditingProfile(false);
+    const found = draft.found;
+    if (!found) {
+      setPhase("confirm");
+      return;
+    }
+
+    const website = (found.website || "").trim();
+    const reservationUrl =
+      found.reservationUrl ||
+      found.locations.find((l) => l.reservationUrl)?.reservationUrl ||
+      null;
+
+    // Always refresh gallery from the dedicated venue-images API when we have
+    // a website — ignores stale session drafts that only have ~6 site photos.
+    if (website) {
+      setRefreshingGallery(true);
+      try {
+        const site = websiteOriginUrl(website);
+        const venue = await fetchBusinessVenueImages({
+          websiteUrl: site,
+          reservationUrl,
+        });
+        const imageUrls =
+          venue.imageUrls?.length > 0 ? venue.imageUrls : found.imageUrls;
+        const merged: FindBusinessProfileResult = {
+          ...found,
+          website: site || found.website,
+          imageUrls,
+          reservationUrl: venue.reservationUrl ?? found.reservationUrl,
+        };
+        patchDraft({ found: merged });
+        setClearPhotoUrls(venueGalleryPhotoUrls(imageUrls));
+        setResyGalleryRefreshAttempted(true);
+      } catch (err) {
+        // Fallback: full website draft (also scrapes Resy when linked).
+        try {
+          const site = websiteOriginUrl(website);
+          const websiteDraft = await generateBusinessDraft(site);
+          const imageUrls =
+            websiteDraft.imageUrls?.length > 0
+              ? websiteDraft.imageUrls
+              : found.imageUrls;
+          patchDraft({
+            found: {
+              ...found,
+              website: site || found.website,
+              imageUrls,
+              reservationUrl:
+                websiteDraft.reservationUrl ?? found.reservationUrl,
+              bookingPlatform:
+                websiteDraft.bookingPlatform ?? found.bookingPlatform,
+            },
+          });
+          setClearPhotoUrls(venueGalleryPhotoUrls(imageUrls));
+        } catch {
+          setClearPhotoUrls(venueGalleryPhotoUrls(found.imageUrls));
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Could not refresh venue photos.",
+          );
+        }
+      } finally {
+        setRefreshingGallery(false);
+      }
+    } else {
+      setClearPhotoUrls(venueGalleryPhotoUrls(found.imageUrls));
+    }
+
+    setPhase("profile");
+  };
+
+  const applyVenueChange = (patch: Partial<VenueProfileSnapshot>) => {
+    const foundPatch: Partial<FindBusinessProfileResult> = {};
+    if (patch.businessName != null) foundPatch.businessName = patch.businessName;
+    if (patch.address != null) foundPatch.address = patch.address;
+    if (patch.city != null) foundPatch.city = patch.city;
+    if (patch.state != null) foundPatch.state = patch.state;
+    if (patch.zip != null) foundPatch.zip = patch.zip;
+    if (patch.about != null) foundPatch.about = patch.about;
+    if (patch.coverUrl && draft.found) {
+      const url = patch.coverUrl;
+      const rest = draft.found.imageUrls.filter((u) => u !== url);
+      foundPatch.imageUrls = [url, ...rest];
+      setClearPhotoUrls((prev) => [url, ...prev.filter((u) => u !== url)]);
+    }
+    if (Object.keys(foundPatch).length > 0) patchFound(foundPatch);
+    if (patch.hours || patch.eligibleWindow != null) {
+      patchDraft({
+        ...(patch.hours ? { discountHours: patch.hours } : {}),
+        ...(patch.eligibleWindow != null ? { eligibleWindow: patch.eligibleWindow } : {}),
+      });
+    }
+  };
+
+  const galleryPhotos = draft.found
+    ? (() => {
+        const fromFound = venueGalleryPhotoUrls(draft.found.imageUrls);
+        const fromClear = clearPhotoUrls;
+        if (
+          countResyGalleryPhotos(fromFound) >= countResyGalleryPhotos(fromClear) &&
+          fromFound.length > 0
+        ) {
+          return fromFound;
+        }
+        if (fromClear.length > 0) return fromClear;
+        return fromFound;
+      })()
+    : [];
+
+  const profileVenue = draft.found
+    ? venueSnapshotFromJoin({
+        found: draft.found,
+        hours: normalizeVenueHours(draft.discountHours),
+        eligibleWindow: draft.eligibleWindow || "",
+        coverUrl: galleryPhotos[0] ?? null,
+        photoUrls: galleryPhotos,
+        givebackPercent,
+        causeName:
+          campaigns.find((c) => c.slug === draft.selectedCampaignSlug)?.nonprofit ?? null,
+        isRestaurant,
+        businessId: null,
+      })
+    : null;
+
+  if (phase === "profile" && profileVenue) {
+    return (
+      <BusinessVenueProfile
+        profile={profileVenue}
+        editing={editingProfile}
+        onToggleEdit={() => setEditingProfile((v) => !v)}
+        onChange={applyVenueChange}
+        onBack={() => {
+          setEditingProfile(false);
+          setPhase("confirm");
+        }}
+        onContinue={() => {
+          setEditingProfile(false);
+          goGiveback();
+        }}
+      />
+    );
+  }
+
   const locationLine = draft.found
     ? [draft.found.city, draft.found.state].filter(Boolean).join(", ") ||
       draft.found.address ||
@@ -529,9 +859,10 @@ export function BusinessJoinFourStep() {
    * Cover = first sharp photo (never logo). Logo thumb stays the brand mark.
    */
   const confirmLogoUrl =
-    draft.found?.logoUrl ||
-    draft.found?.imageUrls.find((u) => looksLikeLogoImageUrl(u)) ||
-    null;
+    classifiedLogoUrl ||
+    (draft.found?.logoUrl && looksLikeLogoImageUrl(draft.found.logoUrl)
+      ? draft.found.logoUrl
+      : null);
   const confirmCoverUrl = clearPhotoUrls[0] ?? null;
 
   return (
@@ -723,13 +1054,19 @@ export function BusinessJoinFourStep() {
           <p className="text-sm text-muted-foreground">
             Here&apos;s what we found. Let us know if this is you.
           </p>
+          <p className="text-xs text-muted-foreground">
+            Gallery photos: {clearPhotoUrls.length}
+            {countResyGalleryPhotos(clearPhotoUrls) > 0
+              ? ` · ${countResyGalleryPhotos(clearPhotoUrls)} from Resy`
+              : ""}
+          </p>
           <div className="overflow-hidden rounded-2xl border border-border bg-card">
             <div className="relative flex h-44 w-full items-center justify-center overflow-hidden bg-muted/30">
               {confirmCoverUrl ? (
                 <img
                   src={confirmCoverUrl}
                   alt=""
-                  className="h-full w-full object-cover"
+                  className="h-44 w-full object-cover"
                 />
               ) : (
                 <p className="px-4 text-center text-xs text-muted-foreground">
@@ -868,35 +1205,27 @@ export function BusinessJoinFourStep() {
                       </p>
                     </div>
                   </div>
-                  <ul className="mt-3 space-y-1.5 text-sm">
-                    <CheckRow
-                      ok={draft.found.checks.websiteFound}
-                      label="Website found"
-                    />
-                    <CheckRow
-                      ok={draft.found.checks.logoFound}
-                      label="Logo found"
-                    />
-                    <CheckRow
-                      ok={draft.found.checks.photosFound}
-                      label="Photos found"
-                    />
-                    <CheckRow
-                      ok={draft.found.checks.locationFound}
-                      label="Location found"
-                    />
-                  </ul>
                 </>
               )}
             </div>
           </div>
           <button
             type="button"
-            onClick={goGiveback}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground"
+            onClick={() => void openProfile()}
+            disabled={refreshingGallery || finding}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"
           >
-            Yes, that&apos;s us
-            <ArrowRight className="size-4" />
+            {refreshingGallery ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Loading venue photos…
+              </>
+            ) : (
+              <>
+                Yes, that&apos;s us
+                <ArrowRight className="size-4" />
+              </>
+            )}
           </button>
           <button
             type="button"
@@ -1265,14 +1594,5 @@ export function BusinessJoinFourStep() {
         </div>
       )}
     </main>
-  );
-}
-
-function CheckRow({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <li className="flex items-center gap-2">
-      <CheckCircle2 className={`size-4 ${ok ? "text-primary" : "text-muted-foreground/40"}`} />
-      <span className={ok ? "text-foreground" : "text-muted-foreground"}>{label}</span>
-    </li>
   );
 }

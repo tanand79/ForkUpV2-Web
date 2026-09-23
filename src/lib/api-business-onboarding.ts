@@ -48,8 +48,19 @@ export type BusinessDraftApiResult = {
   phone: string;
   city: string;
   state: string;
-  locations: { locationName: string; city: string; state: string; address?: string }[];
+  locations: {
+    locationName: string;
+    city: string;
+    state: string;
+    address?: string;
+    reservationUrl?: string;
+  }[];
+  reservationUrl?: string | null;
+  bookingPlatform?: string | null;
   imageUrls: string[];
+  /** Weekday labels from the public site. Absent on older API responses. */
+  discountHours?: Record<string, string> | null;
+  eligibleWindow?: string | null;
   supportsDineAndDonate: boolean;
   supportsShopAndDonate: boolean;
   supportsServiceGiveback: boolean;
@@ -78,9 +89,20 @@ export type FindBusinessProfileResult = {
   state: string;
   address: string;
   zip: string;
-  locations: { locationName: string; city: string; state: string; address?: string }[];
+  locations: {
+    locationName: string;
+    city: string;
+    state: string;
+    address?: string;
+    reservationUrl?: string;
+  }[];
+  reservationUrl?: string | null;
+  bookingPlatform?: string | null;
   logoUrl: string | null;
   imageUrls: string[];
+  /** Weekday labels from the public site. Absent on older API responses. */
+  discountHours?: Record<string, string> | null;
+  eligibleWindow?: string | null;
   checks: {
     websiteFound: boolean;
     logoFound: boolean;
@@ -106,4 +128,20 @@ export function findBusinessProfile(body: {
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * POST /api/business-venue-images — Resy carousel + site gallery photos only.
+ */
+export function fetchBusinessVenueImages(body: {
+  websiteUrl: string;
+  reservationUrl?: string | null;
+}) {
+  return fetchJson<{ imageUrls: string[]; reservationUrl: string | null }>(
+    "/api/business-venue-images",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
 }

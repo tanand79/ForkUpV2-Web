@@ -56,6 +56,12 @@ export interface ParticipatingLocation {
   cta: "reserve" | "visit" | "shop" | "book" | "attend";
   reservationUrl: string | null;
   acceptanceStatus: string;
+  /** Additive: from businesses / business_locations for public venue profile. */
+  website?: string | null;
+  description?: string | null;
+  logoUrl?: string | null;
+  address?: string | null;
+  zip?: string | null;
 }
 
 export interface CampaignDetail extends CampaignListItem {

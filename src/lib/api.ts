@@ -836,6 +836,8 @@ export function submitBusinessClaimRequest(body: {
     | "special_offer";
   joinCauseMode?: "pick_now" | "forkup_match";
   joinPreferredCampaignSlug?: string;
+  /** Booking page found while drafting the business (Resy, OpenTable, etc.). */
+  reservationUrl?: string;
 }) {
   return fetchJson<BusinessClaimRequestResult>("/api/profiles/businesses/claim-request", {
     method: "POST",

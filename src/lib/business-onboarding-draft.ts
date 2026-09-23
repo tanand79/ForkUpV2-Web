@@ -9,6 +9,7 @@ export type BusinessAiLocationDraft = {
   city: string;
   state: string;
   address?: string;
+  reservationUrl?: string;
 };
 
 export type BusinessAiDraft = {

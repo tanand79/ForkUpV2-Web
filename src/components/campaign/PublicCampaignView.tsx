@@ -13,6 +13,7 @@ import {
   MapPin,
   Receipt,
 } from "lucide-react";
+import { bookingCtaLabel } from "@/lib/booking-platform";
 import { resolveCampaignImage } from "@/lib/campaign-images";
 import type { CampaignDetail, ParticipatingLocation } from "@/lib/campaign-types";
 import { submitParticipation, fetchCampaignDonations, fetchCampaignImages } from "@/lib/api";
@@ -152,7 +153,7 @@ function ParticipateModal({
       } catch {
         /* ignore */
       }
-      setReservationUrl(result.reservationUrl ?? loc.reservationUrl);
+      setReservationUrl(result.reservationUrl?.trim() || loc.reservationUrl);
       setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save your visit");
@@ -186,7 +187,7 @@ function ParticipateModal({
                 rel="noopener noreferrer"
                 className="btn-primary mt-6 inline-flex w-full items-center justify-center gap-2"
               >
-                Continue to {ctaLabel(loc)} <ExternalLink className="size-4" />
+                {bookingCtaLabel(reservationUrl)} <ExternalLink className="size-4" />
               </a>
             ) : (
               <button type="button" onClick={() => handleClose(false)} className="btn-primary mt-6 w-full">
