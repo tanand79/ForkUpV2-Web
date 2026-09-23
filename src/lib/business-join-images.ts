@@ -257,7 +257,7 @@ export async function classifyBusinessImages(
     : null;
 
   const logoCandidates = probes.filter((p) => p.looksLikeLogo);
-  let photoUrls = [
+  const photoUrls = [
     ...bookingPhotos,
     ...probes.filter((p) => p.looksLikePhoto).map((p) => p.url),
   ];
