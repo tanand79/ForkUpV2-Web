@@ -2,6 +2,31 @@
  * Pass D2 — pick clear cover photos (not logos / tiny blurry thumbs) for confirm card.
  * Mirrors server looksLikeLogoUrl heuristics; probes pixel size + aspect client-side.
  */
+import { apiUrl } from "@/lib/api-config";
+
+/**
+ * Resy photos are returned as relative `/api/venue-photo-proxy?url=…`.
+ * On Amplify that path hits the SPA host (broken); prefix the Nest API base.
+ * Localhost leaves them relative so Next rewrites still work.
+ */
+export function resolveVenueImageSrc(url: string): string {
+  const raw = (url || "").trim();
+  if (!raw) return raw;
+  if (raw.startsWith("/api/")) {
+    return apiUrl(raw);
+  }
+  try {
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const parsed = new URL(raw, origin);
+    if (parsed.pathname.replace(/\/+$/, "") === "/api/venue-photo-proxy") {
+      return apiUrl(`${parsed.pathname}${parsed.search}`);
+    }
+  } catch {
+    /* keep raw */
+  }
+  return raw;
+}
 
 /** True when URL looks like a brand mark / icon, not a venue photo. */
 export function looksLikeLogoImageUrl(url: string): boolean {

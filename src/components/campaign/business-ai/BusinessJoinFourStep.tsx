@@ -72,6 +72,7 @@ import {
   venueGalleryPhotoUrls,
   isResyVenuePhotoUrl,
   countResyGalleryPhotos,
+  resolveVenueImageSrc,
 } from "@/lib/business-join-images";
 import {
   isOpenVenueDay,
@@ -1064,7 +1065,7 @@ export function BusinessJoinFourStep() {
             <div className="relative flex h-44 w-full items-center justify-center overflow-hidden bg-muted/30">
               {confirmCoverUrl ? (
                 <img
-                  src={confirmCoverUrl}
+                  src={resolveVenueImageSrc(confirmCoverUrl)}
                   alt=""
                   className="h-44 w-full object-cover"
                 />
@@ -1123,7 +1124,7 @@ export function BusinessJoinFourStep() {
                               }`}
                             >
                               <img
-                                src={url}
+                                src={resolveVenueImageSrc(url)}
                                 alt=""
                                 className="size-full object-cover"
                               />
@@ -1190,7 +1191,7 @@ export function BusinessJoinFourStep() {
                     {confirmLogoUrl ? (
                       <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-white">
                         <img
-                          src={confirmLogoUrl}
+                          src={resolveVenueImageSrc(confirmLogoUrl)}
                           alt=""
                           className="max-h-full max-w-full object-contain p-0.5"
                         />

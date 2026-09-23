@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { bookingCtaLabel } from "@/lib/booking-platform";
+import { resolveVenueImageSrc } from "@/lib/business-join-images";
 import {
   VENUE_DAYS,
   eligibilityRowsFromHours,
@@ -563,11 +564,17 @@ export function BusinessVenueProfile({
       : profile.coverUrl
         ? [profile.coverUrl]
         : [];
-  const images: GalleryImage[] = photoList.map((src, index) => ({
-    id: `${index}-${src.slice(-24)}`,
-    src,
-    alt: `${profile.businessName} photo ${index + 1}`,
-  }));
+  const images: GalleryImage[] = photoList.map((src, index) => {
+    const resolved = resolveVenueImageSrc(src);
+    return {
+      id: `${index}-${resolved.slice(-24)}`,
+      src: resolved,
+      alt: `${profile.businessName} photo ${index + 1}`,
+    };
+  });
+  const resolvedCover = profile.coverUrl
+    ? resolveVenueImageSrc(profile.coverUrl)
+    : null;
 
   const eligibility = eligibilityRowsFromHours(profile.hours);
 
@@ -669,7 +676,7 @@ export function BusinessVenueProfile({
           images={images}
           venueName={profile.businessName}
           editing={canEdit}
-          activeSrc={profile.coverUrl}
+          activeSrc={resolvedCover}
           photosLoading={photosLoading}
           onSelectCover={(src) => {
             if (!canEdit) return;
