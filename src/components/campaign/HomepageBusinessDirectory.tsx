@@ -443,7 +443,7 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
     setCampaignsLoading(true);
     const nonprofitId = state.nonprofitProfile?.id;
     void fetchManageCampaigns(nonprofitId)
-      .then((list) => setCampaigns(list))
+      .then((list) => setCampaigns(list.filter((c) => c.status === "live")))
       .catch((err) => {
         setCampaignsError(err instanceof Error ? err.message : "Could not load campaigns");
       })
@@ -600,7 +600,7 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
 
           {!campaignsLoading && !campaignsError && campaigns.length === 0 && (
             <div className="space-y-3 py-2 text-sm text-muted-foreground">
-              <p>You don&apos;t have a campaign yet.</p>
+              <p>You don&apos;t have a live campaign yet.</p>
               <button
                 type="button"
                 onClick={() => {
