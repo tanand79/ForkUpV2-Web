@@ -328,9 +328,11 @@ export function BusinessJoinFourStep() {
   /**
    * Session drafts saved before Resy short-URL gallery support often lack
    * image.resy.com URLs. Re-run website draft / Find once when photos are stale.
+   * Only on confirm/profile — never auto-start Analyzing while still on Find.
    */
   useEffect(() => {
     if (!mounted || resyGalleryRefreshAttempted || finding || refreshingGallery) return;
+    if (phase !== "confirm" && phase !== "profile") return;
     const found = draft.found;
     if (!found) return;
     const hasResyPhotos = countResyGalleryPhotos(found.imageUrls) > 0;
@@ -375,6 +377,7 @@ export function BusinessJoinFourStep() {
     })();
   }, [
     mounted,
+    phase,
     draft.found,
     draft.nameQuery,
     door,
@@ -930,6 +933,32 @@ export function BusinessJoinFourStep() {
       : null);
   const confirmCoverUrl = clearPhotoUrls[0] ?? null;
 
+  /** Previous phase (or home on Find / Done) — edit prior step instead of always home. */
+  const handleFlowBack = () => {
+    if (finding) {
+      setFinding(false);
+      setError(null);
+      return;
+    }
+    if (phase === "confirm") {
+      setEditingConfirm(false);
+      setPhase("find");
+      return;
+    }
+    if (phase === "giveback") {
+      setPhase(draft.found ? "confirm" : "find");
+      return;
+    }
+    if (phase === "email") {
+      setPhase("giveback");
+      return;
+    }
+    goTo("website-landing");
+  };
+
+  const backLabel =
+    phase === "find" || phase === "done" ? "Back to home" : "Back";
+
   return (
     <main
       className={`mx-auto px-5 py-10 sm:px-6 ${
@@ -938,11 +967,11 @@ export function BusinessJoinFourStep() {
     >
       <button
         type="button"
-        onClick={() => goTo("website-landing")}
+        onClick={handleFlowBack}
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
-        Back to home
+        {backLabel}
       </button>
 
       <div className="flex items-center gap-3">

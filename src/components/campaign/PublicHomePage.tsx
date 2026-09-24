@@ -21,6 +21,8 @@ import { useCampaignNearby } from "@/hooks/use-campaign-nearby";
 import { JoinUsThreeDoorsHero } from "@/components/campaign/JoinUsThreeDoorsHero";
 import { HomepageBusinessDirectory } from "@/components/campaign/HomepageBusinessDirectory";
 import { stashBusinessDoor } from "@/lib/business-door";
+import { clearBusinessJoinDraft } from "@/lib/business-join-four-step-draft";
+import { clearPartnerJoinIntent } from "@/lib/partner-join-intent";
 import { peekDirectoryInviteIntent } from "@/lib/directory-invite-intent";
 
 export function PublicHomePage() {
@@ -114,11 +116,17 @@ export function PublicHomePage() {
   };
 
   const joinAsRestaurant = () => {
+    // Fresh Find — do not resume a prior session draft / Analyzing cache.
+    clearBusinessJoinDraft();
+    clearPartnerJoinIntent();
     stashBusinessDoor("restaurant");
     joinAsBusiness();
   };
 
   const joinAsLocalBusiness = () => {
+    // Fresh Find — do not resume a prior session draft / Analyzing cache.
+    clearBusinessJoinDraft();
+    clearPartnerJoinIntent();
     stashBusinessDoor("local");
     joinAsBusiness();
   };
