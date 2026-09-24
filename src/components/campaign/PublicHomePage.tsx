@@ -450,7 +450,7 @@ export function PublicHomePage() {
               nearby={{
                 locationReady: nearby.locationReady,
                 allLocations: nearby.allLocations,
-                nearby: nearby.nearby,
+                nearby: nearby.nearby ?? null,
               }}
               onStartCampaign={startCampaign}
             />
