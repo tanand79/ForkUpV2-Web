@@ -882,7 +882,9 @@ export function BusinessJoinFourStep() {
         }}
         onContinue={() => {
           setEditingProfile(false);
-          goGiveback();
+          setError(null);
+          // Skip giveback during register — defaults apply; set after claim.
+          setPhase("email");
         }}
       />
     );
@@ -946,11 +948,11 @@ export function BusinessJoinFourStep() {
       return;
     }
     if (phase === "giveback") {
-      setPhase(draft.found ? "confirm" : "find");
+      setPhase(draft.found ? "profile" : "find");
       return;
     }
     if (phase === "email") {
-      setPhase("giveback");
+      setPhase(draft.found ? "profile" : "find");
       return;
     }
     goTo("website-landing");
