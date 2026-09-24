@@ -167,7 +167,12 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
         for (const b of list) {
           const cached = loadCachedVenuePhotos(b.id)?.[0];
           const saved = loadVenueProfileSnapshot(b.id);
-          const url = saved?.coverUrl || saved?.photoUrls?.[0] || cached;
+          const dbCover =
+            Array.isArray(b.galleryImageUrls) && b.galleryImageUrls[0]
+              ? b.galleryImageUrls[0]
+              : null;
+          const url =
+            saved?.coverUrl || saved?.photoUrls?.[0] || cached || dbCover;
           if (url) covers[b.id] = url;
         }
         setCoverById(covers);
@@ -244,7 +249,10 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
     if (hasRealGallery) {
       saveCachedVenuePhotos(business.id, photoUrls);
       setPhotosLoading(false);
-      setCoverById((prev) => ({ ...prev, [business.id]: photoUrls[0]! }));
+      setCoverById((prev) => ({
+        ...prev,
+        [business.id]: photoUrls[0]!,
+      }));
       saveVenueProfileSnapshot(base);
     }
 

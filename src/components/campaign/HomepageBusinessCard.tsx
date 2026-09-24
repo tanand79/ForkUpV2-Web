@@ -7,6 +7,7 @@
 import { Clock, MapPin, Store } from "lucide-react";
 import bizFallback from "@/assets/biz-restaurant.jpg";
 import type { BusinessDirectoryItem } from "@/lib/api";
+import { resolveVenueImageSrc } from "@/lib/business-join-images";
 import { assetSrc } from "@/lib/utils";
 
 type Props = {
@@ -28,7 +29,9 @@ export function HomepageBusinessCard({
   const place =
     loc &&
     [loc.locationName, loc.city, loc.state].filter(Boolean).join(", ");
-  const imageSrc = coverUrl?.trim() ? coverUrl.trim() : assetSrc(bizFallback);
+  const imageSrc = coverUrl?.trim()
+    ? resolveVenueImageSrc(coverUrl.trim())
+    : assetSrc(bizFallback);
 
   return (
     <article

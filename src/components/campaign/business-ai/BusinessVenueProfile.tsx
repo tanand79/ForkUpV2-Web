@@ -1044,7 +1044,19 @@ export function BusinessVenueProfile({
               className="ml-auto pt-1 sm:pt-3"
             />
           ) : (
-            <VenueSocialLinks links={socialLinks} className="ml-auto pt-1 sm:pt-3" />
+            <div className="ml-auto flex flex-col items-end gap-3 pt-1 sm:pt-3">
+              <VenueSocialLinks links={socialLinks} />
+              {onContinue ? (
+                <Button
+                  type="button"
+                  onClick={onContinue}
+                  className="h-12 rounded-sm bg-venue-accent px-5 text-sm font-semibold text-venue-paper shadow-none hover:bg-venue-accent-strong"
+                >
+                  {continueLabel}
+                  <ArrowRight className="size-4" />
+                </Button>
+              ) : null}
+            </div>
           )}
         </header>
 
@@ -1147,7 +1159,7 @@ export function BusinessVenueProfile({
           )}
         </div>
 
-        {onContinue ? (
+        {canEdit && onContinue ? (
           <Button
             type="button"
             onClick={onContinue}

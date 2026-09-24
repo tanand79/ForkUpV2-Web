@@ -5,6 +5,7 @@ import {
   Store,
   Send,
   CheckCircle2,
+  Check,
   Copy,
   Loader2,
   ArrowLeft,
@@ -17,6 +18,7 @@ import {
   Facebook,
   Instagram,
   AlertTriangle,
+  Utensils,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -46,7 +48,9 @@ import {
 import { OrganizationLookupConfirm, ORG_TYPE_OPTIONS } from "@/components/campaign/OrganizationLookupConfirm";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
 import { InviteFromNameField } from "@/components/campaign/InviteFromNameField";
+import { Slider } from "@/components/ui/slider";
 import { loadUserSession } from "@/lib/auth-session";
+import { clampJoinGivebackPercent } from "@/lib/business-join-four-step-draft";
 import {
   clearBusinessClaimDraft,
   defaultBusinessClaimDraft,
@@ -54,6 +58,8 @@ import {
   saveBusinessClaimDraft,
   type BusinessClaimDraft,
 } from "@/lib/business-claim-draft";
+
+const INVITE_GIVEBACK_PRESETS = [10, 15, 20, 25] as const;
 
 const field =
   "w-full rounded-xl border border-border bg-background px-4 py-3 text-sm";
@@ -1216,7 +1222,7 @@ export function BusinessInvitesNonprofit() {
         locationId: biz.locationId,
         nonprofitId: selectedNp.id,
         methodType,
-        givebackPercentage: giveback,
+        givebackPercentage: clampJoinGivebackPercent(giveback),
         message: message.trim() || undefined,
         inviteFromName: inviteFromName.trim() || undefined,
       });
@@ -1293,10 +1299,70 @@ export function BusinessInvitesNonprofit() {
           </select>
         </label>
 
-        <label className="block space-y-1.5">
-          <span className="text-sm font-semibold">Giveback %</span>
-          <input type="number" min={1} max={100} value={giveback} onChange={(e) => setGiveback(Number(e.target.value))} className={field} />
-        </label>
+        <div className="flex w-full flex-col gap-4">
+          <div className="flex w-full flex-row items-center gap-3 rounded-2xl border border-primary/40 bg-accent/80 px-4 py-4 sm:gap-4 sm:px-5">
+            <Utensils
+              className="size-7 shrink-0 text-primary sm:size-8"
+              strokeWidth={1.75}
+            />
+            <div className="flex min-w-0 flex-1 flex-col items-start text-left">
+              <p className="text-2xl font-extrabold leading-none tracking-tight text-foreground sm:text-3xl">
+                {giveback}%
+              </p>
+              <p className="mt-1 text-sm leading-snug text-muted-foreground">
+                of eligible dining proceeds
+              </p>
+            </div>
+            <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
+              <Check className="size-3.5" strokeWidth={3} />
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-2xl border border-border bg-card px-4 py-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-foreground">
+                Adjust giveback percentage
+              </p>
+              <p className="text-sm font-bold text-primary">{giveback}%</p>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {INVITE_GIVEBACK_PRESETS.map((g) => {
+                const active = giveback === g;
+                return (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setGiveback(clampJoinGivebackPercent(g))}
+                    className={`flex h-10 items-center justify-center rounded-xl text-sm font-semibold transition-all ${
+                      active
+                        ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
+                        : "border border-border bg-card hover:bg-secondary"
+                    }`}
+                  >
+                    {g}%
+                  </button>
+                );
+              })}
+            </div>
+            <div className="space-y-2 pt-1">
+              <Slider
+                min={5}
+                max={50}
+                step={1}
+                value={[giveback]}
+                onValueChange={(vals) =>
+                  setGiveback(clampJoinGivebackPercent(vals[0] ?? 15))
+                }
+                aria-label="Giveback percentage"
+              />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>5%</span>
+                <span>Typical 10%–20%</span>
+                <span>50%</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div className="space-y-2">
           <span className="text-sm font-semibold">Find nonprofit</span>
