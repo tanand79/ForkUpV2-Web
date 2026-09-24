@@ -565,7 +565,7 @@ function EligibilitySchedule({
             Giveback hours
           </p>
           <h2 id="eligibility-heading" className="font-venue-serif text-2xl text-venue-ink">
-            Eligible days &amp; meal periods
+            Eligible Days &amp; Meal Periods
           </h2>
         </div>
       </div>
@@ -582,13 +582,13 @@ function EligibilitySchedule({
                 <input
                   className="w-full rounded-sm border border-venue-line bg-venue-paper px-2 py-1.5 text-sm text-venue-ink"
                   value={isOpenVenueDay(hours[day]) ? hours[day] : ""}
-                  placeholder="Not eligible"
+                  placeholder="Not Eligible"
                   aria-label={`${row.day} eligible periods`}
                   onChange={(e) => onChangeDay(day, e.target.value)}
                 />
               ) : (
                 <span className={row.periods.length ? "text-venue-body" : "text-venue-muted"}>
-                  {row.periods.length ? row.periods.join(" · ") : "Not eligible"}
+                  {row.periods.length ? row.periods.join(" · ") : "Not Eligible"}
                 </span>
               )}
             </div>
@@ -1075,7 +1075,7 @@ export function BusinessVenueProfile({
                 id="about-venue-heading"
                 className="mt-2 font-venue-serif text-3xl text-venue-ink sm:text-4xl"
               >
-                About the venue
+                About the Venue
               </h2>
               {canEdit ? (
                 <textarea
