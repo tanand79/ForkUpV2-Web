@@ -204,6 +204,9 @@ function AuthLoginScreen() {
     try {
       consumeRoleHint();
       const returnStep = consumeAuthReturnStep();
+      // Homepage Business → Invite: always resume campaign picker (never dashboard).
+      const { peekDirectoryInviteIntent } = await import("@/lib/directory-invite-intent");
+      const resumeDirectoryInvite = Boolean(peekDirectoryInviteIntent());
       // Keep lock until Guest*Claim succeeds; clear for other return paths (manual Create account).
       if (
         returnStep !== "guest-campaign-claim" &&
@@ -303,6 +306,11 @@ function AuthLoginScreen() {
 
       if (!session) {
         // Token is already saved — send user to hub; dashboard will retry sync.
+        // Directory invite resume wins over default dashboard when session sync timed out.
+        if (resumeDirectoryInvite) {
+          goTo("website-landing");
+          return;
+        }
         goTo(
           role === "business"
             ? "business-dashboard"
@@ -371,6 +379,12 @@ function AuthLoginScreen() {
         typeof window !== "undefined"
           ? new URLSearchParams(window.location.search).get("token")?.trim() || undefined
           : undefined;
+
+      // Business-tab Invite after sign-in: open campaign picker immediately (skip dashboard).
+      if (resumeDirectoryInvite) {
+        goTo("website-landing");
+        return;
+      }
 
       if (
         (returnStep === "business-ai-onboarding" ||
@@ -478,12 +492,14 @@ function AuthLoginScreen() {
         return;
       }
 
-      const destination = resolvePostAuthStep(
-        returnStep,
-        role,
-        session.nonprofitMemberships.length,
-        session.businessMemberships.length,
-      );
+      const destination = resumeDirectoryInvite
+        ? "website-landing"
+        : resolvePostAuthStep(
+            returnStep,
+            role,
+            session.nonprofitMemberships.length,
+            session.businessMemberships.length,
+          );
 
       if (
         (destination === "business-ai-onboarding" ||
@@ -495,7 +511,7 @@ function AuthLoginScreen() {
       }
 
       // Foreign-org draft must resume the invite (fundraiser) UI, not nonprofit Launch.
-      if (foreignTarget) {
+      if (foreignTarget && !resumeDirectoryInvite) {
         goTo(
           returnStep === "ai-campaign-preview" ||
             returnStep === "ai-campaign-dates" ||

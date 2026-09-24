@@ -296,6 +296,17 @@ export function shouldSkipBusinessAiOnboarding(
   return businessMembershipCount > 0 || hasBusinessProfile;
 }
 
+/**
+ * Homepage Business → Invite while signed out.
+ * Opens login and returns to website-landing so the campaign picker can resume.
+ */
+export function prepareDirectoryInviteAuth() {
+  stashRoleHint("nonprofit");
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(AUTH_INITIAL_MODE_KEY, "login");
+  stashAuthReturnStep("website-landing");
+}
+
 export function readAuthInitialMode(): "login" | "register" | null {
   if (typeof window === "undefined") return null;
   const raw = sessionStorage.getItem(AUTH_INITIAL_MODE_KEY);

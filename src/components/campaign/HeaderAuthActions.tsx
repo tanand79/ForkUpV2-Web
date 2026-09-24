@@ -15,6 +15,10 @@ import { getAuthToken } from "@/lib/auth-storage";
 
 import { clearAuthAndSession } from "@/lib/auth-session";
 
+import { prepareDirectoryInviteAuth } from "@/lib/campaign-auth";
+
+import { peekDirectoryInviteIntent } from "@/lib/directory-invite-intent";
+
 import { HeaderPillButton, headerPillClass } from "./SiteHeader";
 import { AiEngineDropdown } from "./AiEngineDropdown";
 
@@ -201,6 +205,9 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
       <button
         type="button"
         onClick={() => {
+          if (peekDirectoryInviteIntent()) {
+            prepareDirectoryInviteAuth();
+          }
           sessionStorage.setItem("forkup-auth-initial-mode", "register");
           goTo("auth-login");
         }}
@@ -211,7 +218,17 @@ export function HeaderAuthActions({ step: _step }: { step: string }) {
 
       </button>
 
-      <button type="button" onClick={() => goTo("auth-login")} className={headerPillClass}>
+      <button
+        type="button"
+        onClick={() => {
+          // Business-tab Invite → search → Sign in: resume Invite with their campaigns.
+          if (peekDirectoryInviteIntent()) {
+            prepareDirectoryInviteAuth();
+          }
+          goTo("auth-login");
+        }}
+        className={headerPillClass}
+      >
 
         Sign in
 

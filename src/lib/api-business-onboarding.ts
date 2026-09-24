@@ -61,6 +61,12 @@ export type BusinessDraftApiResult = {
   /** Weekday labels from the public site. Absent on older API responses. */
   discountHours?: Record<string, string> | null;
   eligibleWindow?: string | null;
+  /** Additive: social profile URLs from the website. */
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  linkedinUrl?: string | null;
+  youtubeUrl?: string | null;
+  tiktokUrl?: string | null;
   supportsDineAndDonate: boolean;
   supportsShopAndDonate: boolean;
   supportsServiceGiveback: boolean;
@@ -70,10 +76,18 @@ export type BusinessDraftApiResult = {
   provider: string;
 };
 
-export function generateBusinessDraft(website: string) {
+export function generateBusinessDraft(
+  website: string,
+  near?: { nearZip?: string; city?: string; state?: string },
+) {
   return fetchJson<BusinessDraftApiResult>("/api/generate-business-draft", {
     method: "POST",
-    body: JSON.stringify({ website }),
+    body: JSON.stringify({
+      website,
+      nearZip: near?.nearZip,
+      city: near?.city,
+      state: near?.state,
+    }),
   });
 }
 
@@ -103,6 +117,12 @@ export type FindBusinessProfileResult = {
   /** Weekday labels from the public site. Absent on older API responses. */
   discountHours?: Record<string, string> | null;
   eligibleWindow?: string | null;
+  /** Additive: social profile URLs from the website. */
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  linkedinUrl?: string | null;
+  youtubeUrl?: string | null;
+  tiktokUrl?: string | null;
   checks: {
     websiteFound: boolean;
     logoFound: boolean;
@@ -117,12 +137,20 @@ export type FindBusinessProfileResult = {
 
 /**
  * POST /api/find-business-profile
- * Inputs: businessName, optional joinDoorType.
- * Outputs: confirmation card payload (website, location, photos, checks).
+ * Inputs: businessName, optional joinDoorType, optional nearZip/city/state,
+ *         optional website (known DB/site URL — preferred for social scrape).
+ * Outputs: confirmation card payload (website, location, photos, social, checks).
  */
 export function findBusinessProfile(body: {
   businessName: string;
   joinDoorType?: "restaurant" | "local";
+  nearZip?: string;
+  city?: string;
+  state?: string;
+  /** Known public website — skip AI host guess when set (e.g. The Pear). */
+  website?: string;
+  /** Persist discovered public links onto this business (null-only fill). */
+  businessId?: number;
 }) {
   return fetchJson<FindBusinessProfileResult>("/api/find-business-profile", {
     method: "POST",
@@ -136,12 +164,60 @@ export function findBusinessProfile(body: {
 export function fetchBusinessVenueImages(body: {
   websiteUrl: string;
   reservationUrl?: string | null;
+  /** Persist gallery onto this business when scrape returns photos. */
+  businessId?: number;
 }) {
-  return fetchJson<{ imageUrls: string[]; reservationUrl: string | null }>(
-    "/api/business-venue-images",
+  return fetchJson<{
+    imageUrls: string[];
+    reservationUrl: string | null;
+    /** Durable cover from businesses.venue_cover_url when cached. */
+    coverUrl?: string | null;
+  }>("/api/business-venue-images", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * POST /api/business-venue-gallery — append user uploads + set cover (auth).
+ */
+export function saveBusinessVenueGallery(body: {
+  businessId: number;
+  imageUrls?: string[];
+  coverUrl?: string | null;
+}) {
+  return fetchJson<{ imageUrls: string[]; coverUrl: string | null }>(
+    "/api/business-venue-gallery",
     {
       method: "POST",
       body: JSON.stringify(body),
     },
   );
+}
+
+/**
+ * POST /api/business-venue-links — overwrite venue social / contact links (auth).
+ */
+export function saveBusinessVenueLinks(body: {
+  businessId: number;
+  website?: string | null;
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  linkedinUrl?: string | null;
+  tiktokUrl?: string | null;
+  phone?: string | null;
+  venueEmail?: string | null;
+}) {
+  return fetchJson<{
+    website?: string | null;
+    facebookUrl?: string | null;
+    instagramUrl?: string | null;
+    linkedinUrl?: string | null;
+    tiktokUrl?: string | null;
+    phone?: string | null;
+    venueEmail?: string | null;
+  }>("/api/business-venue-links", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }

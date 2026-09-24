@@ -19,6 +19,8 @@ export type CauseMode = "pick_now" | "forkup_match";
 export type BusinessJoinFourStepDraft = {
   door: BusinessDoor | null;
   nameQuery: string;
+  /** Additive: US ZIP for nearby store resolution (NPO-style). */
+  nearZip: string;
   found: FindBusinessProfileResult | null;
   localGivebackMode: LocalGivebackMode;
   /** Restaurant (and % of purchase) giveback — default 15, range 5–50. */
@@ -43,6 +45,7 @@ export function defaultBusinessJoinDraft(door: BusinessDoor | null = null): Busi
   return {
     door,
     nameQuery: "",
+    nearZip: "",
     found: null,
     localGivebackMode: "percent_of_purchase",
     givebackPercent: 15,

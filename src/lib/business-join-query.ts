@@ -25,12 +25,16 @@ export function normalizeWebsiteQuery(raw: string): string {
 /**
  * Strip path/query from a business website so scrapes start at the homepage
  * (e.g. sovanabistro.com/menus/ → https://www.sovanabistro.com).
+ * Prefer www — apex hosts often hang and delay the venue gallery for every business.
  */
 export function websiteOriginUrl(raw: string): string {
   const withProto = normalizeWebsiteQuery(raw);
   if (!withProto) return "";
   try {
     const u = new URL(withProto);
+    if (!/^www\./i.test(u.hostname) && !/^(localhost|127\.0\.0\.1)$/i.test(u.hostname)) {
+      u.hostname = `www.${u.hostname}`;
+    }
     return `${u.protocol}//${u.host}`;
   } catch {
     return withProto;

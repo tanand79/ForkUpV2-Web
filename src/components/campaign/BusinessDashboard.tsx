@@ -23,6 +23,7 @@ import { formatDateUs, formatDateTimeUs, looksLikeIsoDateTime } from "@/lib/date
 import {
   fetchBusinessCollaborations,
   fetchCurrentUser,
+  searchBusinesses,
   type BusinessCollaboration,
 } from "@/lib/api";
 import { formatRespondByLabel } from "@/lib/business-status";
@@ -34,13 +35,20 @@ import { BusinessVenueProfile } from "@/components/campaign/business-ai/Business
 import {
   fetchBusinessVenueImages,
   findBusinessProfile,
+  saveBusinessVenueGallery,
+  saveBusinessVenueLinks,
 } from "@/lib/api-business-onboarding";
 import { websiteOriginUrl } from "@/lib/business-join-query";
 import { loadBusinessJoinDraft } from "@/lib/business-join-four-step-draft";
 import {
   isOpenVenueDay,
+  loadCachedVenuePhotos,
+  loadContactLookupTried,
   loadVenueProfileSnapshot,
+  markContactLookupTried,
+  mergeVenueSnapshotKeepExisting,
   normalizeVenueHours,
+  saveCachedVenuePhotos,
   saveVenueProfileSnapshot,
   venueFromDashboardBusiness,
   VENUE_DAYS,
@@ -139,6 +147,72 @@ export function BusinessDashboard() {
   const [editingVenue, setEditingVenue] = useState(false);
   const [venue, setVenue] = useState<VenueProfileSnapshot | null>(null);
   const [photosLoading, setPhotosLoading] = useState(false);
+  const venueHydrateGen = useRef(0);
+
+  // Warm photo cache as soon as the dashboard loads so "View profile" is instant.
+  useEffect(() => {
+    if (!biz?.id || !biz.businessName) return;
+    const saved = loadVenueProfileSnapshot(biz.id);
+    if (saved?.photoUrls && saved.photoUrls.length > 0) {
+      saveCachedVenuePhotos(biz.id, saved.photoUrls);
+      return;
+    }
+    if (loadCachedVenuePhotos(biz.id)?.length) return;
+
+    const draft = loadBusinessJoinDraft();
+    const draftMatches =
+      draft?.found &&
+      draft.found.businessName.trim().toLowerCase() ===
+        biz.businessName.trim().toLowerCase();
+    let website = draftMatches ? draft.found?.website?.trim() || "" : "";
+    let reservationUrl = draftMatches
+      ? draft.found?.reservationUrl || null
+      : null;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (!website) {
+          const listed = await searchBusinesses(biz.businessName);
+          if (cancelled) return;
+          const match =
+            listed.find((b) => b.id === biz.id) ||
+            listed.find(
+              (b) =>
+                b.businessName.trim().toLowerCase() ===
+                biz.businessName.trim().toLowerCase(),
+            );
+          website = match?.website?.trim() || "";
+        }
+        if (!website) return;
+        const venueImages = await fetchBusinessVenueImages({
+          websiteUrl: websiteOriginUrl(website),
+          reservationUrl,
+          businessId: biz.id,
+        });
+        if (cancelled || !venueImages.imageUrls?.length) return;
+        saveCachedVenuePhotos(biz.id, venueImages.imageUrls);
+        const prev = loadVenueProfileSnapshot(biz.id);
+        if (prev) {
+          saveVenueProfileSnapshot({
+            ...prev,
+            coverUrl:
+              prev.coverUrl ||
+              venueImages.coverUrl ||
+              venueImages.imageUrls[0] ||
+              null,
+            photoUrls:
+              prev.photoUrls.length > 0 ? prev.photoUrls : venueImages.imageUrls,
+          });
+        }
+      } catch {
+        /* prefetch is best-effort */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [biz?.id, biz?.businessName]);
 
   // Refresh claim / access-request status from the server on each visit.
   useEffect(() => {
@@ -242,6 +316,7 @@ export function BusinessDashboard() {
 
   function openVenueProfile() {
     if (!biz) return;
+    const gen = ++venueHydrateGen.current;
     const saved = loadVenueProfileSnapshot(biz.id);
     const draft = loadBusinessJoinDraft();
     const draftMatches =
@@ -250,6 +325,7 @@ export function BusinessDashboard() {
         biz.businessName.trim().toLowerCase();
     const found = draftMatches ? draft.found : null;
     const draftHours = draft ? normalizeVenueHours(draft.discountHours) : null;
+    const cachedPhotos = loadCachedVenuePhotos(biz.id) ?? [];
 
     const fallback = venueFromDashboardBusiness({
       id: biz.id,
@@ -262,6 +338,7 @@ export function BusinessDashboard() {
       (saved?.photoUrls && saved.photoUrls.length > 0
         ? saved.photoUrls
         : null) ??
+      (cachedPhotos.length > 0 ? cachedPhotos : null) ??
       (found?.imageUrls && found.imageUrls.length > 0
         ? found.imageUrls.filter(Boolean)
         : null) ??
@@ -295,6 +372,18 @@ export function BusinessDashboard() {
         saved?.isRestaurant !== undefined
           ? saved.isRestaurant
           : biz.capabilities.dineAndDonate,
+      websiteUrl:
+        saved?.websiteUrl?.trim() || found?.website?.trim() || null,
+      facebookUrl:
+        saved?.facebookUrl?.trim() || found?.facebookUrl?.trim() || null,
+      instagramUrl:
+        saved?.instagramUrl?.trim() || found?.instagramUrl?.trim() || null,
+      linkedinUrl:
+        saved?.linkedinUrl?.trim() || found?.linkedinUrl?.trim() || null,
+      youtubeUrl: saved?.youtubeUrl?.trim() || found?.youtubeUrl?.trim() || null,
+      tiktokUrl: saved?.tiktokUrl?.trim() || found?.tiktokUrl?.trim() || null,
+      phone: saved?.phone?.trim() || found?.phone?.trim() || null,
+      email: saved?.email?.trim() || found?.contactEmail?.trim() || null,
     };
 
     setVenue(base);
@@ -305,60 +394,205 @@ export function BusinessDashboard() {
     const needsAbout = !base.about.trim();
     const needsAddress = !base.address.trim() && !base.city.trim();
     const needsHours = !hasEligibleHours(base.hours);
-    if (!needsPhotos && !needsAbout && !needsAddress && !needsHours) return;
+    /** Scrape social when both FB and IG missing. */
+    const needsSocial =
+      !base.facebookUrl?.trim() && !base.instagramUrl?.trim();
+    /** Contact once per session — do not re-find forever when a site has no email. */
+    const needsContact =
+      (!base.phone?.trim() || !base.email?.trim()) &&
+      !loadContactLookupTried(biz.id);
+    if (
+      !needsPhotos &&
+      !needsAbout &&
+      !needsAddress &&
+      !needsHours &&
+      !needsSocial &&
+      !needsContact
+    ) {
+      setPhotosLoading(false);
+      if (base.photoUrls.length > 0) saveCachedVenuePhotos(biz.id, base.photoUrls);
+      return;
+    }
 
+    // Show spinner only when we have no gallery yet — details hydrate silently.
     setPhotosLoading(needsPhotos);
+
     void (async () => {
       try {
+        let website = found?.website?.trim() || base.websiteUrl?.trim() || "";
+        let reservationUrl = found?.reservationUrl?.trim() || null;
+        let nextPhotos: string[] = [...base.photoUrls];
+        let about = base.about;
+        let address = base.address;
+        let city = base.city;
+        let state = base.state;
+        let zip = base.zip;
+        let businessName = base.businessName;
+        let nextHours = base.hours;
+        let eligibleWindow = base.eligibleWindow;
+        let facebookUrl = base.facebookUrl?.trim() || null;
+        let instagramUrl = base.instagramUrl?.trim() || null;
+        let linkedinUrl = base.linkedinUrl?.trim() || null;
+        let youtubeUrl = base.youtubeUrl?.trim() || null;
+        let tiktokUrl = base.tiktokUrl?.trim() || null;
+        let phone = base.phone?.trim() || null;
+        let email = base.email?.trim() || null;
+
+        // Fast path: known website → Resy/site scrape only (skip slow find-business).
+        if (needsPhotos && !website) {
+          try {
+            const listed = await searchBusinesses(biz.businessName);
+            if (gen !== venueHydrateGen.current) return;
+            const match =
+              listed.find((b) => b.id === biz.id) ||
+              listed.find(
+                (b) =>
+                  b.businessName.trim().toLowerCase() ===
+                  biz.businessName.trim().toLowerCase(),
+              );
+            website = match?.website?.trim() || "";
+            const loc = match?.locations?.[0];
+            if (loc) {
+              address = address || loc.address || "";
+              city = city || loc.city || "";
+              state = state || loc.state || "";
+            }
+          } catch {
+            /* continue */
+          }
+        }
+
+        if (needsPhotos && website) {
+          try {
+            const venueImages = await fetchBusinessVenueImages({
+              websiteUrl: websiteOriginUrl(website),
+              reservationUrl,
+              businessId: biz.id,
+            });
+            if (gen !== venueHydrateGen.current) return;
+            if (venueImages.imageUrls?.length) {
+              nextPhotos = venueImages.imageUrls;
+              saveCachedVenuePhotos(biz.id, nextPhotos);
+              setVenue((prev) => {
+                if (!prev || prev.businessId !== biz.id) return prev;
+                const next: VenueProfileSnapshot = {
+                  ...prev,
+                  address: address || prev.address,
+                  city: city || prev.city,
+                  state: state || prev.state,
+                  coverUrl:
+                    prev.coverUrl ||
+                    venueImages.coverUrl ||
+                    nextPhotos[0] ||
+                    null,
+                  photoUrls: nextPhotos,
+                };
+                saveVenueProfileSnapshot(next);
+                return next;
+              });
+              setPhotosLoading(false);
+            }
+          } catch {
+            /* fall through to find */
+          }
+        }
+
+        const stillNeedsPhotos = nextPhotos.length === 0 && !base.coverUrl;
+        const stillNeedsDetails =
+          needsAbout ||
+          needsAddress ||
+          needsHours ||
+          needsSocial ||
+          needsContact ||
+          !website ||
+          stillNeedsPhotos;
+        if (!stillNeedsDetails) return;
+
         const discovered = await findBusinessProfile({
           businessName: biz.businessName,
           joinDoorType: biz.capabilities.dineAndDonate ? "restaurant" : "local",
+          ...(website ? { website } : {}),
+          businessId: biz.id,
         });
-        let nextPhotos = Array.isArray(discovered.imageUrls)
-          ? discovered.imageUrls.filter(Boolean)
-          : [];
-        const origin = websiteOriginUrl(discovered.website || "");
-        if (origin) {
+        if (gen !== venueHydrateGen.current) return;
+
+        website = website || discovered.website?.trim() || "";
+        reservationUrl =
+          reservationUrl || discovered.reservationUrl?.trim() || null;
+        about = about || discovered.about || "";
+        address = address || discovered.address || "";
+        city = city || discovered.city || "";
+        state = state || discovered.state || "";
+        zip = zip || discovered.zip || "";
+        businessName = businessName || discovered.businessName || biz.businessName;
+        eligibleWindow =
+          eligibleWindow || discovered.eligibleWindow?.trim() || "";
+        facebookUrl = facebookUrl || discovered.facebookUrl?.trim() || null;
+        instagramUrl = instagramUrl || discovered.instagramUrl?.trim() || null;
+        linkedinUrl = linkedinUrl || discovered.linkedinUrl?.trim() || null;
+        youtubeUrl = youtubeUrl || discovered.youtubeUrl?.trim() || null;
+        tiktokUrl = tiktokUrl || discovered.tiktokUrl?.trim() || null;
+        phone = phone || discovered.phone?.trim() || null;
+        email = email || discovered.contactEmail?.trim() || null;
+        if (needsContact) markContactLookupTried(biz.id);
+        const foundHours = normalizeVenueHours(discovered.discountHours);
+        if (!hasEligibleHours(nextHours) && hasEligibleHours(foundHours)) {
+          nextHours = foundHours;
+        }
+        if (
+          stillNeedsPhotos &&
+          Array.isArray(discovered.imageUrls) &&
+          discovered.imageUrls.length > 0
+        ) {
+          nextPhotos = discovered.imageUrls.filter(Boolean);
+        }
+
+        if (stillNeedsPhotos && website) {
           try {
             const venueImages = await fetchBusinessVenueImages({
-              websiteUrl: origin,
-              reservationUrl: discovered.reservationUrl || null,
+              websiteUrl: websiteOriginUrl(website),
+              reservationUrl,
+              businessId: biz.id,
             });
+            if (gen !== venueHydrateGen.current) return;
             if (venueImages.imageUrls?.length) nextPhotos = venueImages.imageUrls;
           } catch {
             /* keep find photos */
           }
         }
-        const foundHours = normalizeVenueHours(discovered.discountHours);
+
+        if (nextPhotos.length > 0) saveCachedVenuePhotos(biz.id, nextPhotos);
+
         setVenue((prev) => {
           if (!prev || prev.businessId !== biz.id) return prev;
-          const next: VenueProfileSnapshot = {
-            ...prev,
-            businessName: prev.businessName || discovered.businessName || biz.businessName,
-            address: prev.address || discovered.address || "",
-            city: prev.city || discovered.city || "",
-            state: prev.state || discovered.state || "",
-            zip: prev.zip || discovered.zip || "",
-            about: prev.about || discovered.about || "",
-            coverUrl:
-              nextPhotos[0] || prev.coverUrl || discovered.logoUrl || null,
+          const next = mergeVenueSnapshotKeepExisting(prev, {
+            businessName,
+            address,
+            city,
+            state,
+            zip,
+            about,
+            coverUrl: nextPhotos[0] || prev.coverUrl || discovered.logoUrl || null,
             photoUrls: nextPhotos.length > 0 ? nextPhotos : prev.photoUrls,
-            hours:
-              hasEligibleHours(prev.hours)
-                ? prev.hours
-                : hasEligibleHours(foundHours)
-                  ? foundHours
-                  : prev.hours,
-            eligibleWindow:
-              prev.eligibleWindow || discovered.eligibleWindow?.trim() || "",
-          };
+            hours: hasEligibleHours(nextHours) ? nextHours : prev.hours,
+            eligibleWindow,
+            websiteUrl: website || null,
+            facebookUrl,
+            instagramUrl,
+            linkedinUrl,
+            youtubeUrl,
+            tiktokUrl,
+            phone,
+            email,
+          });
           saveVenueProfileSnapshot(next);
           return next;
         });
       } catch {
+        if (needsContact) markContactLookupTried(biz.id);
         /* keep whatever we already show */
       } finally {
-        setPhotosLoading(false);
+        if (gen === venueHydrateGen.current) setPhotosLoading(false);
       }
     })();
   }
@@ -373,7 +607,41 @@ export function BusinessDashboard() {
         businessId: biz?.id ?? prev.businessId,
       };
       saveVenueProfileSnapshot(next);
+      if (next.photoUrls.length > 0 && next.businessId) {
+        saveCachedVenuePhotos(next.businessId, next.photoUrls);
+      }
+
+      const businessId = next.businessId;
+      const token = getAuthToken();
+      const shouldPersistGallery =
+        businessId != null &&
+        (patch.photoUrls != null || patch.coverUrl !== undefined);
+      if (shouldPersistGallery && token) {
+        void saveBusinessVenueGallery({
+          businessId,
+          ...(patch.photoUrls != null ? { imageUrls: patch.photoUrls } : {}),
+          ...(patch.coverUrl !== undefined ? { coverUrl: patch.coverUrl } : {}),
+        }).catch(() => {
+          /* local snapshot already saved; durable sync is best-effort */
+        });
+      }
+      // Social/contact fields: local snapshot only here; durable flush on Done.
       return next;
+    });
+  }
+
+  function flushVenueLinks(snapshot: VenueProfileSnapshot) {
+    const businessId = snapshot.businessId ?? biz?.id ?? null;
+    if (!businessId || !getAuthToken()) return;
+    void saveBusinessVenueLinks({
+      businessId,
+      website: snapshot.websiteUrl?.trim() || null,
+      facebookUrl: snapshot.facebookUrl?.trim() || null,
+      instagramUrl: snapshot.instagramUrl?.trim() || null,
+      phone: snapshot.phone?.trim() || null,
+      venueEmail: snapshot.email?.trim() || null,
+    }).catch(() => {
+      /* best-effort durable sync */
     });
   }
 
@@ -383,9 +651,15 @@ export function BusinessDashboard() {
         profile={venue}
         editing={editingVenue}
         photosLoading={photosLoading}
-        onToggleEdit={() => setEditingVenue((v) => !v)}
+        onToggleEdit={() => {
+          setEditingVenue((wasEditing) => {
+            if (wasEditing) flushVenueLinks(venue);
+            return !wasEditing;
+          });
+        }}
         onChange={changeVenue}
         onBack={() => {
+          if (editingVenue) flushVenueLinks(venue);
           setEditingVenue(false);
           setPhotosLoading(false);
           setProfileOpen(false);

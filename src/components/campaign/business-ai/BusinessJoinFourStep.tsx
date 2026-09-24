@@ -89,9 +89,10 @@ type Phase = "find" | "confirm" | "profile" | "giveback" | "email" | "done";
 /** Checklist shown while Find runs — matches real extract (no menu). */
 const FIND_EXTRACT_CHECKLIST = [
   "Website",
+  "Social links",
   "Logo",
   "Photos",
-  "Location",
+  "Nearby location",
 ] as const;
 
 /**
@@ -141,6 +142,11 @@ function mapWebsiteDraftToFindResult(
           ],
     logoUrl,
     imageUrls,
+    facebookUrl: draft.facebookUrl ?? null,
+    instagramUrl: draft.instagramUrl ?? null,
+    linkedinUrl: draft.linkedinUrl ?? null,
+    youtubeUrl: draft.youtubeUrl ?? null,
+    tiktokUrl: draft.tiktokUrl ?? null,
     checks: {
       websiteFound: Boolean(draft.website),
       logoFound: Boolean(logoUrl),
@@ -455,6 +461,11 @@ export function BusinessJoinFourStep() {
       setError(`Enter your ${roleWord} name or website to continue.`);
       return;
     }
+    const nearZip = (draft.nearZip || "").replace(/\D/g, "").slice(0, 5);
+    if (!looksLikeWebsiteQuery(q) && nearZip.length !== 5) {
+      setError("Enter a 5-digit ZIP so we can find the exact nearby location.");
+      return;
+    }
     setError(null);
     setFinding(true);
     setEditingConfirm(false);
@@ -462,16 +473,22 @@ export function BusinessJoinFourStep() {
     setResyGalleryRefreshAttempted(false);
     try {
       const doorType = door ?? readBusinessDoor() ?? undefined;
+      const near =
+        nearZip.length === 5 ? { nearZip } : undefined;
       let found: FindBusinessProfileResult;
       if (looksLikeWebsiteQuery(q)) {
         // Use site origin so /menus/ (etc.) still discovers Resy from the homepage.
         const website = websiteOriginUrl(q);
-        const websiteDraft = await generateBusinessDraft(website);
+        const websiteDraft = await generateBusinessDraft(website, near);
         found = mapWebsiteDraftToFindResult(websiteDraft, doorType ?? null);
+        if (nearZip.length === 5 && !found.zip) {
+          found = { ...found, zip: nearZip };
+        }
       } else {
         found = await findBusinessProfile({
           businessName: q,
           joinDoorType: doorType,
+          nearZip: nearZip || undefined,
         });
       }
 
@@ -781,11 +798,34 @@ export function BusinessJoinFourStep() {
     if (patch.state != null) foundPatch.state = patch.state;
     if (patch.zip != null) foundPatch.zip = patch.zip;
     if (patch.about != null) foundPatch.about = patch.about;
+    if (patch.websiteUrl !== undefined) {
+      foundPatch.website = patch.websiteUrl?.trim() || "";
+    }
+    if (patch.facebookUrl !== undefined) {
+      foundPatch.facebookUrl = patch.facebookUrl?.trim() || null;
+    }
+    if (patch.instagramUrl !== undefined) {
+      foundPatch.instagramUrl = patch.instagramUrl?.trim() || null;
+    }
+    if (patch.phone !== undefined) {
+      foundPatch.phone = patch.phone?.trim() || "";
+    }
+    if (patch.email !== undefined) {
+      foundPatch.contactEmail = patch.email?.trim() || "";
+    }
+    if (patch.photoUrls) {
+      foundPatch.imageUrls = patch.photoUrls;
+      setClearPhotoUrls(patch.photoUrls);
+    }
     if (patch.coverUrl && draft.found) {
       const url = patch.coverUrl;
-      const rest = draft.found.imageUrls.filter((u) => u !== url);
+      const base = patch.photoUrls ?? draft.found.imageUrls;
+      const rest = base.filter((u) => u !== url);
       foundPatch.imageUrls = [url, ...rest];
-      setClearPhotoUrls((prev) => [url, ...prev.filter((u) => u !== url)]);
+      setClearPhotoUrls((prev) => {
+        const from = patch.photoUrls ?? prev;
+        return [url, ...from.filter((u) => u !== url)];
+      });
     }
     if (Object.keys(foundPatch).length > 0) patchFound(foundPatch);
     if (patch.hours || patch.eligibleWindow != null) {
@@ -846,10 +886,34 @@ export function BusinessJoinFourStep() {
   }
 
   const locationLine = draft.found
-    ? [draft.found.city, draft.found.state].filter(Boolean).join(", ") ||
-      draft.found.address ||
-      "Location to confirm"
+    ? [
+        draft.found.address,
+        [draft.found.city, draft.found.state].filter(Boolean).join(", "),
+        draft.found.zip,
+      ]
+        .filter(Boolean)
+        .join(" · ") || "Add your street address with Edit"
     : "";
+
+  const socialLinks = draft.found
+    ? [
+        draft.found.facebookUrl
+          ? { label: "Facebook", href: draft.found.facebookUrl }
+          : null,
+        draft.found.instagramUrl
+          ? { label: "Instagram", href: draft.found.instagramUrl }
+          : null,
+        draft.found.linkedinUrl
+          ? { label: "LinkedIn", href: draft.found.linkedinUrl }
+          : null,
+        draft.found.youtubeUrl
+          ? { label: "YouTube", href: draft.found.youtubeUrl }
+          : null,
+        draft.found.tiktokUrl
+          ? { label: "TikTok", href: draft.found.tiktokUrl }
+          : null,
+      ].filter(Boolean) as { label: string; href: string }[]
+    : [];
 
   const findExtractPct = Math.min(
     100,
@@ -972,7 +1036,7 @@ export function BusinessJoinFourStep() {
             </p>
           ) : null}
           <p className="text-sm text-muted-foreground">
-            Enter your {roleWord} name or website.
+            Enter your {roleWord} name or website, plus your ZIP so we can pick the exact nearby location.
           </p>
           <label className="block text-sm font-medium">
             {isRestaurant ? "Restaurant name or website" : "Business name or website"}
@@ -990,10 +1054,26 @@ export function BusinessJoinFourStep() {
               }}
             />
           </label>
+          <label className="block text-sm font-medium">
+            ZIP code (nearby location)
+            <input
+              className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm"
+              inputMode="numeric"
+              autoComplete="postal-code"
+              maxLength={5}
+              value={draft.nearZip || ""}
+              onChange={(e) =>
+                patchDraft({ nearZip: e.target.value.replace(/\D/g, "").slice(0, 5) })
+              }
+              placeholder="e.g. 19348"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void runFind();
+              }}
+            />
+          </label>
           <p className="text-xs text-muted-foreground">
-            Our AI will find your website,{" "}
-            {isRestaurant ? "photos and location" : "photos, location and public information"}
-            — or use the URL you paste.
+            Our AI will find your website, social links, photos, and the exact nearby location —
+            or use the URL you paste.
           </p>
           {mounted && state.businessProfile?.id && partnerJoinCampaignSlug ? (
             <button
@@ -1204,6 +1284,22 @@ export function BusinessJoinFourStep() {
                       <p className="truncate text-sm text-muted-foreground">
                         {locationLine}
                       </p>
+                      {socialLinks.length > 0 ? (
+                        <p className="mt-1.5 flex flex-wrap gap-x-2 gap-y-1 text-xs text-primary">
+                          {socialLinks.map((s) => (
+                            <a
+                              key={s.href}
+                              href={s.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {s.label}
+                            </a>
+                          ))}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 </>

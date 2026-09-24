@@ -19,7 +19,9 @@ import { CampaignDatePicker, campaignHasEnded, campaignMatchesDate } from "@/com
 import { NearbyLocationPills } from "@/components/campaign/NearbyLocationPills";
 import { useCampaignNearby } from "@/hooks/use-campaign-nearby";
 import { JoinUsThreeDoorsHero } from "@/components/campaign/JoinUsThreeDoorsHero";
+import { HomepageBusinessDirectory } from "@/components/campaign/HomepageBusinessDirectory";
 import { stashBusinessDoor } from "@/lib/business-door";
+import { peekDirectoryInviteIntent } from "@/lib/directory-invite-intent";
 
 export function PublicHomePage() {
   const { goTo, state } = useCampaign();
@@ -49,6 +51,13 @@ export function PublicHomePage() {
   const [campaigns, setCampaigns] = useState<CampaignListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+  /** Shared Live area: Campaigns grid vs Business grid (same location filter). */
+  const [liveTab, setLiveTab] = useState<"campaigns" | "business">("campaigns");
+
+  // Resume Business tab after signed-out Invite → sign-in.
+  useEffect(() => {
+    if (peekDirectoryInviteIntent()) setLiveTab("business");
+  }, []);
 
   useEffect(() => {
     if (!nearby.locationReady) return;
@@ -318,83 +327,134 @@ export function PublicHomePage() {
 
       <main className="mx-auto max-w-6xl px-5 pb-12 pt-4 sm:px-6 md:pb-16 md:pt-6">
         <section id="live-campaigns" className="scroll-mt-24">
-          <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
+          <div className="mb-8">
+            <div className="flex flex-wrap items-center gap-3">
+              <div
+                className="inline-flex rounded-full border border-border bg-card p-1 shadow-sm"
+                role="tablist"
+                aria-label="Live Campaigns or Business"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={liveTab === "campaigns"}
+                  onClick={() => setLiveTab("campaigns")}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                    liveTab === "campaigns"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
                   Live Campaigns
-                </h2>
-                <NearbyLocationPills
-                  locationLabel={nearby.locationLabel}
-                  zipInput={nearby.zipInput}
-                  setZipInput={nearby.setZipInput}
-                  zipError={nearby.zipError}
-                  radiusMiles={nearby.radiusMiles}
-                  setRadiusMiles={nearby.setRadiusMiles}
-                  allLocations={nearby.allLocations}
-                  setAllLocations={nearby.setAllLocations}
-                />
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={liveTab === "business"}
+                  onClick={() => setLiveTab("business")}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                    liveTab === "business"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Business
+                </button>
+              </div>
+              <NearbyLocationPills
+                locationLabel={nearby.locationLabel}
+                zipInput={nearby.zipInput}
+                setZipInput={nearby.setZipInput}
+                zipError={nearby.zipError}
+                radiusMiles={nearby.radiusMiles}
+                setRadiusMiles={nearby.setRadiusMiles}
+                allLocations={nearby.allLocations}
+                setAllLocations={nearby.setAllLocations}
+              />
+              {liveTab === "campaigns" && (
                 <CampaignDatePicker
                   campaigns={liveCampaigns}
                   selected={selectedDate}
                   onSelect={setSelectedDate}
                 />
-              </div>
-              <p className="mt-1 text-muted-foreground">
-                {!nearby.locationReady
-                  ? "Loading campaigns…"
-                  : nearby.allLocations
-                    ? "Active campaigns everywhere — join one before it ends."
-                    : `Active campaigns within ${nearby.nearby?.radiusMiles ?? nearby.radiusMiles} miles — join one before it ends.`}
-              </p>
-            </div>
-          </div>
-
-          {loading && (
-            <div className="flex justify-center py-12">
-              <Loader2 className="size-8 animate-spin text-primary" />
-            </div>
-          )}
-
-          {!loading && displayed.length === 0 && (
-            <p className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-              No campaigns match your filters.{" "}
-              {!nearby.allLocations && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => nearby.setAllLocations(true)}
-                    className="font-semibold text-primary"
-                  >
-                    Show all locations
-                  </button>
-                  {", "}
-                  <button
-                    type="button"
-                    onClick={() => nearby.setRadiusMiles(50)}
-                    className="font-semibold text-primary"
-                  >
-                    Widen to 50 mi
-                  </button>
-                  {", "}
-                </>
               )}
-              <button type="button" onClick={() => setSelectedDate(undefined)} className="font-semibold text-primary">
-                Clear date
-              </button>
-              {" or "}
-              <button type="button" onClick={startCampaign} className="font-semibold text-primary">
-                start one
-              </button>
-              .
+            </div>
+            <p className="mt-3 text-muted-foreground">
+              {!nearby.locationReady
+                ? liveTab === "campaigns"
+                  ? "Loading campaigns…"
+                  : "Loading businesses…"
+                : liveTab === "campaigns"
+                  ? nearby.allLocations
+                    ? "Active campaigns everywhere — join one before it ends."
+                    : `Active campaigns within ${nearby.nearby?.radiusMiles ?? nearby.radiusMiles} miles — join one before it ends.`
+                  : nearby.allLocations
+                    ? "Invite a local partner — pending claims stay visible but can’t be invited yet."
+                    : `Businesses within ${nearby.nearby?.radiusMiles ?? nearby.radiusMiles} miles — pending claims stay visible but can’t be invited yet.`}
             </p>
+          </div>
+
+          {liveTab === "campaigns" && (
+            <>
+              {loading && (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="size-8 animate-spin text-primary" />
+                </div>
+              )}
+
+              {!loading && displayed.length === 0 && (
+                <p className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                  No campaigns match your filters.{" "}
+                  {!nearby.allLocations && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => nearby.setAllLocations(true)}
+                        className="font-semibold text-primary"
+                      >
+                        Show all locations
+                      </button>
+                      {", "}
+                      <button
+                        type="button"
+                        onClick={() => nearby.setRadiusMiles(50)}
+                        className="font-semibold text-primary"
+                      >
+                        Widen to 50 mi
+                      </button>
+                      {", "}
+                    </>
+                  )}
+                  <button type="button" onClick={() => setSelectedDate(undefined)} className="font-semibold text-primary">
+                    Clear date
+                  </button>
+                  {" or "}
+                  <button type="button" onClick={startCampaign} className="font-semibold text-primary">
+                    start one
+                  </button>
+                  .
+                </p>
+              )}
+
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {displayed.map((c) => (
+                  <CampaignDirectoryCard key={c.slug} campaign={c} />
+                ))}
+              </div>
+            </>
           )}
 
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {displayed.map((c) => (
-              <CampaignDirectoryCard key={c.slug} campaign={c} />
-            ))}
-          </div>
+          {liveTab === "business" && (
+            <HomepageBusinessDirectory
+              embedded
+              nearby={{
+                locationReady: nearby.locationReady,
+                allLocations: nearby.allLocations,
+                nearby: nearby.nearby,
+              }}
+              onStartCampaign={startCampaign}
+            />
+          )}
         </section>
       </main>
 

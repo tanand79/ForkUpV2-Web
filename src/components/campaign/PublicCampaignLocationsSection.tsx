@@ -31,9 +31,14 @@ import {
 } from "@/lib/api-business-onboarding";
 import { websiteOriginUrl } from "@/lib/business-join-query";
 import {
-  loadVenueProfileSnapshot,
-  normalizeVenueHours,
   isOpenVenueDay,
+  loadCachedVenuePhotos,
+  loadContactLookupTried,
+  loadVenueProfileSnapshot,
+  markContactLookupTried,
+  mergeVenueSnapshotKeepExisting,
+  normalizeVenueHours,
+  saveCachedVenuePhotos,
   VENUE_DAYS,
   type VenueProfileSnapshot,
 } from "@/lib/business-venue-profile";
@@ -93,35 +98,6 @@ const TYPE_CONFIG: Record<
 const PARTY_SIZES = [1, 2, 3, 4, "5+"] as const;
 
 const STORAGE_KEY = "forkup_participant";
-const VENUE_PHOTO_CACHE_PREFIX = "forkup-venue-photos:";
-
-function venuePhotoCacheKey(businessId: number): string {
-  return `${VENUE_PHOTO_CACHE_PREFIX}${businessId}`;
-}
-
-/** Session-cached gallery URLs so repeat opens skip the scrape wait. */
-function loadCachedVenuePhotos(businessId: number): string[] | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem(venuePhotoCacheKey(businessId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    const urls = parsed.filter((u): u is string => typeof u === "string" && u.trim().length > 0);
-    return urls.length > 0 ? urls : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveCachedVenuePhotos(businessId: number, urls: string[]) {
-  if (typeof window === "undefined" || urls.length === 0) return;
-  try {
-    sessionStorage.setItem(venuePhotoCacheKey(businessId), JSON.stringify(urls));
-  } catch {
-    /* ignore quota */
-  }
-}
 
 /** True when at least one weekday has giveback hours set. */
 function hasEligibleHours(hours: VenueProfileSnapshot["hours"]): boolean {
@@ -795,12 +771,16 @@ export function PublicCampaignLocationsSection({
     const draftAbout = aboutFromJoinDraft(loc.businessName);
     const draftHours = hoursFromJoinDraft(loc.businessName);
     const logo = loc.logoUrl?.trim() || null;
+    const dbGallery = Array.isArray(loc.galleryImageUrls)
+      ? loc.galleryImageUrls.filter((u) => typeof u === "string" && u.trim())
+      : [];
 
     const photoUrls =
       (saved?.photoUrls && saved.photoUrls.length > 0
         ? saved.photoUrls
         : null) ??
       (cachedPhotos.length > 0 ? cachedPhotos : null) ??
+      (dbGallery.length > 0 ? dbGallery : null) ??
       (draftPhotos.length > 0 ? draftPhotos : null) ??
       (logo ? [logo] : []);
 
@@ -811,6 +791,13 @@ export function PublicCampaignLocationsSection({
         : draftHours && hasEligibleHours(draftHours)
           ? draftHours
           : savedHours;
+
+    const draft = loadBusinessJoinDraft();
+    const draftMatches =
+      draft?.found &&
+      draft.found.businessName.trim().toLowerCase() ===
+        loc.businessName.trim().toLowerCase();
+    const draftFound = draftMatches ? draft.found : null;
 
     const base: VenueProfileSnapshot = {
       businessId: loc.businessId,
@@ -825,18 +812,53 @@ export function PublicCampaignLocationsSection({
       hours,
       eligibleWindow:
         saved?.eligibleWindow?.trim() ||
-        loadBusinessJoinDraft()?.eligibleWindow?.trim() ||
+        draft?.eligibleWindow?.trim() ||
         "",
       givebackPercent: loc.givebackPercentage,
       causeName: nonprofitName,
       isRestaurant:
         saved?.isRestaurant !== undefined ? saved.isRestaurant : isRestaurant,
+      websiteUrl:
+        saved?.websiteUrl?.trim() ||
+        draftFound?.website?.trim() ||
+        loc.website?.trim() ||
+        null,
+      facebookUrl:
+        saved?.facebookUrl?.trim() ||
+        draftFound?.facebookUrl?.trim() ||
+        loc.facebookUrl?.trim() ||
+        null,
+      instagramUrl:
+        saved?.instagramUrl?.trim() ||
+        draftFound?.instagramUrl?.trim() ||
+        loc.instagramUrl?.trim() ||
+        null,
+      linkedinUrl:
+        saved?.linkedinUrl?.trim() ||
+        draftFound?.linkedinUrl?.trim() ||
+        loc.linkedinUrl?.trim() ||
+        null,
+      youtubeUrl: saved?.youtubeUrl?.trim() || draftFound?.youtubeUrl?.trim() || null,
+      tiktokUrl:
+        saved?.tiktokUrl?.trim() ||
+        draftFound?.tiktokUrl?.trim() ||
+        loc.tiktokUrl?.trim() ||
+        null,
+      phone:
+        saved?.phone?.trim() ||
+        draftFound?.phone?.trim() ||
+        loc.contactPhone?.trim() ||
+        null,
+      email:
+        saved?.email?.trim() ||
+        draftFound?.contactEmail?.trim() ||
+        loc.contactEmail?.trim() ||
+        null,
     };
 
     setVenueProfile(base);
     setVenueLoc(loc);
-    const draftReservation =
-      loadBusinessJoinDraft()?.found?.reservationUrl?.trim() || null;
+    const draftReservation = draftFound?.reservationUrl?.trim() || null;
     const initialBookUrl =
       loc.reservationUrl?.trim() || draftReservation || null;
     setVenueReservationUrl(initialBookUrl);
@@ -846,8 +868,20 @@ export function PublicCampaignLocationsSection({
     const needsAbout = !base.about.trim();
     const needsHours = !hasEligibleHours(base.hours);
     const needsBookUrl = !initialBookUrl;
+    /** Scrape social when both FB and IG missing. */
+    const needsSocial =
+      !base.facebookUrl?.trim() && !base.instagramUrl?.trim();
+    /** Contact once per session — sites without email must not wipe profile on every open. */
+    const needsContact =
+      (!base.phone?.trim() || !base.email?.trim()) &&
+      !loadContactLookupTried(loc.businessId);
     const needsHydrate =
-      !hasRealGallery || needsAbout || needsHours || needsBookUrl;
+      !hasRealGallery ||
+      needsAbout ||
+      needsHours ||
+      needsBookUrl ||
+      needsSocial ||
+      needsContact;
 
     if (hasRealGallery) {
       saveCachedVenuePhotos(loc.businessId, photoUrls);
@@ -861,7 +895,7 @@ export function PublicCampaignLocationsSection({
     if (!hasRealGallery) setPhotosLoading(true);
     void (async () => {
       try {
-        let website = loc.website?.trim() || "";
+        let website = loc.website?.trim() || base.websiteUrl?.trim() || "";
         let about = base.about;
         let address = base.address;
         let city = base.city;
@@ -871,14 +905,60 @@ export function PublicCampaignLocationsSection({
         let nextPhotos: string[] = hasRealGallery ? [...photoUrls] : [];
         let nextHours = base.hours;
         let eligibleWindow = base.eligibleWindow;
+        let facebookUrl = base.facebookUrl?.trim() || null;
+        let instagramUrl = base.instagramUrl?.trim() || null;
+        let linkedinUrl = base.linkedinUrl?.trim() || null;
+        let youtubeUrl = base.youtubeUrl?.trim() || null;
+        let tiktokUrl = base.tiktokUrl?.trim() || null;
+        let phone = base.phone?.trim() || null;
+        let email = base.email?.trim() || null;
 
-        // Always find when about/hours missing — even if website is already known.
-        // (Previously we skipped find when website existed, so about stayed empty.)
-        if (!website || needsAbout || needsHours || needsBookUrl) {
+        // Always find when about/hours/social/contact missing — even if website is already known.
+        // Gallery uses a separate fast path below (never blocked behind find).
+        const originEarly = websiteOriginUrl(website);
+        if (!hasRealGallery && originEarly) {
+          try {
+            const venue = await fetchBusinessVenueImages({
+              websiteUrl: originEarly,
+              reservationUrl: loc.reservationUrl || null,
+              businessId: loc.businessId,
+            });
+            if (venue.imageUrls?.length) {
+              nextPhotos = venue.imageUrls;
+              saveCachedVenuePhotos(loc.businessId, nextPhotos);
+              setVenueProfile((prev) => {
+                if (!prev || prev.businessId !== loc.businessId) return prev;
+                return mergeVenueSnapshotKeepExisting(prev, {
+                  coverUrl: nextPhotos[0]!,
+                  photoUrls: nextPhotos,
+                });
+              });
+              setPhotosLoading(false);
+            }
+            const scrapedBook = venue.reservationUrl?.trim();
+            if (scrapedBook) {
+              setVenueReservationUrl((prev) => prev || scrapedBook);
+            }
+          } catch {
+            /* keep going — find may still supply photos */
+          }
+        }
+
+        if (
+          !website ||
+          needsAbout ||
+          needsHours ||
+          needsBookUrl ||
+          needsSocial ||
+          needsContact ||
+          nextPhotos.length === 0
+        ) {
           try {
             const found = await findBusinessProfile({
               businessName: loc.businessName,
               joinDoorType: isRestaurant ? "restaurant" : "local",
+              ...(website ? { website } : {}),
+              businessId: loc.businessId,
             });
             website = website || found.website?.trim() || "";
             about = about || found.about || "";
@@ -886,7 +966,15 @@ export function PublicCampaignLocationsSection({
             city = city || found.city || "";
             state = state || found.state || "";
             zip = zip || found.zip || "";
-            businessName = found.businessName?.trim() || businessName;
+            businessName = businessName || found.businessName?.trim() || businessName;
+            facebookUrl = facebookUrl || found.facebookUrl?.trim() || null;
+            instagramUrl = instagramUrl || found.instagramUrl?.trim() || null;
+            linkedinUrl = linkedinUrl || found.linkedinUrl?.trim() || null;
+            youtubeUrl = youtubeUrl || found.youtubeUrl?.trim() || null;
+            tiktokUrl = tiktokUrl || found.tiktokUrl?.trim() || null;
+            phone = phone || found.phone?.trim() || null;
+            email = email || found.contactEmail?.trim() || null;
+            if (needsContact) markContactLookupTried(loc.businessId);
             if (!hasRealGallery && Array.isArray(found.imageUrls) && found.imageUrls.length > 0) {
               nextPhotos = found.imageUrls.filter(Boolean);
             }
@@ -906,13 +994,14 @@ export function PublicCampaignLocationsSection({
         }
 
         const origin = websiteOriginUrl(website);
-        if (origin && (!hasRealGallery || needsBookUrl)) {
+        if (origin && nextPhotos.length === 0) {
           try {
             const venue = await fetchBusinessVenueImages({
               websiteUrl: origin,
               reservationUrl: loc.reservationUrl || null,
+              businessId: loc.businessId,
             });
-            if (!hasRealGallery && venue.imageUrls?.length) {
+            if (venue.imageUrls?.length) {
               nextPhotos = venue.imageUrls;
             }
             const scrapedBook = venue.reservationUrl?.trim();
@@ -931,22 +1020,30 @@ export function PublicCampaignLocationsSection({
         const coverUrl = nextPhotos[0] || logo;
         setVenueProfile((prev) => {
           if (!prev || prev.businessId !== loc.businessId) return prev;
-          return {
-            ...prev,
+          return mergeVenueSnapshotKeepExisting(prev, {
             businessName,
             address,
             city,
             state,
             zip,
-            about: about || prev.about,
+            about,
             coverUrl: nextPhotos.length > 0 ? coverUrl : prev.coverUrl,
             photoUrls: nextPhotos.length > 0 ? nextPhotos : prev.photoUrls,
             hours: hasEligibleHours(nextHours) ? nextHours : prev.hours,
-            eligibleWindow: eligibleWindow || prev.eligibleWindow,
-          };
+            eligibleWindow,
+            websiteUrl: website || null,
+            facebookUrl,
+            instagramUrl,
+            linkedinUrl,
+            youtubeUrl,
+            tiktokUrl,
+            phone,
+            email,
+          });
         });
       } catch {
-        /* profile already visible */
+        /* profile already visible — never clear fields that were already shown */
+        if (needsContact) markContactLookupTried(loc.businessId);
       } finally {
         setProfileLoadingKey((prev) => (prev === key ? null : prev));
         setPhotosLoading(false);

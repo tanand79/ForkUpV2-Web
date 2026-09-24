@@ -62,6 +62,15 @@ export interface ParticipatingLocation {
   logoUrl?: string | null;
   address?: string | null;
   zip?: string | null;
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  linkedinUrl?: string | null;
+  tiktokUrl?: string | null;
+  /** Public venue mailto (not claim/ops contact_email). */
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  /** Cached public gallery URLs from businesses.venue_gallery_urls. */
+  galleryImageUrls?: string[];
 }
 
 export interface CampaignDetail extends CampaignListItem {

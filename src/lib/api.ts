@@ -761,6 +761,92 @@ export function searchBusinesses(query: string) {
   );
 }
 
+/** Public homepage business directory (Pass B). GET /api/profiles/businesses/directory */
+export interface BusinessDirectoryItem {
+  id: number;
+  businessName: string;
+  slug: string;
+  businessType: string | null;
+  website: string | null;
+  businessStatus: string;
+  claimStatus: string;
+  accessRequestStatus: "pending" | "approved" | "denied" | null;
+  awaitingVerification: boolean;
+  inviteable: boolean;
+  /** Additive: public venue links stored on businesses (instant profile icons). */
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  linkedinUrl?: string | null;
+  tiktokUrl?: string | null;
+  contactPhone?: string | null;
+  venueEmail?: string | null;
+  /** Cached public gallery from businesses.venue_gallery_urls. */
+  galleryImageUrls?: string[];
+  capabilities: {
+    dineAndDonate: boolean;
+    shopAndDonate: boolean;
+    serviceGiveback: boolean;
+    guestBartending: boolean;
+  };
+  locations: {
+    id: number;
+    locationName: string;
+    city: string | null;
+    state: string | null;
+    distanceMiles: number | null;
+  }[];
+}
+
+export function fetchBusinessDirectory(options?: {
+  q?: string;
+  nearby?: { lat: number; lng: number; radiusMiles?: number } | null;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (options?.q?.trim()) search.set("q", options.q.trim());
+  if (options?.nearby) {
+    search.set("lat", String(options.nearby.lat));
+    search.set("lng", String(options.nearby.lng));
+    if (options.nearby.radiusMiles != null) {
+      search.set("radiusMiles", String(options.nearby.radiusMiles));
+    }
+  }
+  if (options?.limit != null) search.set("limit", String(options.limit));
+  const qs = search.toString();
+  return fetchJson<BusinessDirectoryItem[]>(
+    `/api/profiles/businesses/directory${qs ? `?${qs}` : ""}`,
+  );
+}
+
+/** Public business profile (Pass A additive fields). GET /api/profiles/businesses/:slug */
+export interface BusinessDirectoryProfile {
+  id: number;
+  businessName: string;
+  slug: string;
+  businessType: string | null;
+  website: string | null;
+  contactEmail?: string | null;
+  profileStatus: string;
+  claimStatus: string;
+  businessStatus: string;
+  accessRequestStatus: "pending" | "approved" | "denied" | null;
+  awaitingVerification: boolean;
+  inviteable: boolean;
+  locations: {
+    id: number;
+    locationName: string;
+    city: string | null;
+    state: string | null;
+    address: string | null;
+  }[];
+}
+
+export function fetchBusinessDirectoryProfile(slug: string) {
+  return fetchJson<BusinessDirectoryProfile>(
+    `/api/profiles/businesses/${encodeURIComponent(slug)}`,
+  );
+}
+
 export function checkBusinessReadiness(email?: string, slug?: string) {
   const params = new URLSearchParams();
   if (email) params.set("email", email);

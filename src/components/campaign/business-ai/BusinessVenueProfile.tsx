@@ -12,16 +12,26 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Facebook,
+  Globe,
   HeartHandshake,
+  Instagram,
+  Linkedin,
+  Mail,
   MapPin,
+  Music2,
   Pencil,
+  Phone,
+  Upload,
   Users,
   UtensilsCrossed,
+  Youtube,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { bookingCtaLabel } from "@/lib/booking-platform";
 import { resolveVenueImageSrc } from "@/lib/business-join-images";
+import { uploadImage } from "@/lib/api";
 import {
   VENUE_DAYS,
   eligibilityRowsFromHours,
@@ -29,6 +39,19 @@ import {
   isOpenVenueDay,
   type VenueProfileSnapshot,
 } from "@/lib/business-venue-profile";
+
+const VENUE_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const VENUE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const VENUE_GALLERY_MAX = 24;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
 
 type VenueBookParticipant = {
   firstName: string;
@@ -61,12 +84,223 @@ type Props = {
 
 type GalleryImage = { id: string; src: string; alt: string };
 
+type VenueSocialPlatform =
+  | "instagram"
+  | "facebook"
+  | "linkedin"
+  | "youtube"
+  | "tiktok"
+  | "website"
+  | "phone"
+  | "email";
+
+type VenueSocialLink = {
+  platform: VenueSocialPlatform;
+  url: string;
+  label: string;
+};
+
+const SOCIAL_ICONS = {
+  instagram: Instagram,
+  facebook: Facebook,
+  linkedin: Linkedin,
+  youtube: Youtube,
+  tiktok: Music2,
+  website: Globe,
+  phone: Phone,
+  email: Mail,
+} as const;
+
+function normalizeSocialHref(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+/** Lovable VenueProfile icon row — only platforms with a URL. */
+function socialLinksFromProfile(profile: VenueProfileSnapshot): VenueSocialLink[] {
+  const links: VenueSocialLink[] = [];
+  const website = profile.websiteUrl?.trim();
+  if (website) {
+    links.push({
+      platform: "website",
+      url: normalizeSocialHref(website),
+      label: "Website",
+    });
+  }
+  const instagram = profile.instagramUrl?.trim();
+  if (instagram) {
+    links.push({
+      platform: "instagram",
+      url: normalizeSocialHref(instagram),
+      label: "Instagram",
+    });
+  }
+  const facebook = profile.facebookUrl?.trim();
+  if (facebook) {
+    links.push({
+      platform: "facebook",
+      url: normalizeSocialHref(facebook),
+      label: "Facebook",
+    });
+  }
+  const linkedin = profile.linkedinUrl?.trim();
+  if (linkedin) {
+    links.push({
+      platform: "linkedin",
+      url: normalizeSocialHref(linkedin),
+      label: "LinkedIn",
+    });
+  }
+  const youtube = profile.youtubeUrl?.trim();
+  if (youtube) {
+    links.push({
+      platform: "youtube",
+      url: normalizeSocialHref(youtube),
+      label: "YouTube",
+    });
+  }
+  const tiktok = profile.tiktokUrl?.trim();
+  if (tiktok) {
+    links.push({
+      platform: "tiktok",
+      url: normalizeSocialHref(tiktok),
+      label: "TikTok",
+    });
+  }
+  const phone = profile.phone?.trim();
+  if (phone) {
+    const digits = phone.replace(/[^\d+]/g, "");
+    links.push({
+      platform: "phone",
+      url: digits ? `tel:${digits}` : `tel:${phone}`,
+      label: phone,
+    });
+  }
+  const email = profile.email?.trim();
+  if (email) {
+    links.push({
+      platform: "email",
+      url: `mailto:${email}`,
+      label: email,
+    });
+  }
+  return links;
+}
+
+function VenueSocialLinks({
+  links,
+  className,
+}: {
+  links: VenueSocialLink[];
+  className?: string;
+}) {
+  if (!links.length) return null;
+  return (
+    <div className={cn("flex shrink-0 flex-wrap items-center gap-2", className)}>
+      {links.map((link) => {
+        const Icon = SOCIAL_ICONS[link.platform];
+        return (
+          <a
+            key={link.platform}
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={link.label}
+            title={link.label}
+            className="grid size-8 place-items-center rounded-full border border-venue-line bg-venue-paper text-venue-body transition-colors hover:border-venue-accent hover:text-venue-accent sm:size-9"
+          >
+            <Icon className="size-3.5 sm:size-4" strokeWidth={1.75} aria-hidden="true" />
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Edit mode — website / social / phone / email for the icon row. */
+function VenueSocialEditFields({
+  profile,
+  onChange,
+  className,
+}: {
+  profile: VenueProfileSnapshot;
+  onChange: (patch: Partial<VenueProfileSnapshot>) => void;
+  className?: string;
+}) {
+  const fieldClass =
+    "mt-1 w-full rounded-sm border border-venue-line bg-venue-paper px-2.5 py-1.5 text-sm text-venue-ink";
+  return (
+    <div
+      className={cn(
+        "grid w-full max-w-sm gap-2 sm:min-w-[16rem]",
+        className,
+      )}
+    >
+      <label className="block text-xs font-medium text-venue-ink">
+        Website
+        <input
+          type="url"
+          className={fieldClass}
+          value={profile.websiteUrl ?? ""}
+          placeholder="https://"
+          onChange={(e) => onChange({ websiteUrl: e.target.value })}
+        />
+      </label>
+      <label className="block text-xs font-medium text-venue-ink">
+        Instagram
+        <input
+          type="url"
+          className={fieldClass}
+          value={profile.instagramUrl ?? ""}
+          placeholder="https://instagram.com/…"
+          onChange={(e) => onChange({ instagramUrl: e.target.value })}
+        />
+      </label>
+      <label className="block text-xs font-medium text-venue-ink">
+        Facebook
+        <input
+          type="url"
+          className={fieldClass}
+          value={profile.facebookUrl ?? ""}
+          placeholder="https://facebook.com/…"
+          onChange={(e) => onChange({ facebookUrl: e.target.value })}
+        />
+      </label>
+      <label className="block text-xs font-medium text-venue-ink">
+        Phone
+        <input
+          type="tel"
+          className={fieldClass}
+          value={profile.phone ?? ""}
+          placeholder="(555) 555-5555"
+          onChange={(e) => onChange({ phone: e.target.value })}
+        />
+      </label>
+      <label className="block text-xs font-medium text-venue-ink">
+        Email
+        <input
+          type="email"
+          className={fieldClass}
+          value={profile.email ?? ""}
+          placeholder="hello@venue.com"
+          onChange={(e) => onChange({ email: e.target.value })}
+        />
+      </label>
+    </div>
+  );
+}
+
 function VenueGallery({
   images,
   venueName,
   editing,
   activeSrc,
   onSelectCover,
+  onUploadFiles,
+  uploading = false,
+  uploadError = null,
   photosLoading = false,
 }: {
   images: GalleryImage[];
@@ -74,6 +308,9 @@ function VenueGallery({
   editing: boolean;
   activeSrc: string | null;
   onSelectCover: (src: string) => void;
+  onUploadFiles?: (files: FileList) => void;
+  uploading?: boolean;
+  uploadError?: string | null;
   photosLoading?: boolean;
 }) {
   const initial =
@@ -83,6 +320,7 @@ function VenueGallery({
   const [activeIndex, setActiveIndex] = useState(Math.max(0, initial));
   const [direction, setDirection] = useState<"next" | "previous">("next");
   const touchStart = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!activeSrc) return;
@@ -109,15 +347,60 @@ function VenueGallery({
     if (activeIndex >= images.length) setActiveIndex(0);
   }, [activeIndex, images.length]);
 
+  const uploadControls =
+    editing && onUploadFiles ? (
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          multiple
+          className="sr-only"
+          onChange={(e) => {
+            const files = e.target.files;
+            if (files && files.length > 0) onUploadFiles(files);
+            e.target.value = "";
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+          className="h-9 rounded-full border-venue-line bg-venue-paper px-3 text-xs font-semibold text-venue-ink shadow-none hover:bg-venue-soft"
+        >
+          <Upload className="size-3.5" />
+          {uploading ? "Uploading…" : "Upload photos"}
+        </Button>
+        <p className="text-xs text-venue-muted">
+          Add your own photos beyond the ones we found. Tap a photo to set it as
+          the cover.
+        </p>
+        {uploadError ? (
+          <p className="w-full text-xs text-red-700" role="alert">
+            {uploadError}
+          </p>
+        ) : null}
+      </div>
+    ) : null;
+
   if (images.length === 0) {
     return (
-      <div className="grid h-52 place-items-center rounded-md bg-venue-soft text-sm text-venue-muted sm:h-72 lg:h-[22rem]">
-        {photosLoading ? "Loading venue photos…" : "Venue images coming soon"}
-      </div>
+      <section aria-label={`${venueName} image gallery`} className="space-y-3">
+        <div className="grid h-52 place-items-center rounded-md bg-venue-soft text-sm text-venue-muted sm:h-72 lg:h-[22rem]">
+          {photosLoading
+            ? "Loading venue photos…"
+            : editing
+              ? "No photos yet — upload venue images"
+              : "Venue images coming soon"}
+        </div>
+        {uploadControls}
+      </section>
     );
   }
 
   const activeImage = images[activeIndex] ?? images[0]!;
+  const coverResolved = activeSrc;
 
   return (
     <section aria-label={`${venueName} image gallery`} className="space-y-3">
@@ -147,6 +430,12 @@ function VenueGallery({
           )}
         />
         <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-venue-ink/70 to-transparent" />
+
+        {editing && coverResolved && activeImage.src === coverResolved ? (
+          <span className="absolute left-4 top-4 rounded-full bg-venue-accent px-3 py-1 text-xs font-semibold text-venue-paper">
+            Cover
+          </span>
+        ) : null}
 
         {images.length > 1 ? (
           <>
@@ -201,44 +490,55 @@ function VenueGallery({
         </div>
       </div>
 
-      {images.length > 1 ? (
+      {images.length > 1 || editing ? (
         <div
           role="tablist"
           aria-label={`${venueName} thumbnails`}
           className="-mx-5 flex snap-x gap-2 overflow-x-auto px-5 pb-1 sm:mx-0 sm:px-0"
         >
-          {images.map((image, index) => (
-            <Button
-              key={image.id}
-              type="button"
-              variant="ghost"
-              role="tab"
-              aria-label={`View ${image.alt}`}
-              aria-selected={index === activeIndex}
-              onClick={() => showImage(index)}
-              className={cn(
-                "h-auto w-14 shrink-0 snap-start overflow-hidden rounded-sm border border-transparent p-0 opacity-65 transition-all hover:opacity-100 sm:w-16",
-                index === activeIndex && "border-venue-accent opacity-100 ring-1 ring-venue-accent",
-              )}
-            >
-              <img
-                src={image.src}
-                alt=""
-                loading="lazy"
-                width={160}
-                height={96}
-                className="aspect-[5/3] w-full bg-venue-ink/10 object-contain"
-              />
-            </Button>
-          ))}
+          {images.map((image, index) => {
+            const isCover = Boolean(coverResolved && image.src === coverResolved);
+            return (
+              <Button
+                key={image.id}
+                type="button"
+                variant="ghost"
+                role="tab"
+                aria-label={
+                  isCover
+                    ? `${image.alt} (cover)`
+                    : editing
+                      ? `Set ${image.alt} as cover`
+                      : `View ${image.alt}`
+                }
+                aria-selected={index === activeIndex}
+                onClick={() => showImage(index)}
+                className={cn(
+                  "relative h-auto w-14 shrink-0 snap-start overflow-hidden rounded-sm border border-transparent p-0 opacity-65 transition-all hover:opacity-100 sm:w-16",
+                  index === activeIndex && "border-venue-accent opacity-100 ring-1 ring-venue-accent",
+                  isCover && editing && "opacity-100",
+                )}
+              >
+                <img
+                  src={image.src}
+                  alt=""
+                  loading="lazy"
+                  width={160}
+                  height={96}
+                  className="aspect-[5/3] w-full bg-venue-ink/10 object-contain"
+                />
+                {isCover && editing ? (
+                  <span className="absolute inset-x-0 bottom-0 bg-venue-accent/95 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-venue-paper">
+                    Cover
+                  </span>
+                ) : null}
+              </Button>
+            );
+          })}
         </div>
       ) : null}
 
-      {editing && images.length > 0 ? (
-        <p className="text-xs text-venue-muted">
-          Tap a photo to set it as the cover for this venue profile.
-        </p>
-      ) : null}
+      {uploadControls}
     </section>
   );
 }
@@ -545,6 +845,8 @@ export function BusinessVenueProfile({
   onBookParticipation,
 }: Props) {
   const canEdit = !readOnly && editing;
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const addressLine = formatVenueAddress(profile);
   const aboutParagraphs = profile.about
     .split(/\n+/)
@@ -576,7 +878,70 @@ export function BusinessVenueProfile({
     ? resolveVenueImageSrc(profile.coverUrl)
     : null;
 
+  const handleUploadFiles = useCallback(
+    async (files: FileList) => {
+      if (!canEdit) return;
+      setUploadError(null);
+      const remaining = VENUE_GALLERY_MAX - photoList.length;
+      if (remaining <= 0) {
+        setUploadError(`You can add up to ${VENUE_GALLERY_MAX} photos.`);
+        return;
+      }
+
+      const accepted = Array.from(files).slice(0, remaining);
+      const uploaded: string[] = [];
+      let skipped = false;
+      setUploading(true);
+      try {
+        for (const file of accepted) {
+          if (
+            !VENUE_IMAGE_TYPES.includes(file.type) ||
+            file.size > VENUE_IMAGE_MAX_BYTES
+          ) {
+            skipped = true;
+            continue;
+          }
+          try {
+            const imageBase64 = await readFileAsDataUrl(file);
+            const { url } = await uploadImage({
+              imageBase64,
+              imageMimeType: file.type,
+              kind: "cover",
+            });
+            if (url?.trim()) uploaded.push(url.trim());
+          } catch {
+            skipped = true;
+          }
+        }
+      } finally {
+        setUploading(false);
+      }
+
+      if (uploaded.length === 0) {
+        setUploadError(
+          skipped
+            ? "Photos must be JPG, PNG, or WEBP under 10MB."
+            : "We couldn't upload those photos. Please try again.",
+        );
+        return;
+      }
+
+      const nextPhotos = [...photoList, ...uploaded].slice(0, VENUE_GALLERY_MAX);
+      onChange({
+        photoUrls: nextPhotos,
+        coverUrl: profile.coverUrl || uploaded[0] || null,
+      });
+      if (skipped) {
+        setUploadError(
+          "Some photos were skipped — each must be JPG/PNG/WEBP under 10MB.",
+        );
+      }
+    },
+    [canEdit, onChange, photoList, profile.coverUrl],
+  );
+
   const eligibility = eligibilityRowsFromHours(profile.hours);
+  const socialLinks = socialLinksFromProfile(profile);
 
   return (
     <main className="venue-theme min-h-screen bg-venue-canvas pb-28 text-venue-body sm:pb-10">
@@ -604,71 +969,82 @@ export function BusinessVenueProfile({
           )}
         </div>
 
-        <header className="mb-8 sm:mb-10">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-venue-accent">
-            <UtensilsCrossed className="size-3.5" /> {category}
+        <header className="mb-8 flex flex-wrap items-start justify-between gap-x-8 gap-y-4 sm:mb-10">
+          <div className="min-w-0 max-w-4xl">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-venue-accent">
+              <UtensilsCrossed className="size-3.5" /> {category}
+            </div>
+            {canEdit ? (
+              <input
+                className="mt-3 w-full max-w-3xl rounded-sm border border-venue-line bg-venue-paper px-3 py-2 font-venue-serif text-3xl text-venue-ink sm:text-5xl"
+                value={profile.businessName}
+                onChange={(e) => onChange({ businessName: e.target.value })}
+                aria-label="Business name"
+              />
+            ) : (
+              <h1 className="mt-3 font-venue-serif text-4xl leading-none text-venue-ink sm:text-6xl lg:text-7xl">
+                {profile.businessName}
+              </h1>
+            )}
+            {canEdit ? (
+              <div className="mt-4 grid max-w-3xl gap-2 sm:grid-cols-2">
+                <label className="block text-sm font-medium text-venue-ink sm:col-span-2">
+                  Street address
+                  <input
+                    className="mt-1.5 w-full rounded-sm border border-venue-line bg-venue-paper px-3 py-2 text-sm"
+                    value={profile.address}
+                    onChange={(e) => onChange({ address: e.target.value })}
+                  />
+                </label>
+                <label className="block text-sm font-medium text-venue-ink">
+                  City
+                  <input
+                    className="mt-1.5 w-full rounded-sm border border-venue-line bg-venue-paper px-3 py-2 text-sm"
+                    value={profile.city}
+                    onChange={(e) => onChange({ city: e.target.value })}
+                  />
+                </label>
+                <label className="block text-sm font-medium text-venue-ink">
+                  State
+                  <input
+                    className="mt-1.5 w-full rounded-sm border border-venue-line bg-venue-paper px-3 py-2 text-sm"
+                    value={profile.state}
+                    onChange={(e) => onChange({ state: e.target.value })}
+                  />
+                </label>
+                <label className="block text-sm font-medium text-venue-ink sm:col-span-2">
+                  ZIP
+                  <input
+                    className="mt-1.5 w-full rounded-sm border border-venue-line bg-venue-paper px-3 py-2 text-sm"
+                    value={profile.zip}
+                    onChange={(e) => onChange({ zip: e.target.value })}
+                  />
+                </label>
+                <label className="block text-sm font-medium text-venue-ink sm:col-span-2">
+                  Eligible time
+                  <input
+                    className="mt-1.5 w-full rounded-sm border border-venue-line bg-venue-paper px-3 py-2 text-sm"
+                    value={profile.eligibleWindow}
+                    placeholder="e.g. October 6–8, 2026"
+                    onChange={(e) => onChange({ eligibleWindow: e.target.value })}
+                  />
+                </label>
+              </div>
+            ) : (
+              <p className="mt-4 flex items-start gap-2 text-sm text-venue-body sm:text-base">
+                <MapPin className="mt-0.5 size-4 shrink-0 text-venue-accent" />
+                {addressLine || "Address not set"}
+              </p>
+            )}
           </div>
           {canEdit ? (
-            <input
-              className="mt-3 w-full max-w-3xl rounded-sm border border-venue-line bg-venue-paper px-3 py-2 font-venue-serif text-3xl text-venue-ink sm:text-5xl"
-              value={profile.businessName}
-              onChange={(e) => onChange({ businessName: e.target.value })}
-              aria-label="Business name"
+            <VenueSocialEditFields
+              profile={profile}
+              onChange={onChange}
+              className="ml-auto pt-1 sm:pt-3"
             />
           ) : (
-            <h1 className="mt-3 font-venue-serif text-4xl leading-none text-venue-ink sm:text-6xl lg:text-7xl">
-              {profile.businessName}
-            </h1>
-          )}
-          {canEdit ? (
-            <div className="mt-4 grid max-w-3xl gap-2 sm:grid-cols-2">
-              <label className="block text-sm font-medium text-venue-ink sm:col-span-2">
-                Street address
-                <input
-                  className="mt-1.5 w-full rounded-sm border border-venue-line bg-venue-paper px-3 py-2 text-sm"
-                  value={profile.address}
-                  onChange={(e) => onChange({ address: e.target.value })}
-                />
-              </label>
-              <label className="block text-sm font-medium text-venue-ink">
-                City
-                <input
-                  className="mt-1.5 w-full rounded-sm border border-venue-line bg-venue-paper px-3 py-2 text-sm"
-                  value={profile.city}
-                  onChange={(e) => onChange({ city: e.target.value })}
-                />
-              </label>
-              <label className="block text-sm font-medium text-venue-ink">
-                State
-                <input
-                  className="mt-1.5 w-full rounded-sm border border-venue-line bg-venue-paper px-3 py-2 text-sm"
-                  value={profile.state}
-                  onChange={(e) => onChange({ state: e.target.value })}
-                />
-              </label>
-              <label className="block text-sm font-medium text-venue-ink sm:col-span-2">
-                ZIP
-                <input
-                  className="mt-1.5 w-full rounded-sm border border-venue-line bg-venue-paper px-3 py-2 text-sm"
-                  value={profile.zip}
-                  onChange={(e) => onChange({ zip: e.target.value })}
-                />
-              </label>
-              <label className="block text-sm font-medium text-venue-ink sm:col-span-2">
-                Eligible time
-                <input
-                  className="mt-1.5 w-full rounded-sm border border-venue-line bg-venue-paper px-3 py-2 text-sm"
-                  value={profile.eligibleWindow}
-                  placeholder="e.g. October 6–8, 2026"
-                  onChange={(e) => onChange({ eligibleWindow: e.target.value })}
-                />
-              </label>
-            </div>
-          ) : (
-            <p className="mt-4 flex items-start gap-2 text-sm text-venue-body sm:text-base">
-              <MapPin className="mt-0.5 size-4 shrink-0 text-venue-accent" />
-              {addressLine || "Address not set"}
-            </p>
+            <VenueSocialLinks links={socialLinks} className="ml-auto pt-1 sm:pt-3" />
           )}
         </header>
 
@@ -678,9 +1054,14 @@ export function BusinessVenueProfile({
           editing={canEdit}
           activeSrc={resolvedCover}
           photosLoading={photosLoading}
+          uploading={uploading}
+          uploadError={uploadError}
+          onUploadFiles={canEdit ? handleUploadFiles : undefined}
           onSelectCover={(src) => {
             if (!canEdit) return;
-            onChange({ coverUrl: src });
+            const original =
+              photoList.find((u) => resolveVenueImageSrc(u) === src) ?? src;
+            onChange({ coverUrl: original });
           }}
         />
 
