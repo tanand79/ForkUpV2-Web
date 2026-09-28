@@ -1314,6 +1314,8 @@ export function CampaignProvider({
   // Start false so SSR and the first client render match; detect any saved
   // draft after mount to avoid a hydration mismatch on the start screen.
   const [hasDraft, setHasDraft] = useState<boolean>(false);
+  // Gate auto-saves until browser draft hydrate finishes (reload must not wipe localStorage).
+  const [localDraftReady, setLocalDraftReady] = useState(false);
   const sessionBootstrapped = useRef(false);
   const stepRef = useRef(step);
   const stateRef = useRef(state);
@@ -1413,6 +1415,55 @@ export function CampaignProvider({
       });
     });
   }, []);
+
+  /**
+   * Purpose: On hard reload of a builder/AI URL, restore forkup-campaign-draft into React state.
+   * Runs after auth bootstrap so guest clear / session cache do not wipe the restored draft.
+   * Inputs: current step (URL) + localStorage draft. Outputs: hydrated campaign fields; sets localDraftReady.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const draft = loadDraft();
+      if (draft && isBuilderFlowStep(stepRef.current)) {
+        setState((prev) => {
+          const saved = draft.state;
+          const inviteTarget =
+            saved.accountIntent === "fundraiser" ||
+            (saved.nonprofitProfile?.id != null &&
+              prev.nonprofitMemberships.length > 0 &&
+              !prev.nonprofitMemberships.some(
+                (m) => m.id === saved.nonprofitProfile?.id,
+              ));
+          return {
+            ...saved,
+            nonprofitMemberships:
+              prev.nonprofitMemberships.length > 0
+                ? prev.nonprofitMemberships
+                : saved.nonprofitMemberships,
+            businessMemberships:
+              prev.businessMemberships.length > 0
+                ? prev.businessMemberships
+                : saved.businessMemberships,
+            nonprofitProfile: inviteTarget
+              ? saved.nonprofitProfile
+              : prev.nonprofitProfile ?? saved.nonprofitProfile,
+            businessProfile: prev.businessProfile ?? saved.businessProfile,
+            accountIntent:
+              saved.accountIntent === "fundraiser"
+                ? "fundraiser"
+                : prev.accountIntent ?? saved.accountIntent,
+          };
+        });
+        setHasDraft(true);
+      } else if (draft) {
+        setHasDraft(true);
+      }
+    } finally {
+      setLocalDraftReady(true);
+    }
+  }, []);
+
   // True right after a Save & Exit draft is resumed, so the builder can show a
   // "Welcome back" message. Cleared once dismissed or a new campaign starts.
   const [resumedFromDraft, setResumedFromDraft] = useState(false);
@@ -1658,12 +1709,14 @@ export function CampaignProvider({
 
   // Auto-save draft progress while moving through the builder.
   useEffect(() => {
+    if (!localDraftReady) return;
     if (!isBuilderFlowStep(step) || !canSaveDraftToServer(state)) return;
     const timer = window.setTimeout(() => {
       void persistDraftToServer();
     }, 400);
     return () => window.clearTimeout(timer);
   }, [
+    localDraftReady,
     step,
     state.methods,
     state.title,
@@ -1676,9 +1729,11 @@ export function CampaignProvider({
 
   // Guest AI-flow: persist campaign draft in the browser (no account required).
   useEffect(() => {
+    if (!localDraftReady) return;
     if (!AI_FLOW_STEPS.includes(step)) return;
     persistDraft(state, step);
   }, [
+    localDraftReady,
     step,
     state.title,
     state.description,

@@ -41,7 +41,7 @@ import {
 } from "@/components/ui/dialog";
 
 export function CampaignCreated() {
-  const { state, reset, goTo, selectedBusinesses } = useCampaign();
+  const { state, reset, goTo, selectedBusinesses, participatingCount } = useCampaign();
 
   const slug = state.campaignSlug
     ?? state.title
@@ -174,9 +174,12 @@ Thank you for helping our community succeed!`;
 
   // ── Created vs. ready-to-promote logic ───────────────────────────────────
   const requiresPartner = state.methods.giveback || state.methods.guestBartending;
+  // Partner is ready only after acceptance (or locked from business→NPO),
+  // not merely because the NPO selected/invited businesses during create.
   const partnersReady =
+    participatingCount > 0 ||
     (state.lockedBusinessPartners?.length ?? 0) > 0 ||
-    selectedBusinesses.length > 0 ||
+    state.campaignOrigin === "business_invite" ||
     !requiresPartner;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
