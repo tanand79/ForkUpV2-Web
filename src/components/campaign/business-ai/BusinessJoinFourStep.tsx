@@ -17,6 +17,7 @@ import {
   DollarSign,
   Gift,
   Loader2,
+  MapPin,
   Pencil,
   Percent,
   Sparkles,
@@ -54,6 +55,7 @@ import {
   clampJoinGivebackPercent,
   defaultBusinessJoinDraft,
   loadBusinessJoinDraft,
+  parseNearbyLocation,
   saveBusinessJoinDraft,
   type BusinessJoinFourStepDraft,
   type CauseMode,
@@ -83,6 +85,11 @@ import {
   type VenueProfileSnapshot,
 } from "@/lib/business-venue-profile";
 import { BusinessVenueProfile } from "@/components/campaign/business-ai/BusinessVenueProfile";
+import {
+  nearbyQueryParams,
+  useBrowserLocation,
+} from "@/hooks/use-browser-location";
+import { SearchRadiusControl } from "@/components/campaign/SearchRadiusControl";
 
 type Phase = "find" | "confirm" | "profile" | "giveback" | "email" | "done";
 
@@ -94,6 +101,49 @@ const FIND_EXTRACT_CHECKLIST = [
   "Photos",
   "Nearby location",
 ] as const;
+
+/**
+ * Client reverse-geocode (BigDataCloud, no key) — same path as NPO nearby.
+ * Used when GPS is ready but city/state has not arrived yet.
+ */
+async function reverseGeocodePlace(
+  latitude: number,
+  longitude: number,
+): Promise<{ city: string | null; state: string | null }> {
+  try {
+    const url = new URL(
+      "https://api.bigdatacloud.net/data/reverse-geocode-client",
+    );
+    url.searchParams.set("latitude", String(latitude));
+    url.searchParams.set("longitude", String(longitude));
+    url.searchParams.set("localityLanguage", "en");
+    const res = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return { city: null, state: null };
+    const data = (await res.json()) as {
+      city?: string;
+      locality?: string;
+      principalSubdivisionCode?: string;
+      countryCode?: string;
+    };
+    const subdiv = (data.principalSubdivisionCode ?? "").trim().toUpperCase();
+    const state =
+      /^US-[A-Z]{2}$/.test(subdiv)
+        ? subdiv.slice(3)
+        : /^[A-Z]{2}$/.test(subdiv)
+          ? subdiv
+          : null;
+    // Prefer US city/state; still return locality when overseas so Find can try.
+    const city = data.city || data.locality || null;
+    if ((data.countryCode ?? "").toUpperCase() === "US") {
+      return { city, state };
+    }
+    return { city, state };
+  } catch {
+    return { city: null, state: null };
+  }
+}
 
 /**
  * Map website draft API result into the confirm-card shape used by name find.
@@ -200,6 +250,13 @@ export function BusinessJoinFourStep() {
   const [resyGalleryRefreshAttempted, setResyGalleryRefreshAttempted] = useState(false);
   /** True while re-fetching venue photos before opening the profile gallery. */
   const [refreshingGallery, setRefreshingGallery] = useState(false);
+  /** On by default — nearby GPS like NPO Find Organization. */
+  const [useNearbyFilter, setUseNearbyFilter] = useState(true);
+  const [radiusMiles, setRadiusMiles] = useState(50);
+  const browserLocation = useBrowserLocation(useNearbyFilter);
+  const nearby = useNearbyFilter
+    ? nearbyQueryParams(browserLocation, radiusMiles)
+    : undefined;
 
   useEffect(() => {
     if (!mounted) return;
@@ -464,9 +521,51 @@ export function BusinessJoinFourStep() {
       setError(`Enter your ${roleWord} name or website to continue.`);
       return;
     }
-    const nearZip = (draft.nearZip || "").replace(/\D/g, "").slice(0, 5);
-    if (!looksLikeWebsiteQuery(q) && nearZip.length !== 5) {
-      setError("Enter a 5-digit ZIP so we can find the exact nearby location.");
+    // Typed override (optional) — ZIP / "City, ST".
+    const nearRaw = (draft.nearLocation || draft.nearZip || "").trim();
+    const nearParsed = parseNearbyLocation(nearRaw);
+    let nearZip = nearParsed.nearZip || "";
+    let nearCity = nearParsed.city || "";
+    let nearState = nearParsed.state || "";
+    // NPO-style: browser GPS → city/state when nearby is on (typed wins if set).
+    if (useNearbyFilter && nearby) {
+      if (!nearCity && nearby.city) nearCity = nearby.city;
+      if (!nearState && nearby.state) nearState = nearby.state;
+    } else if (useNearbyFilter) {
+      if (!nearCity && browserLocation.city) nearCity = browserLocation.city;
+      if (!nearState && browserLocation.state) nearState = browserLocation.state;
+    }
+    // GPS ready but city/state still resolving — reverse-geocode once before failing.
+    if (
+      useNearbyFilter &&
+      !nearZip &&
+      !nearCity &&
+      !nearState &&
+      browserLocation.latitude != null &&
+      browserLocation.longitude != null
+    ) {
+      const place = await reverseGeocodePlace(
+        browserLocation.latitude,
+        browserLocation.longitude,
+      );
+      if (place.city) nearCity = place.city;
+      if (place.state) nearState = place.state;
+    }
+    const hasNearby = Boolean(nearZip || nearCity || nearState);
+    // Nearby GPS on → need city/state from GPS (or typed). Nearby off → ZIP/city optional.
+    if (useNearbyFilter && !looksLikeWebsiteQuery(q) && !hasNearby) {
+      if (
+        browserLocation.status === "prompting" ||
+        browserLocation.status === "idle"
+      ) {
+        setError(
+          "Getting your location… allow location access, wait a moment, then try again — or turn off nearby search.",
+        );
+        return;
+      }
+      setError(
+        "Could not read your location. Allow location access, turn off nearby search, or enter an optional city/state or ZIP.",
+      );
       return;
     }
     setError(null);
@@ -476,8 +575,13 @@ export function BusinessJoinFourStep() {
     setResyGalleryRefreshAttempted(false);
     try {
       const doorType = door ?? readBusinessDoor() ?? undefined;
-      const near =
-        nearZip.length === 5 ? { nearZip } : undefined;
+      const near = hasNearby
+        ? {
+            ...(nearZip ? { nearZip } : {}),
+            ...(nearCity ? { city: nearCity } : {}),
+            ...(nearState ? { state: nearState } : {}),
+          }
+        : undefined;
       let found: FindBusinessProfileResult;
       if (looksLikeWebsiteQuery(q)) {
         // Use site origin so /menus/ (etc.) still discovers Resy from the homepage.
@@ -492,6 +596,8 @@ export function BusinessJoinFourStep() {
           businessName: q,
           joinDoorType: doorType,
           nearZip: nearZip || undefined,
+          city: nearCity || undefined,
+          state: nearState || undefined,
         });
       }
 
@@ -1067,7 +1173,8 @@ export function BusinessJoinFourStep() {
             </p>
           ) : null}
           <p className="text-sm text-muted-foreground">
-            Enter your {roleWord} name or website, plus your ZIP so we can pick the exact nearby location.
+            Enter your {roleWord} name or website. We&apos;ll use your nearby location to pick
+            the exact store — like nonprofit search.
           </p>
           <label className="block text-sm font-medium">
             {isRestaurant ? "Restaurant name or website" : "Business name or website"}
@@ -1085,23 +1192,77 @@ export function BusinessJoinFourStep() {
               }}
             />
           </label>
-          <label className="block text-sm font-medium">
-            ZIP code (nearby location)
+
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-foreground">
             <input
-              className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm"
-              inputMode="numeric"
-              autoComplete="postal-code"
-              maxLength={5}
-              value={draft.nearZip || ""}
-              onChange={(e) =>
-                patchDraft({ nearZip: e.target.value.replace(/\D/g, "").slice(0, 5) })
-              }
-              placeholder="e.g. 19348"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void runFind();
+              type="checkbox"
+              checked={useNearbyFilter}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setUseNearbyFilter(on);
+                if (!on) browserLocation.setLocationOverride(null);
               }}
+              className="size-4 rounded border-border accent-primary text-primary"
+              style={{ accentColor: "var(--color-primary, #A65A3A)" }}
             />
+            <span className="inline-flex items-center gap-1.5">
+              <MapPin className="size-3.5 text-muted-foreground" />
+              Search near my location
+            </span>
           </label>
+
+          {useNearbyFilter ? (
+            <SearchRadiusControl
+              enabled={useNearbyFilter}
+              valueMiles={radiusMiles}
+              onChange={setRadiusMiles}
+              latitude={browserLocation.latitude}
+              longitude={browserLocation.longitude}
+              lookingForLabel={isRestaurant ? "restaurants" : "businesses"}
+            />
+          ) : null}
+
+          {useNearbyFilter && browserLocation.error ? (
+            <p className="text-xs text-muted-foreground">{browserLocation.error}</p>
+          ) : null}
+
+          {useNearbyFilter &&
+          browserLocation.status === "ready" &&
+          (browserLocation.city || browserLocation.state) ? (
+            <p className="text-xs text-muted-foreground">
+              Searching near{" "}
+              {[browserLocation.city, browserLocation.state].filter(Boolean).join(", ")}
+              {radiusMiles ? ` · within ${radiusMiles} mi` : ""}.
+            </p>
+          ) : null}
+
+          {/* Optional typed nearby — when GPS nearby is off, or location failed. */}
+          {(!useNearbyFilter ||
+            browserLocation.status === "denied" ||
+            browserLocation.status === "unavailable") && (
+            <label className="block text-sm font-medium">
+              Nearby location{" "}
+              <span className="font-normal text-muted-foreground">(optional)</span>
+              <input
+                className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm"
+                autoComplete="address-level2"
+                value={draft.nearLocation || ""}
+                onChange={(e) => {
+                  const nearLocation = e.target.value;
+                  const parsed = parseNearbyLocation(nearLocation);
+                  patchDraft({
+                    nearLocation,
+                    nearZip: parsed.nearZip || "",
+                  });
+                }}
+                placeholder="e.g. Kennett Square, PA or 19348"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void runFind();
+                }}
+              />
+            </label>
+          )}
+
           <p className="text-xs text-muted-foreground">
             Our AI will find your website, social links, photos, and the exact nearby location —
             or use the URL you paste.

@@ -342,10 +342,9 @@ Thank you for helping our community succeed!`;
         </Section>
       )}
 
-      {/* ── Pre-promotion sections (while partners confirm) ─────────────── */}
-      {!isLive && (
+      {/* ── Awaiting first business acceptance (NPO→business invite path) ─ */}
+      {!isLive && !partnersReady && (
         <>
-          {/* Partner confirmation */}
           <Section
             delay={220}
             icon={<Building2 className="size-4 text-primary" />}
@@ -362,7 +361,6 @@ Thank you for helping our community succeed!`;
             </div>
           </Section>
 
-          {/* While we confirm partners, you can: */}
           <Section
             delay={280}
             icon={<Sparkles className="size-4 text-primary" />}
@@ -371,9 +369,9 @@ Thank you for helping our community succeed!`;
             <div className="grid gap-3 sm:grid-cols-3">
               <MomentumCard
                 icon={<Megaphone className="size-5 text-primary" />}
-                title="Prepare Your Messages"
-                description="Preview and edit Facebook, email, and text messages so they're ready when your campaign goes live."
-                buttonLabel="Prepare Messages"
+                title="Prepare Your Facebook Post"
+                description="Preview and edit your Facebook post so it's ready when your campaign goes live."
+                buttonLabel="Prepare Facebook Post"
                 onClick={() => setOpenMessage("facebook")}
               />
               <MomentumCard
@@ -387,6 +385,70 @@ Thank you for helping our community succeed!`;
                 icon={<Building2 className="size-5 text-primary" />}
                 title="Invite Another Business"
                 description="Add another local business to increase your chances of a strong launch."
+                buttonLabel="Invite Business"
+                onClick={() =>
+                  state.campaignSlug
+                    ? goTo("businesses", {
+                        query: { appendInvites: "1" },
+                        statePatch: {
+                          selectedBusinessIds: [],
+                          invited: state.invited.filter((b) => b.persisted),
+                        },
+                      })
+                    : goTo("businesses")
+                }
+              />
+            </div>
+          </Section>
+        </>
+      )}
+
+      {/* ── Scheduled: partner already confirmed (e.g. business→NPO invite) ─ */}
+      {isScheduled && (
+        <>
+          {requiresPartner && (
+            <Section
+              delay={220}
+              icon={<Building2 className="size-4 text-primary" />}
+              title="Your business partner is confirmed."
+            >
+              <p className="text-sm text-muted-foreground">
+                Setup is complete. Your campaign will appear in the public directory on{" "}
+                {startLabel || "the start date"}.
+              </p>
+              <div className="mt-4 flex items-center gap-3 rounded-2xl border border-[oklch(0.6_0.13_150)]/40 bg-[oklch(0.94_0.05_150)]/70 p-4">
+                <Check className="size-5 shrink-0 text-[oklch(0.45_0.13_150)]" strokeWidth={3} />
+                <p className="text-sm font-medium text-[oklch(0.35_0.1_150)]">
+                  Business partner confirmed — no acceptance waiting.
+                </p>
+              </div>
+            </Section>
+          )}
+
+          <Section
+            delay={280}
+            icon={<Sparkles className="size-4 text-primary" />}
+            title="Before your campaign goes live, you can:"
+          >
+            <div className="grid gap-3 sm:grid-cols-3">
+              <MomentumCard
+                icon={<Megaphone className="size-5 text-primary" />}
+                title="Prepare Your Facebook Post"
+                description="Preview and edit your Facebook post so it's ready when your campaign goes live."
+                buttonLabel="Prepare Facebook Post"
+                onClick={() => setOpenMessage("facebook")}
+              />
+              <MomentumCard
+                icon={<Users className="size-5 text-primary" />}
+                title="Add Supporters"
+                description="Add ambassadors, volunteers, board members, parents, donors, or guest bartenders you'll want to notify."
+                buttonLabel="Add Supporters"
+                onClick={() => goTo("ambassador")}
+              />
+              <MomentumCard
+                icon={<Building2 className="size-5 text-primary" />}
+                title="Invite Another Business"
+                description="Add another local business to grow your campaign before go-live."
                 buttonLabel="Invite Business"
                 onClick={() =>
                   state.campaignSlug

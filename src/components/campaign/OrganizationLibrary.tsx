@@ -13,6 +13,13 @@ import {
   type OrganizationLibraryItem,
   type LibraryOrgType,
 } from "@/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const CATEGORY_LABELS: Record<string, string> = {
   logos_brand: "Logos & Brand Files",
@@ -205,17 +212,23 @@ export function OrganizationLibrary() {
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
               Category
-              <select
+              <Select
                 value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                onValueChange={(category) =>
+                  setForm((f) => ({ ...f, category }))
+                }
               >
-                {CATEGORY_ORDER.map((c) => (
-                  <option key={c} value={c}>
-                    {CATEGORY_LABELS[c]}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground justify-between">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border-border bg-popover">
+                  {CATEGORY_ORDER.map((c) => (
+                    <SelectItem key={c} value={c} className="rounded-lg focus:bg-accent">
+                      {CATEGORY_LABELS[c]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
               Title

@@ -16,6 +16,9 @@
 import { useCampaign } from "@/lib/campaign-context";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
 import { TimelineCheckCard } from "@/components/campaign/TimelineCheckCard";
+import { getAuthToken } from "@/lib/auth-storage";
+import { stashAuthReturnStep, stashRoleHint } from "@/lib/campaign-auth";
+import { hasLockedBusinessPartners } from "@/lib/campaign-flow";
 import {
   ambassadorTimingCoachMessage,
   campaignDateMin,
@@ -248,9 +251,19 @@ export function AiCampaignDates() {
               update({ businessTimingStatus: timingEval.status });
             }
           }
+          const hasLockedPartner = hasLockedBusinessPartners(state);
           const needsBusinessInvite =
-            state.methods.giveback || state.methods.guestBartending;
+            (state.methods.giveback || state.methods.guestBartending) &&
+            !hasLockedPartner;
           if (needsBusinessInvite) {
+            // Guest must sign up before invite — stash so post-verify resumes here
+            // (AuthLogin mount must not wipe this via clearPendingSignupAuth).
+            if (!getAuthToken()) {
+              stashRoleHint(
+                state.accountIntent === "fundraiser" ? "fundraiser" : "nonprofit",
+              );
+              stashAuthReturnStep("businesses");
+            }
             goTo("businesses", { query: { returnTo: "ai-campaign-preview" } });
             return;
           }
@@ -258,7 +271,8 @@ export function AiCampaignDates() {
         }}
         className="mt-8 inline-flex w-full items-center justify-center rounded-full bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark disabled:opacity-40"
       >
-        {state.methods.giveback || state.methods.guestBartending
+        {(state.methods.giveback || state.methods.guestBartending) &&
+        !hasLockedBusinessPartners(state)
           ? "Continue to invite businesses"
           : "That's it! Continue to preview"}
       </button>

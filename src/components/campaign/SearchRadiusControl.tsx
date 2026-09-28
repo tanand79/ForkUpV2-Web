@@ -57,6 +57,11 @@ export type SearchRadiusControlProps = {
   /** Map center — visitor coords; map waits until both are set. */
   latitude?: number | null;
   longitude?: number | null;
+  /**
+   * Additive: entity label in the headline (default “nonprofits”).
+   * Example: “restaurants” → “How far should we look for restaurants?”
+   */
+  lookingForLabel?: string;
 };
 
 function clampMiles(n: number): number {
@@ -83,8 +88,10 @@ export function SearchRadiusControl({
   onChange,
   latitude,
   longitude,
+  lookingForLabel = "nonprofits",
 }: SearchRadiusControlProps) {
   const active = clampMiles(valueMiles);
+  const entityLabel = lookingForLabel.trim() || "nonprofits";
   const isPreset = (PRESETS as readonly number[]).includes(active);
   const [mode, setMode] = useState<"preset" | "custom">(
     isPreset ? "preset" : "custom",
@@ -135,7 +142,7 @@ export function SearchRadiusControl({
             className="font-display mt-2 text-[1.35rem] font-semibold leading-snug tracking-tight sm:text-[1.5rem]"
             style={{ color: INK }}
           >
-            How far should we look for nonprofits?
+            How far should we look for {entityLabel}?
           </h3>
 
           <div className="mt-4 space-y-2">
@@ -233,8 +240,8 @@ export function SearchRadiusControl({
             className="mt-4 text-[12.5px] leading-relaxed"
             style={{ color: MUTED }}
           >
-            This helps organizations in suburban and rural areas discover more
-            relevant matches within a reachable distance.
+            This helps find the right match in suburban and rural areas within a
+            reachable distance.
           </p>
         </div>
 

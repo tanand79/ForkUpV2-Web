@@ -5,6 +5,15 @@ import { Mail, Lock, Loader2, RefreshCw } from "lucide-react";
 
 import { fetchEmailLog, type EmailLogEntry } from "@/lib/api";
 import { formatDateTimeUs } from "@/lib/date-only";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const EMPTY_SELECT = "__empty__";
 
 const STATUS_STYLE: Record<string, string> = {
   sent: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300",
@@ -72,31 +81,47 @@ export function AdminEmailLog() {
       <div className="mt-6 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
           Status
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          <Select
+            value={status || EMPTY_SELECT}
+            onValueChange={(v) => setStatus(v === EMPTY_SELECT ? "" : v)}
           >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s || "All"}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground justify-between min-w-[8rem]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-border bg-popover">
+              {STATUS_OPTIONS.map((s) => (
+                <SelectItem
+                  key={s || EMPTY_SELECT}
+                  value={s || EMPTY_SELECT}
+                  className="rounded-lg focus:bg-accent"
+                >
+                  {s || "All"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
           Role
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          <Select
+            value={role || EMPTY_SELECT}
+            onValueChange={(v) => setRole(v === EMPTY_SELECT ? "" : v)}
           >
-            {ROLE_OPTIONS.map((r) => (
-              <option key={r} value={r}>
-                {r || "All"}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground justify-between min-w-[8rem]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-border bg-popover">
+              {ROLE_OPTIONS.map((r) => (
+                <SelectItem
+                  key={r || EMPTY_SELECT}
+                  value={r || EMPTY_SELECT}
+                  className="rounded-lg focus:bg-accent"
+                >
+                  {r || "All"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
         <button
           type="button"

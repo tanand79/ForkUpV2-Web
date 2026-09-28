@@ -73,6 +73,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   SuperAdminBusinessesTab,
   SuperAdminCampaignsDirectoryTab,
   SuperAdminDonationsTab,
@@ -2028,14 +2035,19 @@ function SmtpTab() {
 
       <div className="mt-4">
         <label className={labelClass}>Provider</label>
-        <select
-          value={emailProvider}
-          onChange={(e) => setEmailProvider(e.target.value)}
-          className={fieldClass}
-        >
-          <option value="smtp">SMTP</option>
-          <option value="noop">No-op (log only)</option>
-        </select>
+        <Select value={emailProvider} onValueChange={setEmailProvider}>
+          <SelectTrigger className={`${fieldClass} h-auto justify-between`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="rounded-xl border-border bg-popover">
+            <SelectItem value="smtp" className="rounded-lg focus:bg-accent">
+              SMTP
+            </SelectItem>
+            <SelectItem value="noop" className="rounded-lg focus:bg-accent">
+              No-op (log only)
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">

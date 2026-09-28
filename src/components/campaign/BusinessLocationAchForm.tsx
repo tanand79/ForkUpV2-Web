@@ -17,6 +17,13 @@ import {
   type LocationAchSettings,
 } from "@/lib/api";
 import { apiUrl } from "@/lib/api-config";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Props = {
   locationId: number;
@@ -391,14 +398,22 @@ export function BusinessLocationAchForm({
 
       <label className="block text-sm">
         <span className="mb-1 block font-medium">Account type</span>
-        <select
-          className="w-full rounded-xl border border-border bg-background px-3 py-2"
+        <Select
           value={accountType}
-          onChange={(e) => setAccountType(e.target.value as "checking" | "savings")}
+          onValueChange={(v) => setAccountType(v as "checking" | "savings")}
         >
-          <option value="checking">Checking</option>
-          <option value="savings">Savings</option>
-        </select>
+          <SelectTrigger className="w-full rounded-xl border border-border bg-background px-3 py-2 h-auto justify-between">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="rounded-xl border-border bg-popover">
+            <SelectItem value="checking" className="rounded-lg focus:bg-accent">
+              Checking
+            </SelectItem>
+            <SelectItem value="savings" className="rounded-lg focus:bg-accent">
+              Savings
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </label>
 
       <label className="block text-sm">

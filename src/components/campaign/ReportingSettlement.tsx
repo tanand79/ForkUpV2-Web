@@ -16,6 +16,13 @@ import { PayoutsPanel } from "@/components/campaign/PayoutsPanel";
 import { SettlementCalculationBreakdown } from "@/components/campaign/SettlementCalculationBreakdown";
 import { apiUrl } from "@/lib/api-config";
 import { formatMoneyNumber, formatMoneyUSD } from "@/lib/money-format";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 /** Wrap a value as a CSV field, escaping quotes and commas per RFC 4180. */
 function csvField(value: string | number | null | undefined): string {
@@ -484,23 +491,31 @@ export function ReportingSettlement() {
                     </p>
                     <label className="mt-3 flex items-center gap-2 text-xs">
                       <span className="text-muted-foreground">ACH status</span>
-                      <select
+                      <Select
                         value={(b.achStatus as (typeof ACH_OPTIONS)[number]) || "pending"}
                         disabled={achBusyId === b.id}
-                        onChange={(e) =>
+                        onValueChange={(v) =>
                           void handleAchStatus(
                             b.id,
-                            e.target.value as (typeof ACH_OPTIONS)[number],
+                            v as (typeof ACH_OPTIONS)[number],
                           )
                         }
-                        className="rounded-lg border border-border bg-background px-2 py-1 font-semibold capitalize"
                       >
-                        {ACH_OPTIONS.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger className="rounded-lg border border-border bg-background px-2 py-1 font-semibold capitalize h-auto justify-between min-w-[7rem]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl border-border bg-popover">
+                          {ACH_OPTIONS.map((opt) => (
+                            <SelectItem
+                              key={opt}
+                              value={opt}
+                              className="rounded-lg capitalize focus:bg-accent"
+                            >
+                              {opt}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </label>
                     {b.pdfBusinessPath && (
                       <a

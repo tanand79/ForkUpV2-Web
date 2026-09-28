@@ -1285,6 +1285,11 @@ interface CampaignContextValue {
   resumeDraft: () => void;
   resumeCampaignBuilder: (slug: string) => Promise<void>;
   startNewCampaign: () => void;
+  /**
+   * After a business→NPO invite accept: keep locked partner / slug / methods,
+   * clear invite stub copy, then run the same AI analyze → ideas path.
+   */
+  startAiCampaignFromBusinessInvite: () => void;
   // ⚠️ Temporary Design Mode — remove before production.
   designMode: boolean;
   toggleDesignMode: () => void;
@@ -1761,6 +1766,78 @@ export function CampaignProvider({
         goTo("ai-campaign-ideas");
       } catch {
         // Nonprofit own-org path: never send to find-org picker.
+        saveAiFlowPendingOrg({
+          organizationName: profile.organizationName,
+          nonprofitId: profile.id ?? null,
+          website: promotion.websiteUrl || null,
+          facebookUrl: promotion.facebookUrl || null,
+          instagramUrl: promotion.instagramHandle || null,
+          mission: profile.mission || null,
+          causeCategory: profile.causeCategory || null,
+        });
+        goTo("ai-connect-social");
+      }
+    })();
+  };
+
+  /**
+   * Business→NPO invite path: preserve locked partner, campaign slug, origin,
+   * methods, giveback, and invite dates; clear stub title/story so AI drafts fresh
+   * content the organizer can edit (same analyze → ideas funnel as startNewCampaign).
+   */
+  const startAiCampaignFromBusinessInvite = () => {
+    if (!state.nonprofitProfile) {
+      goTo("nonprofit-claim");
+      return;
+    }
+    const profile = state.nonprofitProfile;
+    const promotion = state.promotion;
+    setState((prev) => ({
+      ...prev,
+      organizerMode: "guided",
+      accountIntent: "nonprofit",
+      title: "",
+      description: "",
+      fundsSupport: [],
+      goal: "",
+      aiDrafted: false,
+      goalAiSuggested: false,
+      storyAccepted: false,
+      cover: null,
+      images: [],
+    }));
+    discardLocalDraft({ force: true });
+    void (async () => {
+      try {
+        const session = await analyzeAiCampaignFlow({
+          organizationName: profile.organizationName,
+          nonprofitId: profile.id ?? null,
+          website: promotion.websiteUrl || null,
+          facebookUrl: promotion.facebookUrl || null,
+          instagramUrl: promotion.instagramHandle || null,
+          mission: profile.mission || null,
+          causeCategory: profile.causeCategory || null,
+        });
+        saveAiFlowStore({
+          sessionToken: session.sessionToken,
+          organizationName: profile.organizationName,
+          nonprofitId: profile.id ?? null,
+          selectedIdeaId: null,
+          guestContinued: false,
+        });
+        if (session.website || session.facebookUrl || session.instagramUrl) {
+          setState((prev) => ({
+            ...prev,
+            promotion: {
+              ...prev.promotion,
+              websiteUrl: session.website || prev.promotion.websiteUrl,
+              facebookUrl: session.facebookUrl || prev.promotion.facebookUrl,
+              instagramHandle: session.instagramUrl || prev.promotion.instagramHandle,
+            },
+          }));
+        }
+        goTo("ai-campaign-ideas");
+      } catch {
         saveAiFlowPendingOrg({
           organizationName: profile.organizationName,
           nonprofitId: profile.id ?? null,
@@ -2287,6 +2364,7 @@ export function CampaignProvider({
     resumeDraft,
     resumeCampaignBuilder,
     startNewCampaign,
+    startAiCampaignFromBusinessInvite,
     designMode,
     toggleDesignMode,
     campaignStage,

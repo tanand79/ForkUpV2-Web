@@ -48,6 +48,13 @@ import {
 import { OrganizationLookupConfirm, ORG_TYPE_OPTIONS } from "@/components/campaign/OrganizationLookupConfirm";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
 import { InviteFromNameField } from "@/components/campaign/InviteFromNameField";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { loadUserSession } from "@/lib/auth-session";
 import { clampJoinGivebackPercent } from "@/lib/business-join-four-step-draft";
@@ -624,19 +631,22 @@ export function NonprofitClaim() {
                   <label className={lovableLabel}>
                     Organization type <span className="text-destructive">*</span>
                   </label>
-                  <select
-                    required
-                    value={orgType}
-                    onChange={(e) => setOrgType(e.target.value)}
-                    className={lovableInput}
-                  >
-                    <option value="">Select a type</option>
-                    {ORG_TYPE_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={orgType || undefined} onValueChange={setOrgType}>
+                    <SelectTrigger className={`${lovableInput} h-auto justify-between`}>
+                      <SelectValue placeholder="Select a type" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-border bg-popover">
+                      {ORG_TYPE_OPTIONS.map((opt) => (
+                        <SelectItem
+                          key={opt}
+                          value={opt}
+                          className="rounded-lg focus:bg-accent"
+                        >
+                          {opt}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className={lovableLabel}>
@@ -1290,13 +1300,22 @@ export function BusinessInvitesNonprofit() {
       <form onSubmit={submit} className="mt-8 space-y-4">
         <label className="block space-y-1.5">
           <span className="text-sm font-semibold">Fundraising method</span>
-          <select value={methodType} onChange={(e) => setMethodType(e.target.value)} className={field}>
-            {availableMethods.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          <Select value={methodType} onValueChange={setMethodType}>
+            <SelectTrigger className={`${field} h-auto justify-between`}>
+              <SelectValue placeholder="Select method" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-border bg-popover">
+              {availableMethods.map((m) => (
+                <SelectItem
+                  key={m.value}
+                  value={m.value}
+                  className="rounded-lg focus:bg-accent"
+                >
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
 
         <div className="flex w-full flex-col gap-4">
@@ -1428,7 +1447,8 @@ export function BusinessInvitesNonprofit() {
 }
 
 export function NonprofitAcceptsInvite() {
-  const { setNonprofitProfile, goTo, update, startNewCampaign, state } = useCampaign();
+  const { setNonprofitProfile, goTo, update, startNewCampaign, startAiCampaignFromBusinessInvite, state } =
+    useCampaign();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") ?? "";
   const [invite, setInvite] = useState<NonprofitCampaignInvite | null>(null);
@@ -1511,10 +1531,18 @@ export function NonprofitAcceptsInvite() {
         goTo("auth-login");
         return;
       }
-      if (
-        state.aiDrafted ||
-        (state.title.trim() && state.description.trim())
-      ) {
+      // Already AI-drafted → preview (editable).
+      if (state.aiDrafted) {
+        goTo("ai-campaign-preview");
+        return;
+      }
+      // Business invite stub title/story must not skip AI — run NPO AI funnel
+      // while keeping the locked partner / campaign slug.
+      if (state.campaignOrigin === "business_invite") {
+        startAiCampaignFromBusinessInvite();
+        return;
+      }
+      if (state.title.trim() && state.description.trim()) {
         goTo("ai-campaign-preview");
         return;
       }

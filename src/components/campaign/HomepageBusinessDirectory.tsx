@@ -443,7 +443,29 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
     setCampaignsLoading(true);
     const nonprofitId = state.nonprofitProfile?.id;
     void fetchManageCampaigns(nonprofitId)
-      .then((list) => setCampaigns(list.filter((c) => c.status === "live")))
+      .then(async (list) => {
+        const live = list.filter((c) => c.status === "live");
+        const rows = await Promise.all(
+          live.map(async (c) => {
+            try {
+              const builder = await fetchBuilderCampaign(c.slug);
+              return { c, builder };
+            } catch {
+              return null;
+            }
+          }),
+        );
+        const businessMethods = new Set<string>(BUSINESS_METHOD_ORDER);
+        setCampaigns(
+          rows
+            .filter((row): row is NonNullable<typeof row> => row != null)
+            .filter((row) => row.builder.origin !== "business_invite")
+            .filter((row) =>
+              row.builder.methods.some((m) => businessMethods.has(m)),
+            )
+            .map((row) => row.c),
+        );
+      })
       .catch((err) => {
         setCampaignsError(err instanceof Error ? err.message : "Could not load campaigns");
       })

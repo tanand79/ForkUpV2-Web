@@ -21,6 +21,13 @@ import {
 } from "@/lib/campaign-auth";
 
 import { emailValidationMessage, isValidEmail, normalizeEmail } from "@/lib/email-validation";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 
 
@@ -116,18 +123,18 @@ export function AuthLogin({
 
   const emailError = email.trim() ? emailValidationMessage(email) : null;
 
+  /** Register + taken email: allow "Sign in instead" (was disabled and blocked resume). */
+  const switchToSignIn = mode === "register" && emailTaken;
+
   const canSubmit =
-
     !loading &&
-
-    password.length >= 8 &&
-
     isValidEmail(email) &&
-
-    (mode === "login" || !emailTaken);
-
+    (switchToSignIn || password.length >= 8);
 
 
+
+  // Reset fields on intent / lock change only — not when toggling login↔register
+  // (mode in deps wiped email/password when "Sign in instead" switched modes).
   useEffect(() => {
 
     if (lockedNormalized) {
@@ -146,7 +153,7 @@ export function AuthLogin({
 
     setEmailTaken(false);
 
-  }, [intent, mode, lockedNormalized]);
+  }, [intent, lockedNormalized]);
 
   // Claim/draft lock may arrive after first paint — keep field in sync.
   useEffect(() => {
@@ -222,14 +229,19 @@ export function AuthLogin({
 
 
 
+    // Taken email on register → switch to login; if password ready, sign in now
+    // so D&D / Guest Bartending can resume invite-businesses (not NPO claim).
+    let effectiveMode = mode;
     if (mode === "register" && emailTaken) {
-
-      setError("An account with this email already exists. Please sign in instead.");
-
       setMode("login");
-
-      return;
-
+      setEmailTaken(false);
+      setInfo(null);
+      effectiveMode = "login";
+      if (password.length < 8) {
+        setError("An account with this email already exists. Enter your password to sign in.");
+        return;
+      }
+      setError(null);
     }
 
 
@@ -240,7 +252,7 @@ export function AuthLogin({
 
       stashRoleHint(intent);
 
-      if (mode === "login") {
+      if (effectiveMode === "login") {
         const result = await loginUser(normalized, password);
         setAuthToken(result.token);
         await onSuccess?.(intent);
@@ -263,13 +275,15 @@ export function AuthLogin({
 
       if (
 
-        mode === "register" &&
+        effectiveMode === "register" &&
 
         (message.toLowerCase().includes("already exists") || message.includes("409"))
 
       ) {
 
         setMode("login");
+        setEmailTaken(false);
+        setInfo(null);
 
         setError("An account with this email already exists. Sign in to access all your roles.");
 
@@ -440,8 +454,8 @@ export function AuthLogin({
             <Loader2 className="size-4 animate-spin" />
           ) : mode === "login" ? (
             "Sign in"
-          ) : emailTaken ? (
-            "Sign in instead"
+          ) : switchToSignIn ? (
+            password.length >= 8 ? "Sign in instead" : "Use sign in"
           ) : (
             "Create account"
           )}
@@ -454,7 +468,12 @@ export function AuthLogin({
             Don&apos;t have an account?{" "}
             <button
               type="button"
-              onClick={() => setMode("register")}
+              onClick={() => {
+                setMode("register");
+                setError(null);
+                setInfo(null);
+                setEmailTaken(false);
+              }}
               className="font-semibold text-primary underline-offset-4 hover:underline"
             >
               Sign up
@@ -465,7 +484,12 @@ export function AuthLogin({
             Already have an account?{" "}
             <button
               type="button"
-              onClick={() => setMode("login")}
+              onClick={() => {
+                setMode("login");
+                setError(null);
+                setInfo(null);
+                setEmailTaken(false);
+              }}
               className="font-semibold text-primary underline-offset-4 hover:underline"
             >
               Sign in
@@ -554,25 +578,29 @@ export function AccountIntentPicker({
   return (
     <label className="block space-y-1.5">
       <span className="sr-only">Account type</span>
-      <select
-        value={value ?? ""}
-        onChange={(e) => {
-          const next = e.target.value as AccountIntent | "";
+      <Select
+        value={value ?? undefined}
+        onValueChange={(next) => {
           if (next === "nonprofit" || next === "business" || next === "supporter" || next === "fundraiser") {
             onChange(next);
           }
         }}
-        className="h-12 w-full rounded-xl border border-border bg-card px-4 text-sm outline-none focus:border-primary/50"
       >
-        <option value="" disabled>
-          Select account type (optional)
-        </option>
-        {INTENT_OPTIONS.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger className="h-12 w-full rounded-xl border border-border bg-card px-4 text-sm outline-none focus:border-primary/50">
+          <SelectValue placeholder="Select account type (optional)" />
+        </SelectTrigger>
+        <SelectContent className="rounded-xl border-border bg-popover">
+          {INTENT_OPTIONS.map((option) => (
+            <SelectItem
+              key={option.id}
+              value={option.id}
+              className="rounded-lg focus:bg-accent"
+            >
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </label>
   );
 }

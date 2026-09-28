@@ -333,6 +333,8 @@ export interface NonprofitProfile {
   organizationName: string;
   slug: string;
   mission: string | null;
+  /** Additive: longer about when description is set. */
+  description?: string | null;
   website: string | null;
   contactName: string | null;
   contactEmail: string | null;
@@ -353,6 +355,14 @@ export interface NonprofitProfile {
   logoUrl?: string | null;
   /** Latest access-request status for this org (pending / approved / denied). */
   accessRequestStatus?: "pending" | "approved" | "denied" | null;
+  /** Additive: public social / gallery for org profile. */
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  linkedinUrl?: string | null;
+  tiktokUrl?: string | null;
+  youtubeUrl?: string | null;
+  galleryImageUrls?: string[];
+  coverUrl?: string | null;
 }
 
 export type ReadinessState = "complete" | "needs_review" | "preloaded_unclaimed" | "not_found";

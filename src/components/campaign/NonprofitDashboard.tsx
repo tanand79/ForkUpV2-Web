@@ -18,6 +18,7 @@ import {
   Clock,
   XCircle,
   Hourglass,
+  HeartHandshake,
   type LucideIcon,
 } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
@@ -31,6 +32,7 @@ import {
   fetchNonprofitPartnerUpdates,
   fetchNonprofitPendingInvites,
   publishCampaignNow,
+  suggestCampaignImages,
   type ManageCampaignSummary,
   type NonprofitPartnerUpdate,
   type NonprofitPendingInvite,
@@ -42,6 +44,17 @@ import {
 import { netAfterPlatformFee } from "@/lib/platform-config";
 import { RequestAgainButton } from "@/components/campaign/RequestAgainButton";
 import { EmailTemplatesPanel } from "@/components/campaign/EmailTemplatesPanel";
+import { NonprofitOrgProfile } from "@/components/campaign/NonprofitOrgProfile";
+import {
+  fetchNonprofitOrgProfile,
+  saveNonprofitGallery,
+  saveNonprofitLinks,
+} from "@/lib/api-nonprofit-org-profile";
+import {
+  loadNonprofitOrgProfileSnapshot,
+  saveNonprofitOrgProfileSnapshot,
+  type NonprofitOrgProfileSnapshot,
+} from "@/lib/nonprofit-org-profile";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   invalidateNonprofitDashboardCache,
@@ -140,6 +153,12 @@ export function NonprofitDashboard() {
   const pendingInvitesRef = useRef<HTMLElement | null>(null);
   const partnerUpdatesRef = useRef<HTMLElement | null>(null);
   const nextStepsRef = useRef<HTMLElement | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [editingOrgProfile, setEditingOrgProfile] = useState(false);
+  const [orgProfile, setOrgProfile] =
+    useState<NonprofitOrgProfileSnapshot | null>(null);
+  const [orgPhotosLoading, setOrgPhotosLoading] = useState(false);
+  const orgHydrateGen = useRef(0);
 
   /**
    * Create New Campaign — run AI analyze then open idea picker.
@@ -899,6 +918,229 @@ export function NonprofitDashboard() {
   const tabIsEmpty =
     tab === "drafts" ? draftItems.length === 0 : grouped[tab].length === 0;
 
+  function openOrgProfile() {
+    if (!nonprofitId) return;
+    const gen = ++orgHydrateGen.current;
+    const saved = loadNonprofitOrgProfileSnapshot(nonprofitId);
+    const np = state.nonprofitProfile;
+    const savedPhotos = (saved?.photoUrls ?? []).filter(
+      (u) => !/fbcdn\.net|cdninstagram\.com|scontent/i.test(u),
+    );
+    const base: NonprofitOrgProfileSnapshot = {
+      nonprofitId,
+      organizationName:
+        saved?.organizationName ||
+        np?.organizationName ||
+        orgName ||
+        "Your organization",
+      city: saved?.city || "",
+      state: saved?.state || "",
+      zip: saved?.zip || "",
+      about: saved?.about || np?.mission || "",
+      coverUrl:
+        savedPhotos.length > 0
+          ? saved?.coverUrl &&
+            !/fbcdn\.net|cdninstagram\.com|scontent/i.test(saved.coverUrl)
+            ? saved.coverUrl
+            : savedPhotos[0] || null
+          : null,
+      photoUrls: savedPhotos,
+      websiteUrl: saved?.websiteUrl ?? null,
+      facebookUrl: saved?.facebookUrl ?? null,
+      instagramUrl: saved?.instagramUrl ?? null,
+      linkedinUrl: saved?.linkedinUrl ?? null,
+      youtubeUrl: saved?.youtubeUrl ?? null,
+      tiktokUrl: saved?.tiktokUrl ?? null,
+      phone: saved?.phone ?? null,
+      email: saved?.email || np?.contactEmail || null,
+      causeCategory: saved?.causeCategory || np?.causeCategory || null,
+      logoUrl: saved?.logoUrl ?? null,
+    };
+    setOrgProfile(base);
+    setEditingOrgProfile(false);
+    setProfileOpen(true);
+    setOrgPhotosLoading(true);
+
+    if (!getAuthToken()) {
+      setOrgPhotosLoading(false);
+      return;
+    }
+
+    void fetchNonprofitOrgProfile(nonprofitId)
+      .then(async (remote) => {
+        if (orgHydrateGen.current !== gen) return;
+        let next: NonprofitOrgProfileSnapshot = {
+          nonprofitId: remote.nonprofitId,
+          organizationName: remote.organizationName || base.organizationName,
+          city: remote.city || base.city,
+          state: remote.state || base.state,
+          zip: remote.zip || base.zip,
+          about: remote.about || base.about,
+          photoUrls: remote.galleryImageUrls.filter(
+            (u) => !/fbcdn\.net|cdninstagram\.com|scontent/i.test(u),
+          ).length
+            ? remote.galleryImageUrls.filter(
+                (u) => !/fbcdn\.net|cdninstagram\.com|scontent/i.test(u),
+              )
+            : base.photoUrls,
+          coverUrl: (() => {
+            const durableRemote = remote.galleryImageUrls.filter(
+              (u) => !/fbcdn\.net|cdninstagram\.com|scontent/i.test(u),
+            );
+            if (
+              remote.coverUrl &&
+              !/fbcdn\.net|cdninstagram\.com|scontent/i.test(remote.coverUrl)
+            ) {
+              return remote.coverUrl;
+            }
+            return durableRemote[0] || base.coverUrl;
+          })(),
+          websiteUrl: remote.website || base.websiteUrl,
+          facebookUrl: remote.facebookUrl || base.facebookUrl,
+          instagramUrl: remote.instagramUrl || base.instagramUrl,
+          linkedinUrl: remote.linkedinUrl || base.linkedinUrl,
+          youtubeUrl: remote.youtubeUrl || base.youtubeUrl,
+          tiktokUrl: remote.tiktokUrl || base.tiktokUrl,
+          phone: remote.phone || base.phone,
+          email: remote.contactEmail || base.email,
+          causeCategory: remote.causeCategory || base.causeCategory,
+          logoUrl: remote.logoUrl || base.logoUrl,
+        };
+        saveNonprofitOrgProfileSnapshot(next);
+        setOrgProfile(next);
+
+        // Instagram/FB CDN hotlinks expire (403). Always live-refresh like AI cover picker.
+        const ephemeral =
+          next.photoUrls.length === 0 ||
+          next.photoUrls.some((u) =>
+            /fbcdn\.net|cdninstagram\.com|scontent/i.test(u),
+          );
+        const hasLinks = Boolean(
+          next.websiteUrl?.trim() ||
+            next.instagramUrl?.trim() ||
+            next.facebookUrl?.trim() ||
+            next.linkedinUrl?.trim() ||
+            next.youtubeUrl?.trim(),
+        );
+        if (!ephemeral || !hasLinks) return;
+
+        try {
+          const { images } = await suggestCampaignImages({
+            websiteUrl: next.websiteUrl?.trim() || undefined,
+            instagramHandle: next.instagramUrl?.trim() || undefined,
+            facebookUrl: next.facebookUrl?.trim() || undefined,
+            linkedinUrl: next.linkedinUrl?.trim() || undefined,
+            youtubeUrl: next.youtubeUrl?.trim() || undefined,
+            limit: 10,
+          });
+          if (orgHydrateGen.current !== gen) return;
+          const urls = images
+            .map((img) => (img.url || "").trim())
+            .filter(Boolean);
+          if (urls.length === 0) return;
+          next = {
+            ...next,
+            photoUrls: urls,
+            coverUrl: urls[0] || next.coverUrl,
+          };
+          saveNonprofitOrgProfileSnapshot(next);
+          setOrgProfile(next);
+          if (getAuthToken() && next.nonprofitId) {
+            void saveNonprofitGallery({
+              nonprofitId: next.nonprofitId,
+              imageUrls: urls,
+              coverUrl: urls[0] || null,
+            }).catch(() => {
+              /* best-effort */
+            });
+          }
+        } catch {
+          /* keep whatever the profile API returned */
+        }
+      })
+      .catch(() => {
+        /* keep local snapshot */
+      })
+      .finally(() => {
+        if (orgHydrateGen.current === gen) setOrgPhotosLoading(false);
+      });
+  }
+
+  function changeOrgProfile(patch: Partial<NonprofitOrgProfileSnapshot>) {
+    setOrgProfile((prev) => {
+      if (!prev) return prev;
+      const next: NonprofitOrgProfileSnapshot = {
+        ...prev,
+        ...patch,
+        nonprofitId: nonprofitId ?? prev.nonprofitId,
+      };
+      saveNonprofitOrgProfileSnapshot(next);
+
+      const id = next.nonprofitId;
+      const token = getAuthToken();
+      const shouldPersistGallery =
+        id != null &&
+        (patch.photoUrls != null || patch.coverUrl !== undefined);
+      if (shouldPersistGallery && token) {
+        void saveNonprofitGallery({
+          nonprofitId: id,
+          ...(patch.photoUrls != null ? { imageUrls: patch.photoUrls } : {}),
+          ...(patch.coverUrl !== undefined ? { coverUrl: patch.coverUrl } : {}),
+        }).catch(() => {
+          /* local snapshot already saved */
+        });
+      }
+      return next;
+    });
+  }
+
+  function flushOrgLinks(snapshot: NonprofitOrgProfileSnapshot) {
+    const id = snapshot.nonprofitId ?? nonprofitId ?? null;
+    if (!id || !getAuthToken()) return;
+    void saveNonprofitLinks({
+      nonprofitId: id,
+      website: snapshot.websiteUrl?.trim() || null,
+      facebookUrl: snapshot.facebookUrl?.trim() || null,
+      instagramUrl: snapshot.instagramUrl?.trim() || null,
+      linkedinUrl: snapshot.linkedinUrl?.trim() || null,
+      tiktokUrl: snapshot.tiktokUrl?.trim() || null,
+      youtubeUrl: snapshot.youtubeUrl?.trim() || null,
+      phone: snapshot.phone?.trim() || null,
+      contactEmail: snapshot.email?.trim() || null,
+      about: snapshot.about?.trim() || null,
+      city: snapshot.city?.trim() || null,
+      state: snapshot.state?.trim() || null,
+      zip: snapshot.zip?.trim() || null,
+      organizationName: snapshot.organizationName?.trim() || null,
+    }).catch(() => {
+      /* best-effort durable sync */
+    });
+  }
+
+  if (profileOpen && orgProfile) {
+    return (
+      <NonprofitOrgProfile
+        profile={orgProfile}
+        editing={editingOrgProfile}
+        photosLoading={orgPhotosLoading}
+        onToggleEdit={() => {
+          setEditingOrgProfile((wasEditing) => {
+            if (wasEditing) flushOrgLinks(orgProfile);
+            return !wasEditing;
+          });
+        }}
+        onChange={changeOrgProfile}
+        onBack={() => {
+          if (editingOrgProfile) flushOrgLinks(orgProfile);
+          setEditingOrgProfile(false);
+          setOrgPhotosLoading(false);
+          setProfileOpen(false);
+        }}
+        backLabel="Back to dashboard"
+      />
+    );
+  }
+
   if (!nonprofitId) {
     return (
       <main className="mx-auto max-w-lg px-5 py-12 text-center">
@@ -969,6 +1211,14 @@ export function NonprofitDashboard() {
               : "Track your campaigns, respond to business invitations, and keep momentum moving."}
           </p>
           <div className="mt-4 flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">
+            <button
+              type="button"
+              onClick={openOrgProfile}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-primary transition-colors hover:text-primary-dark"
+            >
+              <HeartHandshake className="size-4 shrink-0" />
+              View profile
+            </button>
             <button
               type="button"
               onClick={() => goTo("nonprofit-claim")}

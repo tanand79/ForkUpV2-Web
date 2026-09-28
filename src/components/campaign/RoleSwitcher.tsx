@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, FileText } from "lucide-react";
+import { FileText } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { getAuthToken } from "@/lib/auth-storage";
 import { useClientMounted } from "@/lib/use-client-mounted";
@@ -14,6 +14,13 @@ import {
   type UserRole,
 } from "@/lib/user-roles";
 import { headerPillClass } from "./SiteHeader";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const ALL_ROLES: UserRole[] = ["nonprofit", "business", "fundraiser", "supporter"];
 
@@ -81,29 +88,31 @@ export function RoleSwitcher() {
   };
 
   return (
-    <label className="relative inline-flex shrink-0 items-center">
+    <div className="relative inline-flex shrink-0 items-center">
       <span className="sr-only">Switch role</span>
       <FileText className="pointer-events-none absolute left-3 z-10 size-3.5 text-muted-foreground" />
-      <select
-        value={active}
-        onChange={(e) => navigateRole(e.target.value as UserRole)}
-        className={`${headerPillClass} h-8 max-w-[11.5rem] cursor-pointer appearance-none truncate py-1.5 pl-8 pr-8`}
-        title={
-          foreignDraft
-            ? "Raising for another nonprofit — stay on Fundraiser to send an invite"
-            : "Switch between nonprofit, business, fundraiser, and supporter"
-        }
-      >
-        {ALL_ROLES.map((role) => (
-          <option key={role} value={role}>
-            {roleLabel(
-              role,
-              role === "nonprofit" ? avail.nonprofit : role === "business" ? avail.business : true,
-            )}
-          </option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-2 size-3.5 text-muted-foreground" />
-    </label>
+      <Select value={active} onValueChange={(v) => navigateRole(v as UserRole)}>
+        <SelectTrigger
+          className={`${headerPillClass} h-8 max-w-[11.5rem] cursor-pointer truncate py-1.5 pl-8 pr-8 [&>svg]:size-3.5`}
+          title={
+            foreignDraft
+              ? "Raising for another nonprofit — stay on Fundraiser to send an invite"
+              : "Switch between nonprofit, business, fundraiser, and supporter"
+          }
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="rounded-xl border-border bg-popover">
+          {ALL_ROLES.map((role) => (
+            <SelectItem key={role} value={role} className="rounded-lg focus:bg-accent">
+              {roleLabel(
+                role,
+                role === "nonprofit" ? avail.nonprofit : role === "business" ? avail.business : true,
+              )}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

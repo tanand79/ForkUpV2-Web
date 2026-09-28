@@ -492,7 +492,7 @@ function AuthLoginScreen() {
         return;
       }
 
-      const destination = resumeDirectoryInvite
+      let destination = resumeDirectoryInvite
         ? "website-landing"
         : resolvePostAuthStep(
             returnStep,
@@ -500,6 +500,25 @@ function AuthLoginScreen() {
             session.nonprofitMemberships.length,
             session.businessMemberships.length,
           );
+
+      // Dine & Donate / Guest Bartending: resume invite-businesses after signup.
+      // Online/Ambassador skip this step (no auth gate), so they never hit this.
+      const needsBusinessInvite =
+        state.methods.giveback || state.methods.guestBartending;
+      const resumeBusinessesInvite =
+        needsBusinessInvite &&
+        !resumeDirectoryInvite &&
+        (returnStep === "businesses" ||
+          returnStep === "invite" ||
+          (!returnStep &&
+            (destination === "nonprofit-claim" ||
+              destination === "website-landing" ||
+              destination === "account-hub" ||
+              destination === "start" ||
+              destination === "nonprofit-dashboard")));
+      if (resumeBusinessesInvite) {
+        destination = "businesses";
+      }
 
       if (
         (destination === "business-ai-onboarding" ||
@@ -511,7 +530,12 @@ function AuthLoginScreen() {
       }
 
       // Foreign-org draft must resume the invite (fundraiser) UI, not nonprofit Launch.
+      // Still honor businesses/invite when D&D / guest bartending was in progress.
       if (foreignTarget && !resumeDirectoryInvite) {
+        if (destination === "businesses" || returnStep === "businesses" || returnStep === "invite") {
+          goTo("businesses", { query: { returnTo: "ai-campaign-preview" } });
+          return;
+        }
         goTo(
           returnStep === "ai-campaign-preview" ||
             returnStep === "ai-campaign-dates" ||
@@ -521,6 +545,11 @@ function AuthLoginScreen() {
             ? returnStep
             : "ai-campaign-preview",
         );
+        return;
+      }
+
+      if (destination === "businesses") {
+        goTo("businesses", { query: { returnTo: "ai-campaign-preview" } });
         return;
       }
 

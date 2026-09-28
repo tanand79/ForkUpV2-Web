@@ -6,6 +6,15 @@ import { useCampaign } from "@/lib/campaign-context";
 import { stashAccountIntent } from "@/lib/campaign-auth";
 import { assetSrc } from "@/lib/utils";
 import forkupLogo from "@/assets/forkup-logo-header.png";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const EMPTY_SELECT = "__empty__";
 
 /**
  * GoFundMe-style create entry (Nick V2 speed layer).
@@ -205,36 +214,46 @@ export function CreateFundraiser() {
           <div className="mt-8 space-y-5">
             <label className="block space-y-1.5">
               <span className="text-sm font-semibold">Country / region</span>
-              <select
+              <Select
                 value={country}
-                onChange={(e) => {
-                  setCountry(e.target.value);
-                  if (e.target.value !== "United States") setUsState("");
+                onValueChange={(v) => {
+                  setCountry(v);
+                  if (v !== "United States") setUsState("");
                 }}
-                className="h-12 w-full rounded-xl border border-border bg-card px-4 text-sm"
               >
-                {REGIONS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="h-12 w-full rounded-xl border border-border bg-card px-4 text-sm justify-between">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border-border bg-popover">
+                  {REGIONS.map((r) => (
+                    <SelectItem key={r} value={r} className="rounded-lg focus:bg-accent">
+                      {r}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             {country === "United States" && (
               <label className="block space-y-1.5">
                 <span className="text-sm font-semibold">State</span>
-                <select
-                  value={usState}
-                  onChange={(e) => setUsState(e.target.value)}
-                  className="h-12 w-full rounded-xl border border-border bg-card px-4 text-sm"
+                <Select
+                  value={usState || EMPTY_SELECT}
+                  onValueChange={(v) => setUsState(v === EMPTY_SELECT ? "" : v)}
                 >
-                  <option value="">Select a state</option>
-                  {US_STATES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="h-12 w-full rounded-xl border border-border bg-card px-4 text-sm justify-between">
+                    <SelectValue placeholder="Select a state" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl border-border bg-popover">
+                    <SelectItem value={EMPTY_SELECT} className="rounded-lg focus:bg-accent">
+                      Select a state
+                    </SelectItem>
+                    {US_STATES.map((s) => (
+                      <SelectItem key={s} value={s} className="rounded-lg focus:bg-accent">
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
             )}
           </div>

@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Sparkles } from "lucide-react";
 import { useCampaign, type SupportMethods } from "@/lib/campaign-context";
+import { hasLockedBusinessPartners } from "@/lib/campaign-flow";
 import {
   fetchAiCampaignSession,
   resolveAiCampaignSources,
@@ -223,16 +224,23 @@ export function AiCampaignIdeas() {
         state.nonprofitProfile?.mission ||
         `Support ${orgName}`;
 
-      const methods = ensureDefaultFundraisingLayer(
-        idea
-          ? methodsFromIdea(idea.suggestedMethods)
-          : {
-              donations: true,
-              ambassador: true,
-              giveback: false,
-              guestBartending: false,
-            },
-      );
+      const methods = hasLockedBusinessPartners(state)
+        ? ensureDefaultFundraisingLayer({
+            donations: true,
+            ambassador: true,
+            giveback: state.methods.giveback,
+            guestBartending: state.methods.guestBartending,
+          })
+        : ensureDefaultFundraisingLayer(
+            idea
+              ? methodsFromIdea(idea.suggestedMethods)
+              : {
+                  donations: true,
+                  ambassador: true,
+                  giveback: false,
+                  guestBartending: false,
+                },
+          );
 
       // Use new-AI idea card fields (no legacy /generate-campaign-draft polish).
       const title = idea?.title || `${orgName} Fundraiser`;

@@ -9,6 +9,13 @@ import {
   removeCampaignParticipant,
   type CampaignParticipant,
 } from "@/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const ROLES: AmbassadorRole[] = [
   "Board Member",
@@ -269,17 +276,23 @@ export function AmbassadorSetup() {
             <label className="text-sm font-semibold">
               Role / Type <span className="font-normal text-muted-foreground">(optional)</span>
             </label>
-            <select
-              className={field}
+            <Select
               value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value as AmbassadorRole })}
+              onValueChange={(role) =>
+                setForm({ ...form, role: role as AmbassadorRole })
+              }
             >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className={`${field} h-auto justify-between`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl border-border bg-popover">
+                {ROLES.map((r) => (
+                  <SelectItem key={r} value={r} className="rounded-lg focus:bg-accent">
+                    {r}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 pt-1">

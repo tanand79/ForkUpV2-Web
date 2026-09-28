@@ -34,6 +34,8 @@ import { useCallback, useState } from "react";
 
 import { useCampaign } from "@/lib/campaign-context";
 
+import { hasLockedBusinessPartners } from "@/lib/campaign-flow";
+
 import { draftAiCampaignFromPurpose, fetchAiCampaignSession } from "@/lib/api-ai-campaign-flow";
 
 import { loadAiFlowStore, saveAiFlowStore, loadAiFlowPendingOrg } from "@/lib/ai-campaign-flow-storage";
@@ -106,17 +108,19 @@ export function AiCampaignPurpose() {
 
     const purposeText = purpose.trim();
 
-    const methods = {
-
-      donations: true,
-
-      ambassador: true,
-
-      giveback: false,
-
-      guestBartending: false,
-
-    };
+    const methods = hasLockedBusinessPartners(state)
+      ? {
+          donations: true,
+          ambassador: true,
+          giveback: state.methods.giveback,
+          guestBartending: state.methods.guestBartending,
+        }
+      : {
+          donations: true,
+          ambassador: true,
+          giveback: false,
+          guestBartending: false,
+        };
 
 
 

@@ -5,7 +5,7 @@
  * the email From display name. SMTP From address stays platform smtp_from.
  *
  * Inputs: org type/id (or self mode), controlled value, onChange.
- * Outputs: native select; loads members from GET /api/profiles/organization-members.
+ * Outputs: themed Select; loads members from GET /api/profiles/organization-members.
  */
 "use client";
 
@@ -17,6 +17,13 @@ import {
 } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth-storage";
 import { loadUserSession } from "@/lib/auth-session";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type OrgModeProps = {
   mode?: "org";
@@ -165,25 +172,29 @@ export function InviteSenderSelect(props: Props) {
           (shown on the email)
         </span>
       </label>
-      <select
-        className={fieldClass}
-        disabled={loading || members.length === 0}
-        value={props.value ?? ""}
-        onChange={(e) => {
-          const n = Number(e.target.value);
+      <Select
+        value={props.value != null && props.value > 0 ? String(props.value) : undefined}
+        onValueChange={(v) => {
+          const n = Number(v);
           props.onChange(Number.isFinite(n) && n > 0 ? n : null);
         }}
+        disabled={loading || members.length === 0}
       >
-        {loading ? (
-          <option value="">Loading…</option>
-        ) : (
-          members.map((m) => (
-            <option key={m.userId} value={m.userId}>
+        <SelectTrigger className={`${fieldClass} justify-between`}>
+          <SelectValue placeholder={loading ? "Loading…" : "Select sender"} />
+        </SelectTrigger>
+        <SelectContent className="rounded-xl border-border bg-popover">
+          {members.map((m) => (
+            <SelectItem
+              key={m.userId}
+              value={String(m.userId)}
+              className="rounded-lg focus:bg-accent"
+            >
               {m.fullName}
-            </option>
-          ))
-        )}
-      </select>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {error ? (
         <p className="text-xs text-destructive">{error}</p>
       ) : (

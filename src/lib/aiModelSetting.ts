@@ -80,7 +80,7 @@ export const AI_MODEL_OPTIONS: AiModelOption[] = [
   },
 ];
 
-export const DEFAULT_AI_MODEL: AiModelId = "amazon.nova-lite-v1:0";
+export const DEFAULT_AI_MODEL: AiModelId = "anthropic.claude-sonnet-4-6";
 
 const STORAGE_KEY = "forkup.aiModel";
 

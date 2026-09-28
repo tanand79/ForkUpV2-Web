@@ -21,6 +21,11 @@ export type BusinessJoinFourStepDraft = {
   nameQuery: string;
   /** Additive: US ZIP for nearby store resolution (NPO-style). */
   nearZip: string;
+  /**
+   * Additive: free-text nearby hint — ZIP and/or "City, ST" (NPO-style).
+   * Prefer this over nearZip alone; nearZip stays for older drafts.
+   */
+  nearLocation: string;
   found: FindBusinessProfileResult | null;
   localGivebackMode: LocalGivebackMode;
   /** Restaurant (and % of purchase) giveback — default 15, range 5–50. */
@@ -34,6 +39,63 @@ export type BusinessJoinFourStepDraft = {
   eligibleWindow: string;
 };
 
+/** Parsed nearby hint for find-business / generate-business-draft. */
+export type ParsedNearbyLocation = {
+  nearZip?: string;
+  city?: string;
+  state?: string;
+};
+
+/**
+ * Parse a nearby location field into ZIP and/or city/state.
+ * Examples: "19348", "Kennett Square, PA", "Kennett Square PA", "Philadelphia".
+ */
+export function parseNearbyLocation(raw: string): ParsedNearbyLocation {
+  const trimmed = raw.trim();
+  if (!trimmed) return {};
+
+  const zipOnly = trimmed.replace(/\D/g, "").slice(0, 5);
+  if (/^\d{5}(-\d{4})?$/.test(trimmed) && zipOnly.length === 5) {
+    return { nearZip: zipOnly };
+  }
+
+  // Trailing ZIP after city text: "Kennett Square 19348" / "Kennett Square, 19348"
+  const trailingZip = trimmed.match(/^(.*?)(?:\s*[-–,]\s*|\s+)(\d{5})(?:-\d{4})?\s*$/);
+  if (trailingZip?.[1]?.trim() && trailingZip[2]) {
+    const place = trailingZip[1].trim();
+    const cityState = parseCityState(place);
+    return {
+      nearZip: trailingZip[2],
+      ...(cityState.city ? { city: cityState.city } : {}),
+      ...(cityState.state ? { state: cityState.state } : !cityState.city ? { city: place } : {}),
+    };
+  }
+
+  return parseCityState(trimmed);
+}
+
+/** Split "City, ST" or "City ST" into city + optional 2-letter state. */
+function parseCityState(raw: string): { city?: string; state?: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return {};
+
+  const comma = trimmed.match(/^(.+?),\s*([A-Za-z]{2})\s*$/);
+  if (comma?.[1]?.trim() && comma[2]) {
+    return { city: comma[1].trim(), state: comma[2].toUpperCase() };
+  }
+
+  const spaced = trimmed.match(/^(.+?)\s+([A-Za-z]{2})\s*$/);
+  if (spaced?.[1]?.trim() && spaced[2]) {
+    return { city: spaced[1].trim(), state: spaced[2].toUpperCase() };
+  }
+
+  if (/^[A-Za-z]{2}$/.test(trimmed)) {
+    return { state: trimmed.toUpperCase() };
+  }
+
+  return { city: trimmed };
+}
+
 /** Clamp join giveback % to the product range used elsewhere (5–50). */
 export function clampJoinGivebackPercent(value: number): number {
   if (!Number.isFinite(value)) return 15;
@@ -46,6 +108,7 @@ export function defaultBusinessJoinDraft(door: BusinessDoor | null = null): Busi
     door,
     nameQuery: "",
     nearZip: "",
+    nearLocation: "",
     found: null,
     localGivebackMode: "percent_of_purchase",
     givebackPercent: 15,
@@ -71,6 +134,14 @@ export function loadBusinessJoinDraft(): BusinessJoinFourStepDraft | null {
     merged.discountHours = normalizeVenueHours(parsed.discountHours);
     merged.eligibleWindow =
       typeof parsed.eligibleWindow === "string" ? parsed.eligibleWindow : "";
+    merged.nearLocation =
+      typeof parsed.nearLocation === "string" ? parsed.nearLocation : "";
+    // Older drafts only had nearZip — surface it in the free-text field.
+    if (!merged.nearLocation.trim() && typeof parsed.nearZip === "string" && parsed.nearZip.trim()) {
+      merged.nearLocation = parsed.nearZip.replace(/\D/g, "").slice(0, 5);
+    }
+    const parsedNear = parseNearbyLocation(merged.nearLocation);
+    merged.nearZip = parsedNear.nearZip || "";
     return merged;
   } catch {
     return null;

@@ -14,6 +14,13 @@ import {
   nearbyQueryParams,
   useBrowserLocation,
 } from "@/hooks/use-browser-location";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 
 
@@ -826,17 +833,21 @@ function InviteForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <label className="text-sm font-semibold">Business Type</label>
-            <select
-              className={field}
+            <Select
               value={form.type}
-              onChange={(e) => setForm({ ...form, type: e.target.value })}
+              onValueChange={(type) => setForm({ ...form, type })}
             >
-              {BUSINESS_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className={`${field} h-auto justify-between`}>
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl border-border bg-popover">
+                {BUSINESS_TYPES.map((t) => (
+                  <SelectItem key={t} value={t} className="rounded-lg focus:bg-accent">
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <p className="text-[11px] text-muted-foreground">
               Support Type: {METHOD_TYPE_META[supportType].label}
             </p>

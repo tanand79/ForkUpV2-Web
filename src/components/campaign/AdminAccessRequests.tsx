@@ -11,6 +11,15 @@ import {
   type AccessRequest,
 } from "@/lib/api";
 import { formatDateTimeUs } from "@/lib/date-only";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const EMPTY_SELECT = "__empty__";
 
 const STATUS_STYLE: Record<string, string> = {
   pending: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
@@ -107,45 +116,69 @@ export function AdminAccessRequests() {
       <div className="mt-6 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
           Status
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          <Select
+            value={status || EMPTY_SELECT}
+            onValueChange={(v) => setStatus(v === EMPTY_SELECT ? "" : v)}
           >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s || "All"}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground justify-between min-w-[8rem]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-border bg-popover">
+              {STATUS_OPTIONS.map((s) => (
+                <SelectItem
+                  key={s || EMPTY_SELECT}
+                  value={s || EMPTY_SELECT}
+                  className="rounded-lg focus:bg-accent"
+                >
+                  {s || "All"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
           Risk
-          <select
-            value={riskLevel}
-            onChange={(e) => setRiskLevel(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          <Select
+            value={riskLevel || EMPTY_SELECT}
+            onValueChange={(v) => setRiskLevel(v === EMPTY_SELECT ? "" : v)}
           >
-            {RISK_OPTIONS.map((r) => (
-              <option key={r} value={r}>
-                {r || "All"}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground justify-between min-w-[8rem]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-border bg-popover">
+              {RISK_OPTIONS.map((r) => (
+                <SelectItem
+                  key={r || EMPTY_SELECT}
+                  value={r || EMPTY_SELECT}
+                  className="rounded-lg focus:bg-accent"
+                >
+                  {r || "All"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
           Organization
-          <select
-            value={organizationType}
-            onChange={(e) => setOrganizationType(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          <Select
+            value={organizationType || EMPTY_SELECT}
+            onValueChange={(v) => setOrganizationType(v === EMPTY_SELECT ? "" : v)}
           >
-            {ORG_TYPE_OPTIONS.map((o) => (
-              <option key={o} value={o}>
-                {o || "All"}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground justify-between min-w-[8rem]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-border bg-popover">
+              {ORG_TYPE_OPTIONS.map((o) => (
+                <SelectItem
+                  key={o || EMPTY_SELECT}
+                  value={o || EMPTY_SELECT}
+                  className="rounded-lg focus:bg-accent"
+                >
+                  {o || "All"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
         <button
           type="button"

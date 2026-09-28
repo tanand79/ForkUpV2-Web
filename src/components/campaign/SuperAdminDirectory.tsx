@@ -40,6 +40,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const EMPTY_SELECT = "__empty__";
 
 const fieldClass =
   "w-full rounded-xl border border-border bg-background px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20";
@@ -603,20 +612,40 @@ export function SuperAdminCampaignsDirectoryTab() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className={fieldClass}
+          <Select
+            value={status || EMPTY_SELECT}
+            onValueChange={(v) => setStatus(v === EMPTY_SELECT ? "" : v)}
           >
-            <option value="">All statuses</option>
-            <option value="draft">draft</option>
-            <option value="in_review">in_review</option>
-            <option value="invitation_phase">invitation_phase</option>
-            <option value="ready_to_launch">ready_to_launch</option>
-            <option value="live">live only</option>
-            <option value="closed">closed</option>
-            <option value="settlement">settlement</option>
-          </select>
+            <SelectTrigger className={`${fieldClass} h-auto justify-between min-w-[10rem]`}>
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-border bg-popover">
+              <SelectItem value={EMPTY_SELECT} className="rounded-lg focus:bg-accent">
+                All statuses
+              </SelectItem>
+              <SelectItem value="draft" className="rounded-lg focus:bg-accent">
+                draft
+              </SelectItem>
+              <SelectItem value="in_review" className="rounded-lg focus:bg-accent">
+                in_review
+              </SelectItem>
+              <SelectItem value="invitation_phase" className="rounded-lg focus:bg-accent">
+                invitation_phase
+              </SelectItem>
+              <SelectItem value="ready_to_launch" className="rounded-lg focus:bg-accent">
+                ready_to_launch
+              </SelectItem>
+              <SelectItem value="live" className="rounded-lg focus:bg-accent">
+                live only
+              </SelectItem>
+              <SelectItem value="closed" className="rounded-lg focus:bg-accent">
+                closed
+              </SelectItem>
+              <SelectItem value="settlement" className="rounded-lg focus:bg-accent">
+                settlement
+              </SelectItem>
+            </SelectContent>
+          </Select>
           <SearchBox value={search} onChange={setSearch} placeholder="Search campaigns…" />
         </div>
       </div>

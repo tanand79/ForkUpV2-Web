@@ -30,6 +30,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const field =
   "w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring/30";
@@ -342,20 +349,25 @@ export function EmailTemplatesPanel({
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                 <label className="block min-w-0 flex-1 space-y-1.5">
                   <span className="text-sm font-semibold">Template</span>
-                  <select
-                    className={field}
-                    value={selectedKey}
-                    onChange={(e) => selectTemplate(e.target.value)}
+                  <Select
+                    value={selectedKey || undefined}
+                    onValueChange={selectTemplate}
                   >
-                    {templates.map((t) => (
-                      <option
-                        key={`${t.source}-${t.id ?? "sys"}-${t.templateKey}`}
-                        value={t.templateKey}
-                      >
-                        {optionLabel(t)}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className={`${field} h-auto justify-between`}>
+                      <SelectValue placeholder="Select a template" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-border bg-popover">
+                      {templates.map((t) => (
+                        <SelectItem
+                          key={`${t.source}-${t.id ?? "sys"}-${t.templateKey}`}
+                          value={t.templateKey}
+                          className="rounded-lg focus:bg-accent"
+                        >
+                          {optionLabel(t)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
                 <button
                   type="button"

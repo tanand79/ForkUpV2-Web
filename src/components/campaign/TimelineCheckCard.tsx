@@ -17,6 +17,15 @@ import {
   type MethodTimingEvaluation,
   type TimingCta,
 } from "@/lib/campaign-timing";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const EMPTY_SELECT = "__empty__";
 
 const fieldClass =
   "h-11 w-full rounded-xl border border-border bg-card px-3 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring/30";
@@ -187,35 +196,62 @@ export function TimelineCheckCard({
               <label className="text-xs font-semibold">
                 Confirmation Method <span className="text-primary">*</span>
               </label>
-              <select
-                className={fieldClass}
-                value={state.confirmedMethod}
-                onChange={(e) =>
+              <Select
+                value={state.confirmedMethod || EMPTY_SELECT}
+                onValueChange={(v) =>
                   onConfirmField({
-                    confirmedMethod: e.target.value as CampaignState["confirmedMethod"],
+                    confirmedMethod: (v === EMPTY_SELECT
+                      ? ""
+                      : v) as CampaignState["confirmedMethod"],
                   })
                 }
               >
-                <option value="">Select…</option>
-                <option value="email">Email</option>
-                <option value="phone">Phone</option>
-                <option value="in_person">In Person</option>
-              </select>
+                <SelectTrigger className={`${fieldClass} h-auto justify-between`}>
+                  <SelectValue placeholder="Select…" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border-border bg-popover">
+                  <SelectItem value={EMPTY_SELECT} className="rounded-lg focus:bg-accent">
+                    Select…
+                  </SelectItem>
+                  <SelectItem value="email" className="rounded-lg focus:bg-accent">
+                    Email
+                  </SelectItem>
+                  <SelectItem value="phone" className="rounded-lg focus:bg-accent">
+                    Phone
+                  </SelectItem>
+                  <SelectItem value="in_person" className="rounded-lg focus:bg-accent">
+                    In Person
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <label className="text-xs font-semibold">
                 Confirmation Status <span className="text-primary">*</span>
               </label>
-              <select
-                className={fieldClass}
-                value={state.confirmedStatus}
-                onChange={(e) =>
-                  onConfirmField({ confirmedStatus: e.target.value })
+              <Select
+                value={state.confirmedStatus || EMPTY_SELECT}
+                onValueChange={(v) =>
+                  onConfirmField({
+                    confirmedStatus: v === EMPTY_SELECT ? "" : v,
+                  })
                 }
               >
-                <option value="">Select…</option>
-                <option value="Business has agreed">Business has agreed</option>
-              </select>
+                <SelectTrigger className={`${fieldClass} h-auto justify-between`}>
+                  <SelectValue placeholder="Select…" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border-border bg-popover">
+                  <SelectItem value={EMPTY_SELECT} className="rounded-lg focus:bg-accent">
+                    Select…
+                  </SelectItem>
+                  <SelectItem
+                    value="Business has agreed"
+                    className="rounded-lg focus:bg-accent"
+                  >
+                    Business has agreed
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <label className="text-xs font-semibold">Notes (optional)</label>

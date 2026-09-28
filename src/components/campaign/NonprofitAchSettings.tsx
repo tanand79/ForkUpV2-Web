@@ -15,6 +15,13 @@ import { useCampaign } from "@/lib/campaign-context";
 import { getAuthToken } from "@/lib/auth-storage";
 import { fetchNonprofitAch, saveNonprofitAch } from "@/lib/api-nonprofit-ach";
 import { AuthLogin } from "@/components/campaign/AuthLogin";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const inputClass =
   "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30";
@@ -186,14 +193,22 @@ export function NonprofitAchSettings() {
             </label>
             <label className="block text-xs font-semibold text-muted-foreground">
               Account type
-              <select
+              <Select
                 value={accountType}
-                onChange={(e) => setAccountType(e.target.value as "checking" | "savings")}
-                className={`mt-1 ${inputClass}`}
+                onValueChange={(v) => setAccountType(v as "checking" | "savings")}
               >
-                <option value="checking">Checking</option>
-                <option value="savings">Savings</option>
-              </select>
+                <SelectTrigger className={`mt-1 ${inputClass} h-auto justify-between`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border-border bg-popover">
+                  <SelectItem value="checking" className="rounded-lg focus:bg-accent">
+                    Checking
+                  </SelectItem>
+                  <SelectItem value="savings" className="rounded-lg focus:bg-accent">
+                    Savings
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </label>
             <label className="block text-xs font-semibold text-muted-foreground">
               Routing number

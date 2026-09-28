@@ -14,6 +14,15 @@ import {
 } from "@/lib/api";
 import { formatDateTimeUs, formatDateUs, looksLikeIsoDateTime } from "@/lib/date-only";
 import { formatMoneyUSD } from "@/lib/money-format";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const EMPTY_SELECT = "__empty__";
 
 const TYPE_LABEL: Record<PayoutType, string> = {
   business_to_forkup: "Business → ForkUp",
@@ -175,17 +184,21 @@ export function PayoutsPanel({
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1 text-xs font-semibold text-muted-foreground">
               Type
-              <select
+              <Select
                 value={payoutType}
-                onChange={(e) => setPayoutType(e.target.value as PayoutType)}
-                className={inputClass}
+                onValueChange={(v) => setPayoutType(v as PayoutType)}
               >
-                {TYPE_OPTIONS.map((t) => (
-                  <option key={t} value={t}>
-                    {TYPE_LABEL[t]}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className={`${inputClass} h-auto justify-between`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border-border bg-popover">
+                  {TYPE_OPTIONS.map((t) => (
+                    <SelectItem key={t} value={t} className="rounded-lg focus:bg-accent">
+                      {TYPE_LABEL[t]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <label className="space-y-1 text-xs font-semibold text-muted-foreground">
               Amount
@@ -201,33 +214,53 @@ export function PayoutsPanel({
             </label>
             <label className="space-y-1 text-xs font-semibold text-muted-foreground">
               Method
-              <select
-                value={method}
-                onChange={(e) => setMethod(e.target.value as "" | PayoutMethod)}
-                className={inputClass}
+              <Select
+                value={method || EMPTY_SELECT}
+                onValueChange={(v) =>
+                  setMethod(v === EMPTY_SELECT ? "" : (v as PayoutMethod))
+                }
               >
-                <option value="">—</option>
-                {METHOD_OPTIONS.map((m) => (
-                  <option key={m} value={m}>
-                    {m.toUpperCase()}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className={`${inputClass} h-auto justify-between`}>
+                  <SelectValue placeholder="—" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border-border bg-popover">
+                  <SelectItem value={EMPTY_SELECT} className="rounded-lg focus:bg-accent">
+                    —
+                  </SelectItem>
+                  {METHOD_OPTIONS.map((m) => (
+                    <SelectItem key={m} value={m} className="rounded-lg focus:bg-accent">
+                      {m.toUpperCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <label className="space-y-1 text-xs font-semibold text-muted-foreground">
               Link to settlement (optional)
-              <select
-                value={settlementId}
-                onChange={(e) => setSettlementId(e.target.value)}
-                className={inputClass}
+              <Select
+                value={settlementId || EMPTY_SELECT}
+                onValueChange={(v) =>
+                  setSettlementId(v === EMPTY_SELECT ? "" : v)
+                }
               >
-                <option value="">—</option>
-                {businessReports.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.businessName} — {b.locationName}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className={`${inputClass} h-auto justify-between`}>
+                  <SelectValue placeholder="—" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border-border bg-popover">
+                  <SelectItem value={EMPTY_SELECT} className="rounded-lg focus:bg-accent">
+                    —
+                  </SelectItem>
+                  {businessReports.map((b) => (
+                    <SelectItem
+                      key={b.id}
+                      value={String(b.id)}
+                      className="rounded-lg focus:bg-accent"
+                    >
+                      {b.businessName} — {b.locationName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
           </div>
           <label className="block space-y-1 text-xs font-semibold text-muted-foreground">

@@ -13,7 +13,6 @@ import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, Mail } from "lucide-react";
 import { resendVerification, verifyEmail } from "@/lib/api";
 import { setAuthToken } from "@/lib/auth-storage";
-import { clearAuthAndSession } from "@/lib/auth-session";
 import { useCampaign } from "@/lib/campaign-context";
 import { isValidEmail, normalizeEmail } from "@/lib/email-validation";
 
@@ -73,7 +72,12 @@ export function promotePendingAuthToken(): boolean {
   return true;
 }
 
-/** Clear abandoned signup session so Sign in is not half-signed-in. */
+/**
+ * Clear abandoned signup / verify staging keys so Sign in is not half-signed-in.
+ * Do NOT call clearAuthAndSession() here — that wipes forkup-auth-return-step and
+ * the campaign draft when AuthLogin mounts mid Dine & Donate / Guest Bartending
+ * invite (businesses) resume. Intentional sign-out still uses clearAuthAndSession.
+ */
 export function clearPendingSignupAuth() {
   if (typeof window === "undefined") return;
   sessionStorage.removeItem(PENDING_AUTH_TOKEN_KEY);
@@ -81,7 +85,6 @@ export function clearPendingSignupAuth() {
   sessionStorage.removeItem(PENDING_INTENT_KEY);
   sessionStorage.removeItem(AWAITING_KEY);
   sessionStorage.removeItem(RUN_FINISH_KEY);
-  clearAuthAndSession();
 }
 
 /**

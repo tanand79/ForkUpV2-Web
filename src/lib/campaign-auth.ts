@@ -102,7 +102,12 @@ export function roleHintFromStep(step: StepId): UserRole | null {
     step === "guest-campaign-claim" ||
     step === "guest-business-claim" ||
     step === "fundraiser-invite-sent" ||
-    step === "methods"
+    step === "methods" ||
+    // Dine & Donate / Guest Bartending invite path (auth-gated).
+    step === "businesses" ||
+    step === "invite" ||
+    step === "edit-invite" ||
+    step === "business-invite-flow"
   ) {
     return "nonprofit";
   }
