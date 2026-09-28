@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, HeartHandshake, Megaphone, Plus, Store, Users } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { getAuthToken } from "@/lib/auth-storage";
+import { syncAuthSession, buildSessionPatch } from "@/lib/auth-session";
 import {
   ROLE_DASHBOARD,
   ROLE_LABELS,
@@ -21,12 +22,36 @@ const ROLE_ICONS: Record<UserRole, typeof HeartHandshake> = {
 };
 
 export function AccountHub() {
-  const { goTo, state, switchActiveRole } = useCampaign();
+  const { goTo, state, switchActiveRole, update } = useCampaign();
   /** Avoid SSR/client token mismatch (hydration). */
   const [mounted, setMounted] = useState(false);
+  /** True until first forced /auth/context refresh finishes (live race after signup). */
+  const [syncing, setSyncing] = useState(false);
+
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Live: header can show the user while memberships are still empty in client
+  // state until reload. Force-sync so "Set up organization" flips to dashboard
+  // when the account already has YMCA (or any) nonprofit membership.
+  useEffect(() => {
+    if (!mounted || !getAuthToken()) return;
+    let cancelled = false;
+    setSyncing(true);
+    void syncAuthSession(undefined, { force: true })
+      .then((session) => {
+        if (cancelled || !session) return;
+        update(buildSessionPatch(session));
+      })
+      .finally(() => {
+        if (!cancelled) setSyncing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, update]);
+
   const signedIn = mounted && Boolean(getAuthToken());
 
   const avail = roleAvailability(
@@ -62,8 +87,14 @@ export function AccountHub() {
       title: ROLE_LABELS.nonprofit,
       description: avail.nonprofit
         ? state.nonprofitProfile?.organizationName ?? "Manage fundraising campaigns"
-        : "Set up your nonprofit organization to launch campaigns",
-      action: avail.nonprofit ? "Open dashboard" : "Set up organization",
+        : syncing
+          ? "Loading your organization…"
+          : "Set up your nonprofit organization to launch campaigns",
+      action: avail.nonprofit
+        ? "Open dashboard"
+        : syncing
+          ? "Checking…"
+          : "Set up organization",
       available: true,
     },
     {
@@ -71,8 +102,14 @@ export function AccountHub() {
       title: ROLE_LABELS.business,
       description: avail.business
         ? state.businessProfile?.businessName ?? "Manage business partnerships"
-        : "Claim your business to accept invitations and partner with nonprofits",
-      action: avail.business ? "Open dashboard" : "Claim business",
+        : syncing
+          ? "Loading your business…"
+          : "Claim your business to accept invitations and partner with nonprofits",
+      action: avail.business
+        ? "Open dashboard"
+        : syncing
+          ? "Checking…"
+          : "Claim business",
       available: true,
     },
     {
@@ -107,12 +144,20 @@ export function AccountHub() {
         {cards.map(({ role, title, description, action, available }) => {
           if (!available) return null;
           const Icon = ROLE_ICONS[role];
+          const roleReady =
+            (role === "nonprofit" && avail.nonprofit) ||
+            (role === "business" && avail.business) ||
+            role === "fundraiser" ||
+            role === "supporter";
+          const disableWhileSyncing =
+            syncing && (role === "nonprofit" || role === "business") && !roleReady;
           return (
             <button
               key={role}
               type="button"
+              disabled={disableWhileSyncing}
               onClick={() => openRole(role)}
-              className="flex items-start gap-4 rounded-2xl border border-border bg-card p-5 text-left transition-colors hover:border-primary/40"
+              className="flex items-start gap-4 rounded-2xl border border-border bg-card p-5 text-left transition-colors hover:border-primary/40 disabled:cursor-wait disabled:opacity-70"
             >
               <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <Icon className="size-5" />
@@ -135,7 +180,7 @@ export function AccountHub() {
           Already a nonprofit organizer? You can still claim a business profile with the same email.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          {!avail.nonprofit && (
+          {!avail.nonprofit && !syncing && (
             <button
               type="button"
               onClick={() => openRole("nonprofit")}
@@ -144,7 +189,7 @@ export function AccountHub() {
               <Plus className="size-4" /> Add nonprofit
             </button>
           )}
-          {!avail.business && (
+          {!avail.business && !syncing && (
             <button
               type="button"
               onClick={() => openRole("business")}

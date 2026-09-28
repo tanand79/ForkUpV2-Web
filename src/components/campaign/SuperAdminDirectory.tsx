@@ -4,6 +4,7 @@
  * Purpose: Users, Roles, Nonprofits, Businesses (+ ACH summary), Campaigns,
  * Fundraisers, Donations, and Overview counts. Does not remove existing tabs.
  * Users tab also supports delete of non-platform-admin accounts (confirm dialog).
+ * Nonprofits / Businesses tabs support soft-archive delete (confirm dialog).
  *
  * Inputs: Super Admin bearer session via existing fetch helpers.
  * Outputs: searchable tables; Businesses expand locations for ACH status.
@@ -13,7 +14,9 @@
 import { useCallback, useEffect, useState, Fragment } from "react";
 import { ChevronDown, ChevronRight, Eye, Loader2, Search, Trash2 } from "lucide-react";
 import {
+  deleteSuperAdminBusiness,
   deleteSuperAdminLiveCampaign,
+  deleteSuperAdminNonprofit,
   deleteSuperAdminUser,
   fetchSuperAdminBusinesses,
   fetchSuperAdminCampaigns,
@@ -329,29 +332,58 @@ export function SuperAdminNonprofitsTab() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actingId, setActingId] = useState<number | null>(null);
+  const [deleteRow, setDeleteRow] = useState<SuperAdminNonprofitRow | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 300);
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     setLoading(true);
-    void fetchSuperAdminNonprofits({ search: debounced || undefined, limit: 100 })
-      .then((r) => {
-        setRows(r.nonprofits);
-        setTotal(r.totalCount);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => setLoading(false));
+    setError(null);
+    try {
+      const r = await fetchSuperAdminNonprofits({
+        search: debounced || undefined,
+        limit: 100,
+      });
+      setRows(r.nonprofits);
+      setTotal(r.totalCount);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
   }, [debounced]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const confirmDelete = async () => {
+    if (!deleteRow) return;
+    setActingId(deleteRow.id);
+    setError(null);
+    try {
+      await deleteSuperAdminNonprofit(deleteRow.id);
+      setDeleteRow(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete nonprofit");
+    } finally {
+      setActingId(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Nonprofits</h2>
-          <p className="text-sm text-muted-foreground">{total} total</p>
+          <p className="text-sm text-muted-foreground">
+            {total} total · delete archives and clears contact
+          </p>
         </div>
         <SearchBox value={search} onChange={setSearch} placeholder="Search name, EIN, email…" />
       </div>
@@ -365,17 +397,18 @@ export function SuperAdminNonprofitsTab() {
               <th className={th}>Location</th>
               <th className={th}>Verification</th>
               <th className={th}>Claim</th>
+              <th className={th}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="py-10 text-center">
+                <td colSpan={6} className="py-10 text-center">
                   <Loader2 className="mx-auto size-5 animate-spin text-primary" />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
-              <EmptyRow colSpan={5} message="No nonprofits found." />
+              <EmptyRow colSpan={6} message="No nonprofits found." />
             ) : (
               rows.map((n) => (
                 <tr key={n.id} className="border-b border-border/60 last:border-0">
@@ -392,12 +425,66 @@ export function SuperAdminNonprofitsTab() {
                   </td>
                   <td className={td}>{n.verificationStatus || "—"}</td>
                   <td className={td}>{n.claimStatus || "—"}</td>
+                  <td className={td}>
+                    <button
+                      type="button"
+                      disabled={actingId === n.id}
+                      onClick={() => setDeleteRow(n)}
+                      className="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800 disabled:opacity-40"
+                    >
+                      <Trash2 className="size-3.5" /> Delete
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      <Dialog
+        open={deleteRow != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteRow(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete nonprofit?</DialogTitle>
+            <DialogDescription>
+              This archives{" "}
+              <span className="font-semibold text-foreground">
+                {deleteRow?.organizationName ?? "this nonprofit"}
+              </span>
+              , clears its contact, and removes memberships. It leaves the directory and will
+              not receive invites. Campaign history is kept. This cannot be undone from the UI.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold"
+              onClick={() => setDeleteRow(null)}
+              disabled={actingId === deleteRow?.id}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={actingId === deleteRow?.id}
+              onClick={() => void confirmDelete()}
+              className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40"
+            >
+              {actingId === deleteRow?.id ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              Delete nonprofit
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -410,22 +497,50 @@ export function SuperAdminBusinessesTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
+  const [actingId, setActingId] = useState<number | null>(null);
+  const [deleteRow, setDeleteRow] = useState<SuperAdminBusinessRow | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 300);
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     setLoading(true);
-    void fetchSuperAdminBusinesses({ search: debounced || undefined, limit: 100 })
-      .then((r) => {
-        setRows(r.businesses);
-        setTotal(r.totalCount);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => setLoading(false));
+    setError(null);
+    try {
+      const r = await fetchSuperAdminBusinesses({
+        search: debounced || undefined,
+        limit: 100,
+      });
+      setRows(r.businesses);
+      setTotal(r.totalCount);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
   }, [debounced]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const confirmDelete = async () => {
+    if (!deleteRow) return;
+    setActingId(deleteRow.id);
+    setError(null);
+    try {
+      await deleteSuperAdminBusiness(deleteRow.id);
+      setDeleteRow(null);
+      if (openId === deleteRow.id) setOpenId(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete business");
+    } finally {
+      setActingId(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -433,7 +548,7 @@ export function SuperAdminBusinessesTab() {
         <div>
           <h2 className="text-lg font-semibold">Businesses</h2>
           <p className="text-sm text-muted-foreground">
-            {total} total · expand a row for locations / ACH status
+            {total} total · expand a row for locations / ACH · delete archives and clears contact
           </p>
         </div>
         <SearchBox value={search} onChange={setSearch} placeholder="Search business…" />
@@ -449,17 +564,18 @@ export function SuperAdminBusinessesTab() {
               <th className={th}>Status</th>
               <th className={th}>Locations</th>
               <th className={th}>ACH</th>
+              <th className={th}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="py-10 text-center">
+                <td colSpan={7} className="py-10 text-center">
                   <Loader2 className="mx-auto size-5 animate-spin text-primary" />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
-              <EmptyRow colSpan={6} message="No businesses found." />
+              <EmptyRow colSpan={7} message="No businesses found." />
             ) : (
               rows.map((b) => {
                 const open = openId === b.id;
@@ -499,10 +615,20 @@ export function SuperAdminBusinessesTab() {
                           "—"
                         )}
                       </td>
+                      <td className={td}>
+                        <button
+                          type="button"
+                          disabled={actingId === b.id}
+                          onClick={() => setDeleteRow(b)}
+                          className="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800 disabled:opacity-40"
+                        >
+                          <Trash2 className="size-3.5" /> Delete
+                        </button>
+                      </td>
                     </tr>
                     {open && (
                       <tr className="border-b border-border/60 bg-secondary/20">
-                        <td colSpan={6} className="px-4 py-3">
+                        <td colSpan={7} className="px-4 py-3">
                           {b.locations.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No locations.</p>
                           ) : (
@@ -545,6 +671,50 @@ export function SuperAdminBusinessesTab() {
           </tbody>
         </table>
       </div>
+
+      <Dialog
+        open={deleteRow != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteRow(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete business?</DialogTitle>
+            <DialogDescription>
+              This archives{" "}
+              <span className="font-semibold text-foreground">
+                {deleteRow?.businessName ?? "this business"}
+              </span>
+              , clears its contact, and removes memberships. It leaves the directory and will
+              not receive invites. Campaign links are kept. This cannot be undone from the UI.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold"
+              onClick={() => setDeleteRow(null)}
+              disabled={actingId === deleteRow?.id}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={actingId === deleteRow?.id}
+              onClick={() => void confirmDelete()}
+              className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40"
+            >
+              {actingId === deleteRow?.id ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              Delete business
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

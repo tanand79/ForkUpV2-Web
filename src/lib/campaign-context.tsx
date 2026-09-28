@@ -5,6 +5,7 @@ import {
   stashAuthReturnStep,
   stashDashboardReturn,
   stepRequiresAuth,
+  clearClaimLockEmail,
   type AccountIntent,
 } from "@/lib/campaign-auth";
 import {
@@ -1570,6 +1571,15 @@ export function CampaignProvider({
 
     if (step === "business-ai-onboarding" || step === "business-giveback-join") {
       sessionStorage.setItem("forkup-auth-initial-mode", "register");
+    }
+    // Invite / builder resume: do not carry a leftover claim-lock email onto signup.
+    if (
+      step === "businesses" ||
+      step === "invite" ||
+      step === "edit-invite" ||
+      step === "business-invite-flow"
+    ) {
+      clearClaimLockEmail();
     }
     stashAuthReturnStep(step);
     setStep("auth-login");

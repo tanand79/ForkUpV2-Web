@@ -204,12 +204,32 @@ export function stashAuthReturnStep(step: StepId) {
   if (hint) stashRoleHint(hint);
 }
 
+/** Read auth return step without consuming (AuthLogin claim-lock gating). */
+export function peekAuthReturnStep(): StepId | null {
+  if (typeof window === "undefined") return null;
+  const raw = sessionStorage.getItem(RETURN_KEY);
+  if (raw && isStepId(raw)) return raw;
+  return null;
+}
+
 export function consumeAuthReturnStep(): StepId | null {
   if (typeof window === "undefined") return null;
   const raw = sessionStorage.getItem(RETURN_KEY);
   sessionStorage.removeItem(RETURN_KEY);
   if (raw && isStepId(raw)) return raw;
   return null;
+}
+
+/**
+ * True when signup email must stay locked to a claim/draft address.
+ * Invite-businesses / general campaign resume must NOT lock leftover claim emails.
+ */
+export function shouldLockClaimEmailForReturn(returnStep: StepId | null): boolean {
+  return (
+    returnStep === "guest-campaign-claim" ||
+    returnStep === "guest-business-claim" ||
+    returnStep === "nonprofit-claim"
+  );
 }
 
 const AUTH_INITIAL_MODE_KEY = "forkup-auth-initial-mode";

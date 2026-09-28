@@ -5,11 +5,13 @@ import { Loader2 } from "lucide-react";
 import { CampaignProvider, useCampaign, type StepId } from "@/lib/campaign-context";
 import {
   consumeAuthReturnStep,
+  peekAuthReturnStep,
   consumeRoleHint,
   getRoleHint,
   readAuthInitialMode,
   resolvePostAuthStep,
   shouldSkipBusinessAiOnboarding,
+  shouldLockClaimEmailForReturn,
   stashRoleHint,
   peekClaimLockEmail,
   stashClaimLockEmail,
@@ -188,12 +190,21 @@ function AuthLoginScreen() {
       typeof window !== "undefined"
         ? (new URLSearchParams(window.location.search).get("email") ?? "").trim()
         : "";
-    const fromStash = peekClaimLockEmail() ?? "";
-    const resolved = normalizeEmail(fromQuery || fromStash);
-    if (isValidEmail(resolved)) {
-      stashClaimLockEmail(resolved);
-      setLockedEmail(resolved);
-      // Do not force register here — would override "Already on ForkUp? Sign in".
+    const returnStep = peekAuthReturnStep();
+    // Only lock email on real claim/draft return paths. NPO → invite businesses
+    // must not reuse a leftover forkup-claim-lock-email from an earlier session.
+    if (!shouldLockClaimEmailForReturn(returnStep)) {
+      clearClaimLockEmail();
+      setLockedEmail("");
+    } else {
+      const fromStash = peekClaimLockEmail() ?? "";
+      const resolved = normalizeEmail(fromQuery || fromStash);
+      if (isValidEmail(resolved)) {
+        stashClaimLockEmail(resolved);
+        setLockedEmail(resolved);
+      } else {
+        setLockedEmail("");
+      }
     }
 
     setMounted(true);

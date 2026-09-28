@@ -3343,6 +3343,18 @@ export function fetchSuperAdminNonprofits(opts?: {
   );
 }
 
+/**
+ * Soft-archive a nonprofit (superadmin). Leaves directory; clears contact.
+ * Method: DELETE /api/superadmin/nonprofits/:id
+ * Response: { success, id, mode: "archived" }
+ */
+export function deleteSuperAdminNonprofit(id: number) {
+  return fetchJson<{ success: boolean; id: number; mode: string }>(
+    `/api/superadmin/nonprofits/${id}`,
+    { method: "DELETE" },
+  );
+}
+
 export type SuperAdminBusinessLocationRow = {
   id: number;
   locationName: string;
@@ -3387,6 +3399,18 @@ export function fetchSuperAdminBusinesses(opts?: {
   const qs = q.toString();
   return fetchJson<{ totalCount: number; businesses: SuperAdminBusinessRow[] }>(
     `/api/superadmin/businesses${qs ? `?${qs}` : ""}`,
+  );
+}
+
+/**
+ * Soft-archive a business (superadmin). Leaves directory; clears contact.
+ * Method: DELETE /api/superadmin/businesses/:id
+ * Response: { success, id, mode: "archived" }
+ */
+export function deleteSuperAdminBusiness(id: number) {
+  return fetchJson<{ success: boolean; id: number; mode: string }>(
+    `/api/superadmin/businesses/${id}`,
+    { method: "DELETE" },
   );
 }
 

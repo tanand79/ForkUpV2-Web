@@ -17,7 +17,11 @@ import { useCampaign } from "@/lib/campaign-context";
 import { UsDateInput } from "@/components/campaign/UsDateInput";
 import { TimelineCheckCard } from "@/components/campaign/TimelineCheckCard";
 import { getAuthToken } from "@/lib/auth-storage";
-import { stashAuthReturnStep, stashRoleHint } from "@/lib/campaign-auth";
+import {
+  stashAuthReturnStep,
+  stashRoleHint,
+  clearClaimLockEmail,
+} from "@/lib/campaign-auth";
 import { hasLockedBusinessPartners } from "@/lib/campaign-flow";
 import {
   ambassadorTimingCoachMessage,
@@ -259,6 +263,7 @@ export function AiCampaignDates() {
             // Guest must sign up before invite — stash so post-verify resumes here
             // (AuthLogin mount must not wipe this via clearPendingSignupAuth).
             if (!getAuthToken()) {
+              clearClaimLockEmail();
               stashRoleHint(
                 state.accountIntent === "fundraiser" ? "fundraiser" : "nonprofit",
               );
