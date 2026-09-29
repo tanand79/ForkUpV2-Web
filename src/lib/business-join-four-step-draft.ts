@@ -37,6 +37,8 @@ export type BusinessJoinFourStepDraft = {
   discountHours: VenueDiscountHours;
   /** Optional line such as "Eligible 6–9:00pm". */
   eligibleWindow: string;
+  /** Last UI phase — restored on refresh so Business Creation stays put. */
+  phase?: "find" | "confirm" | "profile" | "giveback" | "email" | "done";
 };
 
 /** Parsed nearby hint for find-business / generate-business-draft. */

@@ -309,10 +309,15 @@ export function mergeVenueSnapshotKeepExisting(
       prev.coverUrl ||
       null,
     photoUrls: preferRicherPhotos(prev.photoUrls, patch.photoUrls),
-    hours:
-      patch.hours && Object.values(patch.hours).some((v) => isOpenVenueDay(v))
-        ? normalizeVenueHours(patch.hours)
-        : prev.hours,
+    // Keep existing open days — scrape/hydrate must not wipe user or DB hours.
+    hours: (() => {
+      const prevOpen = Object.values(prev.hours).some((v) => isOpenVenueDay(v));
+      if (prevOpen) return prev.hours;
+      if (patch.hours && Object.values(patch.hours).some((v) => isOpenVenueDay(v))) {
+        return normalizeVenueHours(patch.hours);
+      }
+      return prev.hours;
+    })(),
     eligibleWindow: keepFilled(prev.eligibleWindow, patch.eligibleWindow),
     givebackPercent:
       patch.givebackPercent != null && Number.isFinite(patch.givebackPercent)

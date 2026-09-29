@@ -1547,8 +1547,8 @@ export function CampaignProvider({
     setStep(s);
     if (typeof window !== "undefined") {
       const url = query
-        ? pathForStepWithParams(s, query, window.location.pathname, window.location.search)
-        : pathForStep(s, window.location.pathname, window.location.search);
+        ? pathForStepWithParams(s, query, "/", window.location.search)
+        : pathForStep(s, "/", window.location.search);
       const current = locationUrl(window.location.pathname, window.location.search);
       if (current !== url || window.history.state?.step !== s) {
         window.history.pushState({ step: s }, "", url);
@@ -1578,11 +1578,8 @@ export function CampaignProvider({
     if (typeof window === "undefined") return;
 
     const syncFromLocation = () => {
-      const next = stepFromLocation(
-        window.location.pathname,
-        window.location.search,
-        window.history.state?.step,
-      );
+      // URL-first — do not let a stale history.state override ?step= / path slug.
+      const next = stepFromLocation(window.location.pathname, window.location.search);
       const from = stepRef.current;
       if (isBuilderFlowStep(from) && !isBuilderFlowStep(next)) {
         void persistDraftToServer().finally(() => {
@@ -1603,10 +1600,21 @@ export function CampaignProvider({
       window.scrollTo({ top: 0, behavior: "auto" });
     };
 
-    const url = pathForStep(step, window.location.pathname, window.location.search);
-    const current = locationUrl(window.location.pathname, window.location.search);
-    if (current !== url || window.history.state?.step !== step) {
-      window.history.replaceState({ step }, "", url);
+    // On load / step change: prefer address bar over React state so refresh keeps the page.
+    const fromUrl = stepFromLocation(window.location.pathname, window.location.search);
+    if (fromUrl !== step) {
+      setStep(fromUrl);
+      const url = pathForStep(fromUrl, "/", window.location.search);
+      const current = locationUrl(window.location.pathname, window.location.search);
+      if (current !== url || window.history.state?.step !== fromUrl) {
+        window.history.replaceState({ step: fromUrl }, "", url);
+      }
+    } else {
+      const url = pathForStep(step, "/", window.location.search);
+      const current = locationUrl(window.location.pathname, window.location.search);
+      if (current !== url || window.history.state?.step !== step) {
+        window.history.replaceState({ step }, "", url);
+      }
     }
 
     window.addEventListener("popstate", syncFromLocation);
@@ -1637,7 +1645,7 @@ export function CampaignProvider({
     window.history.replaceState(
       { step: "auth-login" },
       "",
-      pathForStep("auth-login", window.location.pathname, window.location.search),
+      pathForStep("auth-login", "/", window.location.search),
     );
   }, [step, designMode]);
 

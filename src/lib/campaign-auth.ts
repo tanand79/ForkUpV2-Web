@@ -228,7 +228,10 @@ export function shouldLockClaimEmailForReturn(returnStep: StepId | null): boolea
   return (
     returnStep === "guest-campaign-claim" ||
     returnStep === "guest-business-claim" ||
-    returnStep === "nonprofit-claim"
+    returnStep === "nonprofit-claim" ||
+    // Business “Create account (optional)” via prepareBusinessJoinAuth()
+    returnStep === "business-dashboard" ||
+    returnStep === "partner-campaign-join"
   );
 }
 

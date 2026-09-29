@@ -193,11 +193,9 @@ function AuthLoginScreen() {
     const returnStep = peekAuthReturnStep();
     // Only lock email on real claim/draft return paths. NPO → invite businesses
     // must not reuse a leftover forkup-claim-lock-email from an earlier session.
-    if (!shouldLockClaimEmailForReturn(returnStep)) {
-      clearClaimLockEmail();
-      setLockedEmail("");
-    } else {
-      const fromStash = peekClaimLockEmail() ?? "";
+    // Fresh ?email= (business Create account optional) must still prefill/lock.
+    const fromStash = peekClaimLockEmail() ?? "";
+    if (shouldLockClaimEmailForReturn(returnStep)) {
       const resolved = normalizeEmail(fromQuery || fromStash);
       if (isValidEmail(resolved)) {
         stashClaimLockEmail(resolved);
@@ -205,6 +203,13 @@ function AuthLoginScreen() {
       } else {
         setLockedEmail("");
       }
+    } else if (fromQuery && isValidEmail(normalizeEmail(fromQuery))) {
+      const resolved = normalizeEmail(fromQuery);
+      stashClaimLockEmail(resolved);
+      setLockedEmail(resolved);
+    } else {
+      clearClaimLockEmail();
+      setLockedEmail("");
     }
 
     setMounted(true);

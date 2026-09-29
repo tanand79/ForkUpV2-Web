@@ -33,6 +33,11 @@ import {
   stashDirectoryInviteIntent,
 } from "@/lib/directory-invite-intent";
 import { useCampaign } from "@/lib/campaign-context";
+import {
+  directoryProfileBizIdFromSearch,
+  pathForStepWithParams,
+  profileViewFromSearch,
+} from "@/lib/campaign-routes";
 import { useClientMounted } from "@/lib/use-client-mounted";
 import {
   loadVenueProfileSnapshot,
@@ -127,6 +132,36 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
   const [inviteError, setInviteError] = useState<string | null>(null);
   /** Bumps on each View profile open — drop stale async hydrate from a prior card. */
   const profileHydrateGen = useRef(0);
+  /** Avoid double-open from URL bootstrap after rows load. */
+  const profileUrlBootstrapped = useRef(false);
+
+  function pushDirectoryProfileView(businessId: number | null) {
+    if (typeof window === "undefined") return;
+    const currentId = directoryProfileBizIdFromSearch(window.location.search);
+    if (businessId == null) {
+      if (currentId == null && !profileViewFromSearch(window.location.search)) return;
+      const url = pathForStepWithParams(
+        "website-landing",
+        { live: "business", view: undefined, biz: undefined },
+        "/",
+        window.location.search,
+      );
+      window.history.pushState({ step: "website-landing" }, "", url);
+      return;
+    }
+    if (currentId === businessId) return;
+    const url = pathForStepWithParams(
+      "website-landing",
+      {
+        live: "business",
+        view: "profile",
+        biz: String(businessId),
+      },
+      "/",
+      window.location.search,
+    );
+    window.history.pushState({ step: "website-landing" }, "", url);
+  }
 
   useEffect(() => {
     if (!nearby.locationReady) return;
@@ -236,7 +271,9 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
 
     setProfileSource(business);
     setVenueProfile(base);
-    setVenueReservationUrl(null);
+    // Seed from DB location (same as campaign profile) — gallery cache must not drop the CTA.
+    setVenueReservationUrl(loc?.reservationUrl?.trim() || null);
+    pushDirectoryProfileView(business.id);
 
     const hasRealGallery = photoUrls.length > 0;
     if (hasRealGallery) {
@@ -433,7 +470,41 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
     setProfileSource(null);
     setPhotosLoading(false);
     setVenueReservationUrl(null);
+    pushDirectoryProfileView(null);
   }
+
+  // Reload / deep-link: reopen View profile from ?live=business&view=profile&biz=
+  useEffect(() => {
+    if (loading || profileUrlBootstrapped.current) return;
+    if (typeof window === "undefined") return;
+    const bizId = directoryProfileBizIdFromSearch(window.location.search);
+    if (bizId == null) {
+      profileUrlBootstrapped.current = true;
+      return;
+    }
+    profileUrlBootstrapped.current = true;
+    const business = rows.find((b) => b.id === bizId);
+    if (business) openProfile(business);
+  }, [rows, loading]);
+
+  // Browser Back/Forward toggles the directory profile with the URL.
+  useEffect(() => {
+    const onPop = () => {
+      const bizId = directoryProfileBizIdFromSearch(window.location.search);
+      if (bizId == null) {
+        profileHydrateGen.current += 1;
+        setVenueProfile(null);
+        setProfileSource(null);
+        setPhotosLoading(false);
+        setVenueReservationUrl(null);
+        return;
+      }
+      const business = rows.find((b) => b.id === bizId);
+      if (business) openProfile(business);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [rows]);
 
   function openInvitePicker(business: BusinessDirectoryItem) {
     setInviteBusiness(business);

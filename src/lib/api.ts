@@ -810,6 +810,8 @@ export interface BusinessDirectoryItem {
     state: string | null;
     address?: string | null;
     zip?: string | null;
+    /** Resy / OpenTable / etc. from business_locations.reservation_url */
+    reservationUrl?: string | null;
     distanceMiles: number | null;
   }[];
 }

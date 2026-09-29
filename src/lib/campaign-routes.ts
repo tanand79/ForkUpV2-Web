@@ -118,7 +118,8 @@ export type StepQueryParams = Record<string, string | undefined>;
 export function pathForStepWithParams(
   step: StepId,
   extra: StepQueryParams = {},
-  pathname: string = "/",
+  /** Ignored — routing always uses `/` so reload never sticks to a stale pretty path. */
+  _pathname: string = "/",
   search: string = "",
 ): string {
   const params = new URLSearchParams(search.replace(/^\?/, ""));
@@ -132,8 +133,8 @@ export function pathForStepWithParams(
     else params.delete(key);
   }
   const qs = params.toString();
-  const base = pathname || "/";
-  return qs ? `${base}?${qs}` : base;
+  // Always land on `/` + query params (never keep `/nonprofit-dashboard?step=…`).
+  return qs ? `/?${qs}` : "/";
 }
 
 /** Campaign + invitation context for the business invite status screen. */
@@ -165,19 +166,37 @@ export function stepFromLocation(
   search: string = "",
   historyStep?: StepId,
 ): StepId {
-  if (historyStep && isStepId(historyStep)) return historyStep;
-
+  // Prefer the address bar over history.state so refresh / Back match the URL.
   const params = new URLSearchParams(search.replace(/^\?/, ""));
   const stepParam = params.get("step");
   if (stepParam && isStepId(stepParam)) return stepParam;
 
-  if (pathname !== "/") {
-    const slug = pathname.replace(/^\/+/, "").split("/")[0] ?? "";
+  const normalizedPath = pathname.replace(/\/+$/, "") || "/";
+  if (normalizedPath !== "/") {
+    const slug = normalizedPath.replace(/^\/+/, "").split("/")[0] ?? "";
     const fromSlug = slugToStep(slug);
     if (fromSlug) return fromSlug;
   }
 
+  if (historyStep && isStepId(historyStep)) return historyStep;
+
   return "website-landing";
+}
+
+/** Dashboard "View profile" overlay — persisted as `?view=profile` across refresh. */
+export function profileViewFromSearch(search: string): boolean {
+  const params = new URLSearchParams(search.replace(/^\?/, ""));
+  return params.get("view") === "profile";
+}
+
+/** Homepage Business directory profile — `?biz=<id>` when `view=profile`. */
+export function directoryProfileBizIdFromSearch(search: string): number | null {
+  if (!profileViewFromSearch(search)) return null;
+  const params = new URLSearchParams(search.replace(/^\?/, ""));
+  const raw = params.get("biz");
+  if (!raw) return null;
+  const id = Number.parseInt(raw, 10);
+  return Number.isFinite(id) && id > 0 ? id : null;
 }
 
 export function stepFromSearchParams(stepParam: string | string[] | undefined): StepId {

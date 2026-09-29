@@ -11,6 +11,7 @@ import forkupLogo from "@/assets/forkup-logo-header.png";
 import { useCampaign } from "@/lib/campaign-context";
 import { fetchCampaigns } from "@/lib/api";
 import { resolveDashboardStep, stashAccountIntent, stepForBusinessJoin } from "@/lib/campaign-auth";
+import { pathForStepWithParams } from "@/lib/campaign-routes";
 import { getAuthToken } from "@/lib/auth-storage";
 import { useClientMounted } from "@/lib/use-client-mounted";
 import type { CampaignListItem } from "@/lib/campaign-types";
@@ -54,11 +55,30 @@ export function PublicHomePage() {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   /** Shared Live area: Campaigns grid vs Business grid (same location filter). */
+  // Always start as "campaigns" so SSR HTML matches the first client paint.
   const [liveTab, setLiveTab] = useState<"campaigns" | "business">("campaigns");
 
-  // Resume Business tab after signed-out Invite → sign-in.
+  function setLiveTabAndUrl(tab: "campaigns" | "business") {
+    setLiveTab(tab);
+    if (typeof window === "undefined") return;
+    const url = pathForStepWithParams(
+      "website-landing",
+      { live: tab === "business" ? "business" : undefined },
+      "/",
+      window.location.search,
+    );
+    window.history.replaceState({ step: "website-landing" }, "", url);
+  }
+
+  // After mount: restore Business tab from ?live=business or invite resume.
   useEffect(() => {
-    if (peekDirectoryInviteIntent()) setLiveTab("business");
+    if (peekDirectoryInviteIntent()) {
+      setLiveTabAndUrl("business");
+      return;
+    }
+    if (new URLSearchParams(window.location.search).get("live") === "business") {
+      setLiveTab("business");
+    }
   }, []);
 
   useEffect(() => {
@@ -346,7 +366,7 @@ export function PublicHomePage() {
                   type="button"
                   role="tab"
                   aria-selected={liveTab === "campaigns"}
-                  onClick={() => setLiveTab("campaigns")}
+                  onClick={() => setLiveTabAndUrl("campaigns")}
                   className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
                     liveTab === "campaigns"
                       ? "bg-primary text-primary-foreground shadow-sm"
@@ -359,7 +379,7 @@ export function PublicHomePage() {
                   type="button"
                   role="tab"
                   aria-selected={liveTab === "business"}
-                  onClick={() => setLiveTab("business")}
+                  onClick={() => setLiveTabAndUrl("business")}
                   className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
                     liveTab === "business"
                       ? "bg-primary text-primary-foreground shadow-sm"

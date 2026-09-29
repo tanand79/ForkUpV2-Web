@@ -42,6 +42,10 @@ import { websiteOriginUrl } from "@/lib/business-join-query";
 import { venueGalleryPhotoUrls } from "@/lib/business-join-images";
 import { loadBusinessJoinDraft } from "@/lib/business-join-four-step-draft";
 import {
+  pathForStepWithParams,
+  profileViewFromSearch,
+} from "@/lib/campaign-routes";
+import {
   isOpenVenueDay,
   loadCachedVenuePhotos,
   loadContactLookupTried,
@@ -151,6 +155,30 @@ export function BusinessDashboard() {
   const [photosLoading, setPhotosLoading] = useState(false);
   const [refreshingFromWeb, setRefreshingFromWeb] = useState(false);
   const venueHydrateGen = useRef(0);
+  const profileUrlBootstrapped = useRef(false);
+  /** Debounce durable hours flush while typing Eligible Days. */
+  const hoursFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function pushProfileView(open: boolean) {
+    if (typeof window === "undefined") return;
+    const already = profileViewFromSearch(window.location.search);
+    if (open === already) return;
+    const url = pathForStepWithParams(
+      "business-dashboard",
+      { view: open ? "profile" : undefined },
+      "/",
+      window.location.search,
+    );
+    window.history.pushState({ step: "business-dashboard" }, "", url);
+  }
+
+  function closeVenueProfile() {
+    setEditingVenue(false);
+    setPhotosLoading(false);
+    setRefreshingFromWeb(false);
+    setProfileOpen(false);
+    pushProfileView(false);
+  }
 
   // Warm photo cache as soon as the dashboard loads so "View profile" is instant.
   useEffect(() => {
@@ -392,35 +420,14 @@ export function BusinessDashboard() {
     setVenue(base);
     setEditingVenue(false);
     setProfileOpen(true);
+    pushProfileView(true);
 
     const needsPhotos = base.photoUrls.length === 0 && !base.coverUrl;
-    const needsAbout = !base.about.trim();
-    const needsAddress = !base.address.trim() && !base.city.trim();
-    const needsHours = !hasEligibleHours(base.hours);
-    /** Scrape social when both FB and IG missing. */
-    const needsSocial =
-      !base.facebookUrl?.trim() && !base.instagramUrl?.trim();
-    /** Contact once per session — do not re-find forever when a site has no email. */
-    const needsContact =
-      (!base.phone?.trim() || !base.email?.trim()) &&
-      !loadContactLookupTried(biz.id);
-    if (
-      !needsPhotos &&
-      !needsAbout &&
-      !needsAddress &&
-      !needsHours &&
-      !needsSocial &&
-      !needsContact
-    ) {
-      setPhotosLoading(false);
-      if (base.photoUrls.length > 0) saveCachedVenuePhotos(biz.id, base.photoUrls);
-      return;
-    }
-
     // Show spinner only when we have no gallery yet — details hydrate silently.
     setPhotosLoading(needsPhotos);
 
     void (async () => {
+      let needsContact = false;
       try {
         let website = found?.website?.trim() || base.websiteUrl?.trim() || "";
         let reservationUrl = found?.reservationUrl?.trim() || null;
@@ -440,6 +447,72 @@ export function BusinessDashboard() {
         let tiktokUrl = base.tiktokUrl?.trim() || null;
         let phone = base.phone?.trim() || null;
         let email = base.email?.trim() || null;
+
+        // Durable DB profile first — local snapshot is a no-op; hours live in Postgres.
+        if (getAuthToken()) {
+          try {
+            const durable = await saveBusinessVenueLinks({ businessId: biz.id });
+            if (gen !== venueHydrateGen.current) return;
+            const dbHours = normalizeVenueHours(durable.discountHours ?? null);
+            const dbHasHours = hasEligibleHours(dbHours);
+            about = about || durable.description?.trim() || "";
+            eligibleWindow =
+              eligibleWindow || durable.eligibleWindow?.trim() || "";
+            website = website || durable.website?.trim() || "";
+            facebookUrl = facebookUrl || durable.facebookUrl?.trim() || null;
+            instagramUrl = instagramUrl || durable.instagramUrl?.trim() || null;
+            linkedinUrl = linkedinUrl || durable.linkedinUrl?.trim() || null;
+            tiktokUrl = tiktokUrl || durable.tiktokUrl?.trim() || null;
+            phone = phone || durable.phone?.trim() || null;
+            email = email || durable.venueEmail?.trim() || null;
+            if (dbHasHours) nextHours = dbHours;
+
+            setVenue((prev) => {
+              if (!prev || prev.businessId !== biz.id) return prev;
+              const merged = mergeVenueSnapshotKeepExisting(prev, {
+                about,
+                eligibleWindow,
+                websiteUrl: website || null,
+                facebookUrl,
+                instagramUrl,
+                linkedinUrl,
+                tiktokUrl,
+                phone,
+                email,
+              });
+              // DB is source of truth for giveback hours when open days exist.
+              const next: VenueProfileSnapshot = dbHasHours
+                ? { ...merged, hours: dbHours }
+                : merged;
+              saveVenueProfileSnapshot(next);
+              return next;
+            });
+          } catch {
+            /* continue with draft / scrape hydrate */
+          }
+        }
+
+        const needsAbout = !about.trim();
+        const needsAddress = !address.trim() && !city.trim();
+        const needsHours = !hasEligibleHours(nextHours);
+        /** Scrape social when both FB and IG missing. */
+        const needsSocial = !facebookUrl?.trim() && !instagramUrl?.trim();
+        /** Contact once per session — do not re-find forever when a site has no email. */
+        needsContact =
+          (!phone?.trim() || !email?.trim()) &&
+          !loadContactLookupTried(biz.id);
+
+        if (
+          !needsPhotos &&
+          !needsAbout &&
+          !needsAddress &&
+          !needsHours &&
+          !needsSocial &&
+          !needsContact
+        ) {
+          if (nextPhotos.length > 0) saveCachedVenuePhotos(biz.id, nextPhotos);
+          return;
+        }
 
         // Fast path: known website → Resy/site scrape only (skip slow find-business).
         if (needsPhotos && !website) {
@@ -601,6 +674,31 @@ export function BusinessDashboard() {
     })();
   }
 
+  // Refresh / deep-link: restore View profile from ?view=profile
+  useEffect(() => {
+    if (!biz?.id || profileUrlBootstrapped.current) return;
+    if (!profileViewFromSearch(window.location.search)) return;
+    profileUrlBootstrapped.current = true;
+    openVenueProfile();
+  }, [biz?.id]);
+
+  // Browser Back/Forward toggles the profile overlay with the URL.
+  useEffect(() => {
+    const onPop = () => {
+      const want = profileViewFromSearch(window.location.search);
+      if (!want) {
+        setEditingVenue(false);
+        setPhotosLoading(false);
+        setRefreshingFromWeb(false);
+        setProfileOpen(false);
+        return;
+      }
+      if (biz) openVenueProfile();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [biz?.id]);
+
   function changeVenue(patch: Partial<VenueProfileSnapshot>) {
     setVenue((prev) => {
       if (!prev) return prev;
@@ -629,7 +727,16 @@ export function BusinessDashboard() {
           /* local snapshot already saved; durable sync is best-effort */
         });
       }
-      // Social/contact fields: local snapshot only here; durable flush on Done.
+      // Eligible Days: persist to DB while editing (debounced) so reload keeps them.
+      if (businessId != null && token && patch.hours != null) {
+        if (hoursFlushTimer.current) clearTimeout(hoursFlushTimer.current);
+        hoursFlushTimer.current = setTimeout(() => {
+          void flushVenueLinks(next).catch(() => {
+            /* best-effort; Done still flushes full profile */
+          });
+        }, 400);
+      }
+      // Other social/contact fields: durable flush on Done.
       return next;
     });
   }
@@ -790,17 +897,11 @@ export function BusinessDashboard() {
             void flushVenueLinks(venue)
               .finally(() => {
                 setVenueSaving(false);
-                setEditingVenue(false);
-                setPhotosLoading(false);
-                setRefreshingFromWeb(false);
-                setProfileOpen(false);
+                closeVenueProfile();
               });
             return;
           }
-          setEditingVenue(false);
-          setPhotosLoading(false);
-          setRefreshingFromWeb(false);
-          setProfileOpen(false);
+          closeVenueProfile();
         }}
         backLabel="Back to dashboard"
       />

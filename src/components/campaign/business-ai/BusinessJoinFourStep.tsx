@@ -221,10 +221,26 @@ export function BusinessJoinFourStep() {
   const { goTo, setBusinessProfile, update, switchActiveRole, state } = useCampaign();
   const mounted = useClientMounted();
   const [door, setDoor] = useState<BusinessDoor | null>(null);
-  const [phase, setPhase] = useState<Phase>("find");
   const [draft, setDraft] = useState<BusinessJoinFourStepDraft>(() =>
     loadBusinessJoinDraft() ?? defaultBusinessJoinDraft(),
   );
+  const [phase, setPhase] = useState<Phase>(() => {
+    const saved = loadBusinessJoinDraft();
+    const p = saved?.phase;
+    if (
+      p === "find" ||
+      p === "confirm" ||
+      p === "profile" ||
+      p === "giveback" ||
+      p === "email" ||
+      p === "done"
+    ) {
+      return p;
+    }
+    // Older drafts without phase: land on confirm when a venue was already found.
+    if (saved?.found) return "confirm";
+    return "find";
+  });
   const [error, setError] = useState<string | null>(null);
   const [finding, setFinding] = useState(false);
   /** Animated checklist index while Find / website extract runs. */
@@ -280,6 +296,17 @@ export function BusinessJoinFourStep() {
     });
   }, [mounted]);
 
+  // Persist UI phase so refresh stays on the same Business Creation screen.
+  useEffect(() => {
+    if (!mounted) return;
+    setDraft((prev) => {
+      if (prev.phase === phase) return prev;
+      const next = { ...prev, phase };
+      saveBusinessJoinDraft(next);
+      return next;
+    });
+  }, [mounted, phase]);
+
   useEffect(() => {
     if (!mounted || !getAuthToken()) return;
     const intent = readPartnerJoinIntent();
@@ -289,6 +316,7 @@ export function BusinessJoinFourStep() {
       state.businessMemberships.length > 0 || Boolean(state.businessProfile?.id);
     if (!hasBusiness) return;
     // Already signed in with a business + partner join intent → Send request UI.
+    // Do NOT redirect to dashboard on refresh of this route (no intent / mid-flow).
     if (intent?.campaignSlug) {
       const biz = state.businessProfile ?? state.businessMemberships[0];
       if (biz?.id) {
@@ -300,10 +328,8 @@ export function BusinessJoinFourStep() {
         goTo("partner-campaign-join", {
           query: { campaign: intent.campaignSlug },
         });
-        return;
       }
     }
-    if (!intent) goTo("business-dashboard");
   }, [mounted, state.businessMemberships.length, state.businessProfile?.id, goTo]);
 
   /** Advance extract checklist while Find API is in flight (mirrors NPO AiAnalyzing). */

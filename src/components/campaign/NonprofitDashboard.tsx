@@ -55,6 +55,10 @@ import {
   saveNonprofitOrgProfileSnapshot,
   type NonprofitOrgProfileSnapshot,
 } from "@/lib/nonprofit-org-profile";
+import {
+  pathForStepWithParams,
+  profileViewFromSearch,
+} from "@/lib/campaign-routes";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   invalidateNonprofitDashboardCache,
@@ -159,6 +163,27 @@ export function NonprofitDashboard() {
     useState<NonprofitOrgProfileSnapshot | null>(null);
   const [orgPhotosLoading, setOrgPhotosLoading] = useState(false);
   const orgHydrateGen = useRef(0);
+  const profileUrlBootstrapped = useRef(false);
+
+  function pushProfileView(open: boolean) {
+    if (typeof window === "undefined") return;
+    const already = profileViewFromSearch(window.location.search);
+    if (open === already) return;
+    const url = pathForStepWithParams(
+      "nonprofit-dashboard",
+      { view: open ? "profile" : undefined },
+      "/",
+      window.location.search,
+    );
+    window.history.pushState({ step: "nonprofit-dashboard" }, "", url);
+  }
+
+  function closeOrgProfile() {
+    setEditingOrgProfile(false);
+    setOrgPhotosLoading(false);
+    setProfileOpen(false);
+    pushProfileView(false);
+  }
 
   /**
    * Create New Campaign — run AI analyze then open idea picker.
@@ -959,6 +984,7 @@ export function NonprofitDashboard() {
     setOrgProfile(base);
     setEditingOrgProfile(false);
     setProfileOpen(true);
+    pushProfileView(true);
     setOrgPhotosLoading(true);
 
     if (!getAuthToken()) {
@@ -1066,6 +1092,30 @@ export function NonprofitDashboard() {
       });
   }
 
+  // Refresh / deep-link: restore View profile from ?view=profile
+  useEffect(() => {
+    if (!nonprofitId || profileUrlBootstrapped.current) return;
+    if (!profileViewFromSearch(window.location.search)) return;
+    profileUrlBootstrapped.current = true;
+    openOrgProfile();
+  }, [nonprofitId]);
+
+  // Browser Back/Forward toggles the profile overlay with the URL.
+  useEffect(() => {
+    const onPop = () => {
+      const want = profileViewFromSearch(window.location.search);
+      if (!want) {
+        setEditingOrgProfile(false);
+        setOrgPhotosLoading(false);
+        setProfileOpen(false);
+        return;
+      }
+      if (nonprofitId) openOrgProfile();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [nonprofitId]);
+
   function changeOrgProfile(patch: Partial<NonprofitOrgProfileSnapshot>) {
     setOrgProfile((prev) => {
       if (!prev) return prev;
@@ -1132,9 +1182,7 @@ export function NonprofitDashboard() {
         onChange={changeOrgProfile}
         onBack={() => {
           if (editingOrgProfile) flushOrgLinks(orgProfile);
-          setEditingOrgProfile(false);
-          setOrgPhotosLoading(false);
-          setProfileOpen(false);
+          closeOrgProfile();
         }}
         backLabel="Back to dashboard"
       />
