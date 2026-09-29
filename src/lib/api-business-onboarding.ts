@@ -204,6 +204,7 @@ export function saveBusinessVenueGallery(body: {
  */
 export function saveBusinessVenueLinks(body: {
   businessId: number;
+  businessName?: string | null;
   website?: string | null;
   facebookUrl?: string | null;
   instagramUrl?: string | null;
@@ -220,6 +221,7 @@ export function saveBusinessVenueLinks(body: {
   zip?: string | null;
 }) {
   return fetchJson<{
+    businessName?: string | null;
     website?: string | null;
     facebookUrl?: string | null;
     instagramUrl?: string | null;

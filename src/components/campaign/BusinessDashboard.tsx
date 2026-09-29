@@ -146,6 +146,7 @@ export function BusinessDashboard() {
   const collaborationsRef = useRef<HTMLElement | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [editingVenue, setEditingVenue] = useState(false);
+  const [venueSaving, setVenueSaving] = useState(false);
   const [venue, setVenue] = useState<VenueProfileSnapshot | null>(null);
   const [photosLoading, setPhotosLoading] = useState(false);
   const [refreshingFromWeb, setRefreshingFromWeb] = useState(false);
@@ -526,8 +527,8 @@ export function BusinessDashboard() {
         city = city || discovered.city || "";
         state = state || discovered.state || "";
         zip = zip || discovered.zip || "";
-        // Keep dashboard business name — never swap from AI/find.
-        businessName = biz.businessName;
+        // Keep the profile/session name — never overwrite from AI/find.
+        businessName = businessName.trim() || biz.businessName;
         eligibleWindow =
           eligibleWindow || discovered.eligibleWindow?.trim() || "";
         facebookUrl = facebookUrl || discovered.facebookUrl?.trim() || null;
@@ -633,26 +634,35 @@ export function BusinessDashboard() {
     });
   }
 
-  function flushVenueLinks(snapshot: VenueProfileSnapshot) {
+  async function flushVenueLinks(snapshot: VenueProfileSnapshot): Promise<boolean> {
     const businessId = snapshot.businessId ?? biz?.id ?? null;
-    if (!businessId || !getAuthToken()) return;
-    void saveBusinessVenueLinks({
-      businessId,
-      website: snapshot.websiteUrl?.trim() || null,
-      facebookUrl: snapshot.facebookUrl?.trim() || null,
-      instagramUrl: snapshot.instagramUrl?.trim() || null,
-      phone: snapshot.phone?.trim() || null,
-      venueEmail: snapshot.email?.trim() || null,
-      description: snapshot.about?.trim() || null,
-      discountHours: snapshot.hours,
-      eligibleWindow: snapshot.eligibleWindow?.trim() || null,
-      address: snapshot.address?.trim() || null,
-      city: snapshot.city?.trim() || null,
-      state: snapshot.state?.trim() || null,
-      zip: snapshot.zip?.trim() || null,
-    }).catch(() => {
-      /* best-effort durable sync */
-    });
+    if (!businessId || !getAuthToken()) return false;
+    try {
+      const saved = await saveBusinessVenueLinks({
+        businessId,
+        businessName: snapshot.businessName?.trim() || null,
+        website: snapshot.websiteUrl?.trim() || null,
+        facebookUrl: snapshot.facebookUrl?.trim() || null,
+        instagramUrl: snapshot.instagramUrl?.trim() || null,
+        phone: snapshot.phone?.trim() || null,
+        venueEmail: snapshot.email?.trim() || null,
+        description: snapshot.about?.trim() || null,
+        discountHours: snapshot.hours,
+        eligibleWindow: snapshot.eligibleWindow?.trim() || null,
+        address: snapshot.address?.trim() || null,
+        city: snapshot.city?.trim() || null,
+        state: snapshot.state?.trim() || null,
+        zip: snapshot.zip?.trim() || null,
+      });
+      const nextName =
+        (saved.businessName ?? snapshot.businessName)?.trim() || biz?.businessName;
+      if (biz && nextName && nextName !== biz.businessName) {
+        setBusinessProfile({ ...biz, businessName: nextName });
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   if (profileOpen && venue) {
@@ -756,14 +766,37 @@ export function BusinessDashboard() {
           }
         }}
         onToggleEdit={() => {
-          setEditingVenue((wasEditing) => {
-            if (wasEditing) flushVenueLinks(venue);
-            return !wasEditing;
-          });
+          if (editingVenue && venue) {
+            if (venueSaving) return;
+            setVenueSaving(true);
+            void flushVenueLinks(venue)
+              .then((ok) => {
+                if (!ok) {
+                  setError("Could not save profile changes. Check your connection and try again.");
+                  return;
+                }
+                setEditingVenue(false);
+              })
+              .finally(() => setVenueSaving(false));
+            return;
+          }
+          setEditingVenue(true);
         }}
         onChange={changeVenue}
         onBack={() => {
-          if (editingVenue) flushVenueLinks(venue);
+          if (editingVenue && venue) {
+            if (venueSaving) return;
+            setVenueSaving(true);
+            void flushVenueLinks(venue)
+              .finally(() => {
+                setVenueSaving(false);
+                setEditingVenue(false);
+                setPhotosLoading(false);
+                setRefreshingFromWeb(false);
+                setProfileOpen(false);
+              });
+            return;
+          }
           setEditingVenue(false);
           setPhotosLoading(false);
           setRefreshingFromWeb(false);
