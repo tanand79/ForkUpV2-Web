@@ -22,6 +22,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LocationMapEmbed } from "@/components/campaign/LocationMapEmbed";
 import { cn } from "@/lib/utils";
 import { resolveVenueImageSrc } from "@/lib/business-join-images";
 import { uploadImage } from "@/lib/api";
@@ -764,6 +765,14 @@ export function NonprofitOrgProfile({
             </p>
           )}
         </section>
+
+        {addressLine ? (
+          <LocationMapEmbed
+            address={addressLine}
+            title={`${profile.organizationName} location`}
+            className="mt-16"
+          />
+        ) : null}
       </div>
     </main>
   );

@@ -29,6 +29,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LocationMapEmbed } from "@/components/campaign/LocationMapEmbed";
 import { cn } from "@/lib/utils";
 import { bookingCtaLabel } from "@/lib/booking-platform";
 import {
@@ -737,32 +738,30 @@ function ReservationPreview({
         ) : null}
       </div>
 
-      {liveBooking ? (
-        <div className="mt-6 space-y-4">
-          <label className="block text-sm font-semibold text-venue-ink">
-            First name
-            <input
-              type="text"
-              autoComplete="given-name"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              placeholder="Your first name"
-              className="mt-1.5 h-11 w-full rounded-sm border border-venue-line bg-venue-paper px-3 text-sm text-venue-ink placeholder:text-venue-muted"
-            />
-          </label>
-          <label className="block text-sm font-semibold text-venue-ink">
-            Email
-            <input
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@email.com"
-              className="mt-1.5 h-11 w-full rounded-sm border border-venue-line bg-venue-paper px-3 text-sm text-venue-ink placeholder:text-venue-muted"
-            />
-          </label>
-        </div>
-      ) : null}
+      <div className="mt-6 space-y-4">
+        <label className="block text-sm font-semibold text-venue-ink">
+          First name
+          <input
+            type="text"
+            autoComplete="given-name"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder="Your first name"
+            className="mt-1.5 h-11 w-full rounded-sm border border-venue-line bg-venue-paper px-3 text-sm text-venue-ink placeholder:text-venue-muted"
+          />
+        </label>
+        <label className="block text-sm font-semibold text-venue-ink">
+          Email
+          <input
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@email.com"
+            className="mt-1.5 h-11 w-full rounded-sm border border-venue-line bg-venue-paper px-3 text-sm text-venue-ink placeholder:text-venue-muted"
+          />
+        </label>
+      </div>
 
       <fieldset className="mt-6">
         <legend className="flex items-center gap-2 text-sm font-semibold text-venue-ink">
@@ -872,6 +871,8 @@ export function BusinessVenueProfile({
   const beneficiary = profile.causeName?.trim() || "your selected cause";
   const dateLabel = profile.eligibleWindow.trim();
   const liveBookUrl = reservationUrl?.trim() || null;
+  /** Public profile + dashboard View profile; join funnel keeps hours-only right column. */
+  const showReserveCard = readOnly || !onContinue;
 
   const rawPhotos =
     profile.photoUrls.length > 0
@@ -1146,8 +1147,8 @@ export function BusinessVenueProfile({
               )}
             </section>
 
-            {/* Campaign profile: hours stay under About; reserve sits in the right column. */}
-            {readOnly ? (
+            {/* Hours under About when reserve card is on the right (public + dashboard). */}
+            {showReserveCard ? (
               <EligibilitySchedule
                 rows={eligibility}
                 editing={canEdit}
@@ -1164,7 +1165,7 @@ export function BusinessVenueProfile({
             ) : null}
           </div>
 
-          {readOnly ? (
+          {showReserveCard ? (
             <ReservationPreview
               venueName={profile.businessName}
               offerName={offerName}
@@ -1172,8 +1173,8 @@ export function BusinessVenueProfile({
               donationPercent={profile.givebackPercent}
               beneficiary={beneficiary}
               bookUrl={liveBookUrl}
-              liveBooking
-              onBookParticipation={onBookParticipation}
+              liveBooking={Boolean(readOnly)}
+              onBookParticipation={readOnly ? onBookParticipation : undefined}
             />
           ) : (
             <div className="lg:sticky lg:top-8">
@@ -1203,6 +1204,14 @@ export function BusinessVenueProfile({
             {continueLabel}
             <ArrowRight className="size-4" />
           </Button>
+        ) : null}
+
+        {addressLine ? (
+          <LocationMapEmbed
+            address={addressLine}
+            title={`${profile.businessName} location`}
+            className="mt-16"
+          />
         ) : null}
       </div>
 
