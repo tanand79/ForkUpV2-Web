@@ -3,9 +3,9 @@
 /**
  * Pass D2 — Restaurant / Local Business 4-step giveback join (mockup).
  *
- * Steps: (1) Find by name or website → (2) Confirm found → (3) Giveback + cause → (4) Email.
+ * Steps: (1) Find by name, website, or ZIP list → (2) Confirm found → (3) Giveback + cause → (4) Email.
  * Inputs: Join Us door hint (restaurant | local). Outputs: claim-request profile draft.
- * One field accepts business name or website URL; both stay in this flow.
+ * One field accepts business name or website URL; ZIP-only lists nearby venues via AI.
  */
 import { useEffect, useState } from "react";
 import {
@@ -29,8 +29,10 @@ import {
   findBusinessProfile,
   generateBusinessDraft,
   fetchBusinessVenueImages,
+  suggestNearbyBusinesses,
   type BusinessDraftApiResult,
   type FindBusinessProfileResult,
+  type NearbyBusinessCandidate,
 } from "@/lib/api-business-onboarding";
 import { submitBusinessClaimRequest, linkUserOrganization } from "@/lib/api";
 import { fetchCampaigns } from "@/lib/api";
@@ -269,6 +271,13 @@ export function BusinessJoinFourStep() {
   /** On by default — nearby GPS like NPO Find Organization. */
   const [useNearbyFilter, setUseNearbyFilter] = useState(true);
   const [radiusMiles, setRadiusMiles] = useState(50);
+  /** ZIP-only AI suggest results — pick one then run full find. */
+  const [nearbyCandidates, setNearbyCandidates] = useState<
+    NearbyBusinessCandidate[]
+  >([]);
+  const [pickingCandidate, setPickingCandidate] = useState(false);
+  /** True while ZIP-only list is loading (not full profile extract). */
+  const [listingNearby, setListingNearby] = useState(false);
   const browserLocation = useBrowserLocation(useNearbyFilter);
   const nearby = useNearbyFilter
     ? nearbyQueryParams(browserLocation, radiusMiles)
@@ -543,10 +552,6 @@ export function BusinessJoinFourStep() {
 
   const runFind = async () => {
     const q = draft.nameQuery.trim();
-    if (!q) {
-      setError(`Enter your ${roleWord} name or website to continue.`);
-      return;
-    }
     // Typed override (optional) — ZIP / "City, ST".
     const nearRaw = (draft.nearLocation || draft.nearZip || "").trim();
     const nearParsed = parseNearbyLocation(nearRaw);
@@ -578,6 +583,52 @@ export function BusinessJoinFourStep() {
       if (place.state) nearState = place.state;
     }
     const hasNearby = Boolean(nearZip || nearCity || nearState);
+    const doorType = door ?? readBusinessDoor() ?? undefined;
+
+    // ZIP-only: no name → AI list of nearby restaurants / local businesses.
+    if (!q) {
+      if (nearZip.length !== 5) {
+        setError(
+          `Enter your ${roleWord} name or website, or a 5-digit ZIP to list nearby ${isRestaurant ? "restaurants" : "businesses"}.`,
+        );
+        return;
+      }
+      setError(null);
+      setFinding(true);
+      setListingNearby(true);
+      setNearbyCandidates([]);
+      setEditingConfirm(false);
+      try {
+        const result = await suggestNearbyBusinesses({
+          nearZip,
+          joinDoorType: doorType,
+          city: nearCity || undefined,
+          state: nearState || undefined,
+        });
+        if (!result.candidates.length) {
+          setError(
+            `No nearby ${isRestaurant ? "restaurants" : "businesses"} found for that ZIP. Try another ZIP or enter a name.`,
+          );
+          return;
+        }
+        setNearbyCandidates(result.candidates);
+        patchDraft({
+          nearZip,
+          nearLocation: draft.nearLocation?.trim() || nearZip,
+        });
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : `Could not list nearby ${isRestaurant ? "restaurants" : "businesses"}`,
+        );
+      } finally {
+        setFinding(false);
+        setListingNearby(false);
+      }
+      return;
+    }
+
     // Nearby GPS on → need city/state from GPS (or typed). Nearby off → ZIP/city optional.
     if (useNearbyFilter && !looksLikeWebsiteQuery(q) && !hasNearby) {
       if (
@@ -596,11 +647,12 @@ export function BusinessJoinFourStep() {
     }
     setError(null);
     setFinding(true);
+    setListingNearby(false);
+    setNearbyCandidates([]);
     setEditingConfirm(false);
     setClearPhotoUrls([]);
     setResyGalleryRefreshAttempted(false);
     try {
-      const doorType = door ?? readBusinessDoor() ?? undefined;
       const near = hasNearby
         ? {
             ...(nearZip ? { nearZip } : {}),
@@ -627,51 +679,107 @@ export function BusinessJoinFourStep() {
         });
       }
 
-      // Always pull Resy + site gallery via the dedicated endpoint so Find
-      // is not stuck on a thin AI/social image list.
-      const website = (found.website || "").trim();
-      if (website) {
-        try {
-          const site = websiteOriginUrl(website);
-          const venue = await fetchBusinessVenueImages({
-            websiteUrl: site,
-            reservationUrl: found.reservationUrl,
-          });
-          if (venue.imageUrls?.length) {
-            found = {
-              ...found,
-              website: site || found.website,
-              imageUrls: venue.imageUrls,
-              reservationUrl: venue.reservationUrl ?? found.reservationUrl,
-              checks: {
-                ...found.checks,
-                photosFound: venue.imageUrls.length > 0,
-              },
-            };
-          }
-        } catch {
-          /* keep Find imageUrls */
-        }
-      }
-
-      const hours = normalizeVenueHours(found.discountHours);
-      const hasListedDay = VENUE_DAYS.some((day) => isOpenVenueDay(hours[day]));
-      patchDraft({
-        found,
-        nameQuery: q,
-        ...(hasListedDay ? { discountHours: hours } : {}),
-        ...(found.eligibleWindow?.trim()
-          ? { eligibleWindow: found.eligibleWindow.trim() }
-          : {}),
-      });
-      setClearPhotoUrls(venueGalleryPhotoUrls(found.imageUrls));
-      setResyGalleryRefreshAttempted(true);
-      setPhase("confirm");
+      await applyFoundProfile(found, q, nearZip);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Could not find that ${roleWord}`);
     } finally {
       setFinding(false);
     }
+  };
+
+  /**
+   * After ZIP-only list: user picks a candidate → full find + confirm card.
+   */
+  const pickNearbyCandidate = async (candidate: NearbyBusinessCandidate) => {
+    const nearRaw = (draft.nearLocation || draft.nearZip || "").trim();
+    const nearParsed = parseNearbyLocation(nearRaw);
+    const nearZip =
+      (candidate.zip || "").replace(/\D/g, "").slice(0, 5) ||
+      nearParsed.nearZip ||
+      "";
+    const nearCity = candidate.city || nearParsed.city || "";
+    const nearState = candidate.state || nearParsed.state || "";
+    const doorType = door ?? readBusinessDoor() ?? undefined;
+
+    setError(null);
+    setPickingCandidate(true);
+    setFinding(true);
+    setListingNearby(false);
+    setEditingConfirm(false);
+    setClearPhotoUrls([]);
+    setResyGalleryRefreshAttempted(false);
+    try {
+      const found = await findBusinessProfile({
+        businessName: candidate.businessName,
+        joinDoorType: doorType,
+        nearZip: nearZip || undefined,
+        city: nearCity || undefined,
+        state: nearState || undefined,
+        website: candidate.website?.trim() || undefined,
+      });
+      setNearbyCandidates([]);
+      await applyFoundProfile(found, candidate.businessName, nearZip);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : `Could not open that ${roleWord}`,
+      );
+    } finally {
+      setFinding(false);
+      setPickingCandidate(false);
+    }
+  };
+
+  /** Enrich gallery + land on confirm (shared by name find and ZIP pick). */
+  const applyFoundProfile = async (
+    foundIn: FindBusinessProfileResult,
+    nameQuery: string,
+    nearZip: string,
+  ) => {
+    let found = foundIn;
+    const website = (found.website || "").trim();
+    if (website) {
+      try {
+        const site = websiteOriginUrl(website);
+        const venue = await fetchBusinessVenueImages({
+          websiteUrl: site,
+          reservationUrl: found.reservationUrl,
+        });
+        if (venue.imageUrls?.length) {
+          found = {
+            ...found,
+            website: site || found.website,
+            imageUrls: venue.imageUrls,
+            reservationUrl: venue.reservationUrl ?? found.reservationUrl,
+            checks: {
+              ...found.checks,
+              photosFound: venue.imageUrls.length > 0,
+            },
+          };
+        }
+      } catch {
+        /* keep Find imageUrls */
+      }
+    }
+
+    if (nearZip.length === 5 && !found.zip) {
+      found = { ...found, zip: nearZip };
+    }
+
+    const hours = normalizeVenueHours(found.discountHours);
+    const hasListedDay = VENUE_DAYS.some((day) => isOpenVenueDay(hours[day]));
+    patchDraft({
+      found,
+      nameQuery,
+      ...(hasListedDay ? { discountHours: hours } : {}),
+      ...(found.eligibleWindow?.trim()
+        ? { eligibleWindow: found.eligibleWindow.trim() }
+        : {}),
+    });
+    setClearPhotoUrls(venueGalleryPhotoUrls(found.imageUrls));
+    setResyGalleryRefreshAttempted(true);
+    setPhase("confirm");
   };
 
   const loadCauses = async () => {
@@ -1117,7 +1225,14 @@ export function BusinessJoinFourStep() {
             {isRestaurant ? "Restaurant" : "Local business"} — give back
           </p>
           <h1 className="text-2xl font-extrabold tracking-tight">
-            {phase === "find" && finding && "Analyzing your content..."}
+            {phase === "find" &&
+              finding &&
+              listingNearby &&
+              `Finding nearby ${isRestaurant ? "restaurants" : "businesses"}…`}
+            {phase === "find" &&
+              finding &&
+              !listingNearby &&
+              "Analyzing your content..."}
             {phase === "find" && !finding && `Find your ${roleWord}`}
             {phase === "confirm" && "We found you"}
             {phase === "giveback" &&
@@ -1136,7 +1251,20 @@ export function BusinessJoinFourStep() {
         </p>
       )}
 
-      {phase === "find" && finding && (
+      {phase === "find" && finding && listingNearby && (
+        <div className="mt-8 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Our AI is listing nearby {isRestaurant ? "restaurants" : "businesses"}{" "}
+            for your ZIP…
+          </p>
+          <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-secondary/30 px-4 py-8 text-sm text-muted-foreground">
+            <Loader2 className="size-5 animate-spin text-primary" />
+            Searching nearby…
+          </div>
+        </div>
+      )}
+
+      {phase === "find" && finding && !listingNearby && (
         <div className="mt-8 space-y-4">
           <p className="text-sm text-muted-foreground">
             ForkUp is extracting signals from your public pages.
@@ -1199,15 +1327,20 @@ export function BusinessJoinFourStep() {
             </p>
           ) : null}
           <p className="text-sm text-muted-foreground">
-            Enter your {roleWord} name or website. We&apos;ll use your nearby location to pick
-            the exact store — like nonprofit search.
+            Enter your {roleWord} name or website — or just a ZIP to list nearby{" "}
+            {isRestaurant ? "restaurants" : "businesses"}. We&apos;ll use nearby
+            location to pick the exact store — like nonprofit search.
           </p>
           <label className="block text-sm font-medium">
             {isRestaurant ? "Restaurant name or website" : "Business name or website"}
+            <span className="ml-1 font-normal text-muted-foreground">(optional with ZIP)</span>
             <input
               className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm"
               value={draft.nameQuery}
-              onChange={(e) => patchDraft({ nameQuery: e.target.value })}
+              onChange={(e) => {
+                setNearbyCandidates([]);
+                patchDraft({ nameQuery: e.target.value });
+              }}
               placeholder={
                 isRestaurant
                   ? "e.g. Sovana Bistro or https://www.sovanabistro.com"
@@ -1262,37 +1395,74 @@ export function BusinessJoinFourStep() {
             </p>
           ) : null}
 
-          {/* Optional typed nearby — when GPS nearby is off, or location failed. */}
-          {(!useNearbyFilter ||
-            browserLocation.status === "denied" ||
-            browserLocation.status === "unavailable") && (
-            <label className="block text-sm font-medium">
-              Nearby location{" "}
-              <span className="font-normal text-muted-foreground">(optional)</span>
-              <input
-                className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm"
-                autoComplete="address-level2"
-                value={draft.nearLocation || ""}
-                onChange={(e) => {
-                  const nearLocation = e.target.value;
-                  const parsed = parseNearbyLocation(nearLocation);
-                  patchDraft({
-                    nearLocation,
-                    nearZip: parsed.nearZip || "",
-                  });
-                }}
-                placeholder="e.g. Kennett Square, PA or 19348"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void runFind();
-                }}
-              />
-            </label>
-          )}
+          <label className="block text-sm font-medium">
+            Nearby location{" "}
+            <span className="font-normal text-muted-foreground">
+              (ZIP to list nearby — or city/state)
+            </span>
+            <input
+              className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm"
+              autoComplete="address-level2"
+              value={draft.nearLocation || ""}
+              onChange={(e) => {
+                const nearLocation = e.target.value;
+                const parsed = parseNearbyLocation(nearLocation);
+                setNearbyCandidates([]);
+                patchDraft({
+                  nearLocation,
+                  nearZip: parsed.nearZip || "",
+                });
+              }}
+              placeholder="e.g. Kennett Square, PA or 19348"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void runFind();
+              }}
+            />
+          </label>
 
           <p className="text-xs text-muted-foreground">
             Our AI will find your website, social links, photos, and the exact nearby location —
-            or use the URL you paste.
+            or list nearby {isRestaurant ? "restaurants" : "businesses"} from a ZIP.
           </p>
+
+          {nearbyCandidates.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">
+                Nearby {isRestaurant ? "restaurants" : "businesses"} — pick yours
+              </p>
+              <ul className="max-h-72 space-y-2 overflow-y-auto">
+                {nearbyCandidates.map((c) => {
+                  const loc = [c.address, c.city, c.state, c.zip]
+                    .filter(Boolean)
+                    .join(", ");
+                  return (
+                    <li key={`${c.businessName}-${c.address}-${c.zip}`}>
+                      <button
+                        type="button"
+                        disabled={finding || pickingCandidate}
+                        onClick={() => void pickNearbyCandidate(c)}
+                        className="w-full rounded-xl border border-border px-4 py-3 text-left text-sm transition-colors hover:bg-accent disabled:opacity-60"
+                      >
+                        <span className="font-semibold">{c.businessName}</span>
+                        {loc ? (
+                          <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                            <MapPin className="size-3 shrink-0" />
+                            {loc}
+                          </span>
+                        ) : null}
+                        {c.businessType ? (
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            {c.businessType}
+                          </span>
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+
           {mounted && state.businessProfile?.id && partnerJoinCampaignSlug ? (
             <button
               type="button"
@@ -1342,7 +1512,9 @@ export function BusinessJoinFourStep() {
             onClick={() => void runFind()}
             className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"
           >
-            Find My {isRestaurant ? "Restaurant" : "Business"}
+            {draft.nameQuery.trim()
+              ? `Find My ${isRestaurant ? "Restaurant" : "Business"}`
+              : `List Nearby ${isRestaurant ? "Restaurants" : "Businesses"}`}
             <ArrowRight className="size-4" />
           </button>
         </div>

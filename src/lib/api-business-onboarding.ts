@@ -160,6 +160,48 @@ export function findBusinessProfile(body: {
   });
 }
 
+/** ZIP-only Find — AI (or OSM) list of nearby restaurants / local businesses. */
+export type NearbyBusinessCandidate = {
+  businessName: string;
+  city: string;
+  state: string;
+  address: string;
+  zip: string;
+  website: string;
+  businessType: string;
+};
+
+export type SuggestNearbyBusinessesResult = {
+  nearZip: string;
+  city: string | null;
+  state: string | null;
+  joinDoorType: "restaurant" | "local" | null;
+  candidates: NearbyBusinessCandidate[];
+  provider: string;
+  matchCount: number;
+};
+
+/**
+ * POST /api/suggest-nearby-businesses
+ * Inputs: nearZip (required), optional joinDoorType / city / state / limit.
+ * Outputs: pick-list candidates for Find My Restaurant / Business.
+ */
+export function suggestNearbyBusinesses(body: {
+  nearZip: string;
+  joinDoorType?: "restaurant" | "local";
+  city?: string;
+  state?: string;
+  limit?: number;
+}) {
+  return fetchJson<SuggestNearbyBusinessesResult>(
+    "/api/suggest-nearby-businesses",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 /**
  * POST /api/business-venue-images — Resy carousel + site gallery photos only.
  */
