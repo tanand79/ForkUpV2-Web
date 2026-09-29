@@ -151,6 +151,8 @@ export function findBusinessProfile(body: {
   website?: string;
   /** Persist discovered public links onto this business (null-only fill). */
   businessId?: number;
+  /** Edit → Re-scrape: skip DB cache and replace gallery. */
+  forceRefresh?: boolean;
 }) {
   return fetchJson<FindBusinessProfileResult>("/api/find-business-profile", {
     method: "POST",
@@ -166,6 +168,8 @@ export function fetchBusinessVenueImages(body: {
   reservationUrl?: string | null;
   /** Persist gallery onto this business when scrape returns photos. */
   businessId?: number;
+  /** Skip DB gallery cache and replace stored URLs after scrape. */
+  forceRefresh?: boolean;
 }) {
   return fetchJson<{
     imageUrls: string[];

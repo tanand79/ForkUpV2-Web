@@ -21,6 +21,7 @@ import {
   findBusinessProfile,
 } from "@/lib/api-business-onboarding";
 import { websiteOriginUrl } from "@/lib/business-join-query";
+import { venueGalleryPhotoUrls } from "@/lib/business-join-images";
 import type { ApiMethodType } from "@/lib/builder-submit";
 import { getAuthToken } from "@/lib/auth-storage";
 import { prepareDirectoryInviteAuth } from "@/lib/campaign-auth";
@@ -141,6 +142,8 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
   const [venueProfile, setVenueProfile] = useState<VenueProfileSnapshot | null>(null);
   const [profileSource, setProfileSource] = useState<BusinessDirectoryItem | null>(null);
   const [photosLoading, setPhotosLoading] = useState(false);
+  const [directoryEditing, setDirectoryEditing] = useState(false);
+  const [refreshingFromWeb, setRefreshingFromWeb] = useState(false);
   const [venueReservationUrl, setVenueReservationUrl] = useState<string | null>(null);
 
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -151,6 +154,8 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
   const [invitingSlug, setInvitingSlug] = useState<string | null>(null);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  /** Bumps on each View profile open — drop stale async hydrate from a prior card. */
+  const profileHydrateGen = useRef(0);
 
   useEffect(() => {
     if (!nearby.locationReady) return;
@@ -171,8 +176,8 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
             Array.isArray(b.galleryImageUrls) && b.galleryImageUrls[0]
               ? b.galleryImageUrls[0]
               : null;
-          const url =
-            saved?.coverUrl || saved?.photoUrls?.[0] || cached || dbCover;
+          // Prefer DB gallery — local snapshots can point at the wrong venue.
+          const url = dbCover || cached || saved?.coverUrl || saved?.photoUrls?.[0];
           if (url) covers[b.id] = url;
         }
         setCoverById(covers);
@@ -195,30 +200,38 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
   ]);
 
   function openProfile(business: BusinessDirectoryItem) {
+    const gen = ++profileHydrateGen.current;
     const loc = business.locations[0];
-    const saved = loadVenueProfileSnapshot(business.id);
+    const savedRaw = loadVenueProfileSnapshot(business.id);
+    // Ignore local snapshots whose name drifted (Eclipse → Studio misconfig).
+    const saved =
+      savedRaw &&
+      savedRaw.businessName.trim().toLowerCase() ===
+        business.businessName.trim().toLowerCase()
+        ? savedRaw
+        : null;
     const cachedPhotos = loadCachedVenuePhotos(business.id) ?? [];
     const dbGallery = Array.isArray(business.galleryImageUrls)
       ? business.galleryImageUrls.filter((u) => typeof u === "string" && u.trim())
       : [];
+    // Source of truth: DB gallery first, then session cache, then matching snapshot.
     const photoUrls =
-      (saved?.photoUrls && saved.photoUrls.length > 0
-        ? saved.photoUrls
-        : null) ??
-      (cachedPhotos.length > 0 ? cachedPhotos : null) ??
       (dbGallery.length > 0 ? dbGallery : null) ??
+      (cachedPhotos.length > 0 ? cachedPhotos : null) ??
+      (saved?.photoUrls && saved.photoUrls.length > 0 ? saved.photoUrls : null) ??
       [];
 
+    const lockedName = business.businessName.trim();
     const savedHours = normalizeVenueHours(saved?.hours ?? null);
     const base: VenueProfileSnapshot = {
       businessId: business.id,
-      businessName: saved?.businessName || business.businessName,
+      businessName: lockedName,
       address: saved?.address || "",
       city: saved?.city || loc?.city || "",
       state: saved?.state || loc?.state || "",
       zip: saved?.zip || "",
       about: saved?.about || "",
-      coverUrl: saved?.coverUrl || photoUrls[0] || null,
+      coverUrl: photoUrls[0] || saved?.coverUrl || null,
       photoUrls,
       hours: savedHours,
       eligibleWindow: saved?.eligibleWindow?.trim() || "",
@@ -228,17 +241,17 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
         saved?.isRestaurant !== undefined
           ? saved.isRestaurant
           : business.capabilities.dineAndDonate,
-      websiteUrl: saved?.websiteUrl?.trim() || business.website?.trim() || null,
+      websiteUrl: business.website?.trim() || saved?.websiteUrl?.trim() || null,
       facebookUrl:
-        saved?.facebookUrl?.trim() || business.facebookUrl?.trim() || null,
+        business.facebookUrl?.trim() || saved?.facebookUrl?.trim() || null,
       instagramUrl:
-        saved?.instagramUrl?.trim() || business.instagramUrl?.trim() || null,
+        business.instagramUrl?.trim() || saved?.instagramUrl?.trim() || null,
       linkedinUrl:
-        saved?.linkedinUrl?.trim() || business.linkedinUrl?.trim() || null,
+        business.linkedinUrl?.trim() || saved?.linkedinUrl?.trim() || null,
       youtubeUrl: saved?.youtubeUrl?.trim() || null,
-      tiktokUrl: saved?.tiktokUrl?.trim() || business.tiktokUrl?.trim() || null,
-      phone: saved?.phone?.trim() || business.contactPhone?.trim() || null,
-      email: saved?.email?.trim() || business.venueEmail?.trim() || null,
+      tiktokUrl: business.tiktokUrl?.trim() || saved?.tiktokUrl?.trim() || null,
+      phone: business.contactPhone?.trim() || saved?.phone?.trim() || null,
+      email: business.venueEmail?.trim() || saved?.email?.trim() || null,
     };
 
     setProfileSource(business);
@@ -265,6 +278,7 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
       !loadContactLookupTried(business.id);
     const needsDetails = needsAbout || needsHours || needsSocial || needsContact;
     const needsPhotos = !hasRealGallery;
+    // DB already complete — no AI / scrape on reopen.
     if (!needsPhotos && !needsDetails) return;
 
     if (needsPhotos) setPhotosLoading(true);
@@ -277,7 +291,6 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
       let city = base.city;
       let state = base.state;
       let zip = base.zip;
-      let businessName = base.businessName;
       let nextPhotos: string[] = hasRealGallery ? [...photoUrls] : [];
       let nextHours = base.hours;
       let eligibleWindow = base.eligibleWindow;
@@ -290,7 +303,7 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
       let email = base.email?.trim() || null;
 
       try {
-        // Fast path: gallery from website — never wait on full find-business.
+        // Fast path: gallery from website / DB cache — never wait on full find-business.
         const origin = websiteOriginUrl(website);
         if (needsPhotos && origin) {
           try {
@@ -299,6 +312,7 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
               reservationUrl: null,
               businessId: business.id,
             });
+            if (gen !== profileHydrateGen.current) return;
             if (venue.imageUrls?.length) {
               nextPhotos = venue.imageUrls;
               saveCachedVenuePhotos(business.id, nextPhotos);
@@ -309,6 +323,7 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
               setVenueProfile((prev) => {
                 if (!prev || prev.businessId !== business.id) return prev;
                 const next = mergeVenueSnapshotKeepExisting(prev, {
+                  businessName: lockedName,
                   coverUrl: nextPhotos[0]!,
                   photoUrls: nextPhotos,
                 });
@@ -326,6 +341,7 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
           }
         }
 
+        if (gen !== profileHydrateGen.current) return;
         if (!needsDetails && nextPhotos.length > 0) {
           setPhotosLoading(false);
           return;
@@ -334,19 +350,19 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
         if (needsDetails || nextPhotos.length === 0) {
           try {
             const found = await findBusinessProfile({
-              businessName: business.businessName,
+              businessName: lockedName,
               joinDoorType: isRestaurant ? "restaurant" : "local",
               ...(website ? { website } : {}),
               businessId: business.id,
             });
+            if (gen !== profileHydrateGen.current) return;
             website = website || found.website?.trim() || "";
             about = about || found.about || "";
             address = address || found.address || "";
             city = city || found.city || "";
             state = state || found.state || "";
             zip = zip || found.zip || "";
-            businessName =
-              businessName || found.businessName?.trim() || businessName;
+            // Never adopt found.businessName — keeps Eclipse from becoming Studio.
             facebookUrl = facebookUrl || found.facebookUrl?.trim() || null;
             instagramUrl = instagramUrl || found.instagramUrl?.trim() || null;
             linkedinUrl = linkedinUrl || found.linkedinUrl?.trim() || null;
@@ -375,6 +391,8 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
           }
         }
 
+        if (gen !== profileHydrateGen.current) return;
+
         if (nextPhotos.length === 0 && websiteOriginUrl(website)) {
           try {
             const venue = await fetchBusinessVenueImages({
@@ -382,11 +400,14 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
               reservationUrl: null,
               businessId: business.id,
             });
+            if (gen !== profileHydrateGen.current) return;
             if (venue.imageUrls?.length) nextPhotos = venue.imageUrls;
           } catch {
             /* keep empty */
           }
         }
+
+        if (gen !== profileHydrateGen.current) return;
 
         if (nextPhotos.length > 0) {
           saveCachedVenuePhotos(business.id, nextPhotos);
@@ -396,7 +417,7 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
         setVenueProfile((prev) => {
           if (!prev || prev.businessId !== business.id) return prev;
           const next = mergeVenueSnapshotKeepExisting(prev, {
-            businessName,
+            businessName: lockedName,
             address,
             city,
             state,
@@ -421,15 +442,18 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
       } catch {
         if (needsContact) markContactLookupTried(business.id);
       } finally {
-        setPhotosLoading(false);
+        if (gen === profileHydrateGen.current) setPhotosLoading(false);
       }
     })();
   }
 
   function closeVenueProfile() {
+    profileHydrateGen.current += 1;
     setVenueProfile(null);
     setProfileSource(null);
     setPhotosLoading(false);
+    setDirectoryEditing(false);
+    setRefreshingFromWeb(false);
     setVenueReservationUrl(null);
   }
 
@@ -578,12 +602,114 @@ export function HomepageBusinessDirectory({ nearby, onStartCampaign, embedded }:
           )}
           <BusinessVenueProfile
             profile={venueProfile}
-            editing={false}
-            readOnly
+            editing={directoryEditing}
+            readOnly={!isLoggedIn}
             photosLoading={photosLoading}
+            refreshingFromWeb={refreshingFromWeb}
             reservationUrl={venueReservationUrl}
-            onToggleEdit={() => {}}
-            onChange={() => {}}
+            onToggleEdit={() => setDirectoryEditing((v) => !v)}
+            onChange={(patch) => {
+              setVenueProfile((prev) => {
+                if (!prev) return prev;
+                const next = { ...prev, ...patch };
+                saveVenueProfileSnapshot(next);
+                return next;
+              });
+            }}
+            onRefreshFromWeb={
+              isLoggedIn && profileSource
+                ? async () => {
+                    const business = profileSource;
+                    if (!business?.id || refreshingFromWeb) return;
+                    const gen = ++profileHydrateGen.current;
+                    setRefreshingFromWeb(true);
+                    setPhotosLoading(true);
+                    try {
+                      const lockedName = business.businessName.trim();
+                      const website =
+                        venueProfile?.websiteUrl?.trim() ||
+                        business.website?.trim() ||
+                        "";
+                      const found = await findBusinessProfile({
+                        businessName: lockedName,
+                        joinDoorType: business.capabilities.dineAndDonate
+                          ? "restaurant"
+                          : "local",
+                        ...(website ? { website } : {}),
+                        businessId: business.id,
+                        forceRefresh: true,
+                      });
+                      if (gen !== profileHydrateGen.current) return;
+
+                      let nextPhotos = Array.isArray(found.imageUrls)
+                        ? found.imageUrls.filter(Boolean)
+                        : [];
+                      const site = found.website?.trim() || website;
+                      if (site) {
+                        try {
+                          const scraped = await fetchBusinessVenueImages({
+                            websiteUrl: websiteOriginUrl(site),
+                            reservationUrl: found.reservationUrl,
+                            businessId: business.id,
+                            forceRefresh: true,
+                          });
+                          if (gen !== profileHydrateGen.current) return;
+                          if (scraped.imageUrls?.length) {
+                            nextPhotos = scraped.imageUrls;
+                          }
+                        } catch {
+                          /* keep find photos */
+                        }
+                      }
+                      nextPhotos = venueGalleryPhotoUrls(nextPhotos);
+
+                      setVenueProfile((prev) => {
+                        if (!prev || prev.businessId !== business.id) return prev;
+                        const next = mergeVenueSnapshotKeepExisting(prev, {
+                          businessName: lockedName,
+                          about: found.about || prev.about,
+                          address: found.address || prev.address,
+                          city: found.city || prev.city,
+                          state: found.state || prev.state,
+                          zip: found.zip || prev.zip,
+                          websiteUrl: site || prev.websiteUrl,
+                          facebookUrl: found.facebookUrl || prev.facebookUrl,
+                          instagramUrl: found.instagramUrl || prev.instagramUrl,
+                          linkedinUrl: found.linkedinUrl || prev.linkedinUrl,
+                          youtubeUrl: found.youtubeUrl || prev.youtubeUrl,
+                          tiktokUrl: found.tiktokUrl || prev.tiktokUrl,
+                          phone: found.phone || prev.phone,
+                          email: found.contactEmail || prev.email,
+                          eligibleWindow:
+                            found.eligibleWindow || prev.eligibleWindow,
+                          hours: hasEligibleHours(
+                            normalizeVenueHours(found.discountHours),
+                          )
+                            ? normalizeVenueHours(found.discountHours)
+                            : prev.hours,
+                          photoUrls:
+                            nextPhotos.length > 0 ? nextPhotos : prev.photoUrls,
+                          coverUrl: nextPhotos[0] || prev.coverUrl,
+                        });
+                        saveVenueProfileSnapshot(next);
+                        if (next.photoUrls.length > 0) {
+                          saveCachedVenuePhotos(business.id, next.photoUrls);
+                          setCoverById((c) => ({
+                            ...c,
+                            [business.id]: next.photoUrls[0]!,
+                          }));
+                        }
+                        return next;
+                      });
+                    } finally {
+                      if (gen === profileHydrateGen.current) {
+                        setRefreshingFromWeb(false);
+                        setPhotosLoading(false);
+                      }
+                    }
+                  }
+                : undefined
+            }
             onBack={closeVenueProfile}
             backLabel="Back to Business"
             onContinue={

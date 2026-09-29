@@ -49,15 +49,26 @@ export function looksLikeDecorativeImageUrl(url: string): boolean {
   const raw = (url || "").trim();
   if (!raw) return false;
   if (
-    /paper[_-]?cut|cut[_-]?out|illustrat|doodle|clip[_-]?art|line[_-]?art|hand[_-]?drawn|decorati|ornament|sticker|scribble|silhouette|map[_-]?marker|unnamed|no[_-]?edge|sbox/i.test(
+    /paper[_-]?cut|cut[_-]?out|illustrat|doodle|clip[_-]?art|line[_-]?art|hand[_-]?drawn|decorati|ornament|sticker|scribble|silhouette|map[_-]?marker|unnamed|no[_-]?edge|sbox|jackelop/i.test(
       raw,
     )
   ) {
     return true;
   }
+  // BentoBox (and similar): real venue photos are JPG; PNGs are doodles / logos.
+  if (/images\.getbento\.com/i.test(raw) && /\.png(\?|$)/i.test(raw)) {
+    return true;
+  }
+  // Hashed / numeric-only PNG filenames (menu illustrations with opaque names).
   if (
     /\.png(\?|$)/i.test(raw) &&
-    /(?:^|[\/_\-])(tomato|basil|onion|lettuce|corn|egg|blueberry|blueberries|carrot|garlic|lemon|avocado|pepper|wine|glass|goblet|utensil|cutlery|fork|knife|spoon|asparagus|jackelope|jackelop)(?:aj|[_\-.]|$)/i.test(
+    /\/(?:media\/)?images\/\d{8,}[^/]*\.png/i.test(raw)
+  ) {
+    return true;
+  }
+  if (
+    /\.png(\?|$)/i.test(raw) &&
+    /(tomato|basil|onion|lettuce|corn|egg|blueberry|blueberries|carrot|garlic|lemon|avocado|pepper|wine|glass|goblet|utensil|cutlery|fork|knife|spoon|asparagus|jackelope|jackelop)/i.test(
       raw,
     )
   ) {
@@ -66,7 +77,7 @@ export function looksLikeDecorativeImageUrl(url: string): boolean {
   // Menu-page ornament filenames (Sovana BentoBox, etc.).
   if (
     /\.png(\?|$)/i.test(raw) &&
-    /leaf[_-]?lettuce|egg[_-]?brunch|wine[_-]?glass|asparagus[_-]?group|bwjackelope|menu\.png/i.test(
+    /leaf[_-]?lettuce|egg[_-]?brunch|wine[_-]?glass|asparagus[_-]?group|bwjackelope|bwjackelop|menu\.png/i.test(
       raw,
     )
   ) {
@@ -231,23 +242,18 @@ export type ClassifiedBusinessImages = {
 };
 
 /**
- * Sync gallery list from Find API imageUrls — Resy CDN first, then JPG/WEBP.
- * Use this for immediate UI (no Image probe) so session drafts show Resy photos.
+ * Sync gallery list from Find API imageUrls — keep server order.
+ * Drop logos / decorative PNGs; keep Resy CDN + real JPG/WEBP photos.
  */
 export function venueGalleryPhotoUrls(imageUrls: string[]): string[] {
   const unique = [...new Set(imageUrls.map((u) => (u || "").trim()).filter(Boolean))];
-  const booking = unique.filter(
-    (u) => isBookingCdnPhotoUrl(u) && !looksLikeDecorativeImageUrl(u),
-  );
-  const jpgs = unique.filter(
-    (u) =>
-      !isBookingCdnPhotoUrl(u) &&
-      !looksLikeLogoImageUrl(u) &&
-      !looksLikeDecorativeImageUrl(u) &&
-      /\.(jpe?g|webp)(\?|$)/i.test(u) &&
-      !looksLikeLowQualityImageUrl(u),
-  );
-  return [...booking, ...jpgs].slice(0, 16);
+  return unique
+    .filter((u) => {
+      if (looksLikeDecorativeImageUrl(u) || looksLikeLogoImageUrl(u)) return false;
+      if (isBookingCdnPhotoUrl(u)) return true;
+      return /\.(jpe?g|webp)(\?|$)/i.test(u) && !looksLikeLowQualityImageUrl(u);
+    })
+    .slice(0, 18);
 }
 
 /** Count Resy (direct or proxied) gallery URLs. */

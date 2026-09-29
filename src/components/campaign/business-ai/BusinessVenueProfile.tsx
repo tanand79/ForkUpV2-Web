@@ -22,6 +22,7 @@ import {
   Music2,
   Pencil,
   Phone,
+  RefreshCw,
   Upload,
   Users,
   UtensilsCrossed,
@@ -30,7 +31,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { bookingCtaLabel } from "@/lib/booking-platform";
-import { resolveVenueImageSrc } from "@/lib/business-join-images";
+import {
+  looksLikeDecorativeImageUrl,
+  looksLikeLogoImageUrl,
+  resolveVenueImageSrc,
+} from "@/lib/business-join-images";
 import { uploadImage } from "@/lib/api";
 import {
   VENUE_DAYS,
@@ -80,6 +85,12 @@ type Props = {
    * open Resy + record participation after name/email.
    */
   onBookParticipation?: (participant: VenueBookParticipant) => Promise<void>;
+  /**
+   * Additive: Edit → Re-scrape photos & details (force AI + gallery replace in DB).
+   */
+  onRefreshFromWeb?: () => void | Promise<void>;
+  /** True while onRefreshFromWeb is running. */
+  refreshingFromWeb?: boolean;
 };
 
 type GalleryImage = { id: string; src: string; alt: string };
@@ -843,6 +854,8 @@ export function BusinessVenueProfile({
   photosLoading = false,
   reservationUrl = null,
   onBookParticipation,
+  onRefreshFromWeb,
+  refreshingFromWeb = false,
 }: Props) {
   const canEdit = !readOnly && editing;
   const [uploading, setUploading] = useState(false);
@@ -860,12 +873,17 @@ export function BusinessVenueProfile({
   const dateLabel = profile.eligibleWindow.trim();
   const liveBookUrl = reservationUrl?.trim() || null;
 
-  const photoList =
+  const rawPhotos =
     profile.photoUrls.length > 0
       ? profile.photoUrls
       : profile.coverUrl
         ? [profile.coverUrl]
         : [];
+  // Drop menu doodles / logos if they were cached before the filter tightened.
+  // Keep user-uploaded PNGs (venueGalleryPhotoUrls would strip those).
+  const photoList = rawPhotos.filter(
+    (u) => !looksLikeDecorativeImageUrl(u) && !looksLikeLogoImageUrl(u),
+  );
   const images: GalleryImage[] = photoList.map((src, index) => {
     const resolved = resolveVenueImageSrc(src);
     return {
@@ -955,15 +973,32 @@ export function BusinessVenueProfile({
             {backLabel}
           </button>
           {!readOnly ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onToggleEdit}
-              className="h-9 rounded-full border-venue-line bg-venue-paper px-3 text-xs font-semibold text-venue-ink shadow-none hover:bg-venue-soft"
-            >
-              <Pencil className="size-3.5" />
-              {editing ? "Done" : "Edit"}
-            </Button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {canEdit && onRefreshFromWeb ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={refreshingFromWeb || photosLoading}
+                  onClick={() => void onRefreshFromWeb()}
+                  className="h-9 rounded-full border-venue-line bg-venue-paper px-3 text-xs font-semibold text-venue-ink shadow-none hover:bg-venue-soft disabled:opacity-60"
+                  title="Re-run website scrape and AI, then replace stored gallery URLs"
+                >
+                  <RefreshCw
+                    className={`size-3.5 ${refreshingFromWeb ? "animate-spin" : ""}`}
+                  />
+                  {refreshingFromWeb ? "Refreshing…" : "Re-scrape from web"}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onToggleEdit}
+                className="h-9 rounded-full border-venue-line bg-venue-paper px-3 text-xs font-semibold text-venue-ink shadow-none hover:bg-venue-soft"
+              >
+                <Pencil className="size-3.5" />
+                {editing ? "Done" : "Edit"}
+              </Button>
+            </div>
           ) : (
             <span className="h-9 w-9" aria-hidden />
           )}

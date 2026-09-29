@@ -39,6 +39,7 @@ import {
   saveBusinessVenueLinks,
 } from "@/lib/api-business-onboarding";
 import { websiteOriginUrl } from "@/lib/business-join-query";
+import { venueGalleryPhotoUrls } from "@/lib/business-join-images";
 import { loadBusinessJoinDraft } from "@/lib/business-join-four-step-draft";
 import {
   isOpenVenueDay,
@@ -147,6 +148,7 @@ export function BusinessDashboard() {
   const [editingVenue, setEditingVenue] = useState(false);
   const [venue, setVenue] = useState<VenueProfileSnapshot | null>(null);
   const [photosLoading, setPhotosLoading] = useState(false);
+  const [refreshingFromWeb, setRefreshingFromWeb] = useState(false);
   const venueHydrateGen = useRef(0);
 
   // Warm photo cache as soon as the dashboard loads so "View profile" is instant.
@@ -524,7 +526,8 @@ export function BusinessDashboard() {
         city = city || discovered.city || "";
         state = state || discovered.state || "";
         zip = zip || discovered.zip || "";
-        businessName = businessName || discovered.businessName || biz.businessName;
+        // Keep dashboard business name — never swap from AI/find.
+        businessName = biz.businessName;
         eligibleWindow =
           eligibleWindow || discovered.eligibleWindow?.trim() || "";
         facebookUrl = facebookUrl || discovered.facebookUrl?.trim() || null;
@@ -651,6 +654,100 @@ export function BusinessDashboard() {
         profile={venue}
         editing={editingVenue}
         photosLoading={photosLoading}
+        refreshingFromWeb={refreshingFromWeb}
+        onRefreshFromWeb={async () => {
+          if (!biz?.id || refreshingFromWeb) return;
+          const gen = ++venueHydrateGen.current;
+          setRefreshingFromWeb(true);
+          setPhotosLoading(true);
+          try {
+            const website = venue.websiteUrl?.trim() || "";
+            const found = await findBusinessProfile({
+              businessName: biz.businessName,
+              joinDoorType: biz.capabilities.dineAndDonate
+                ? "restaurant"
+                : "local",
+              ...(website ? { website } : {}),
+              businessId: biz.id,
+              forceRefresh: true,
+            });
+            if (gen !== venueHydrateGen.current) return;
+
+            let nextPhotos = Array.isArray(found.imageUrls)
+              ? found.imageUrls.filter(Boolean)
+              : [];
+            const site = found.website?.trim() || website;
+            if (site) {
+              try {
+                const scraped = await fetchBusinessVenueImages({
+                  websiteUrl: websiteOriginUrl(site),
+                  reservationUrl: found.reservationUrl,
+                  businessId: biz.id,
+                  forceRefresh: true,
+                });
+                if (gen !== venueHydrateGen.current) return;
+                if (scraped.imageUrls?.length) nextPhotos = scraped.imageUrls;
+              } catch {
+                /* keep find photos */
+              }
+            }
+            nextPhotos = venueGalleryPhotoUrls(nextPhotos);
+
+            const lockedName = biz.businessName;
+            const next: VenueProfileSnapshot = {
+              ...venue,
+              businessId: biz.id,
+              businessName: lockedName,
+              about: found.about?.trim() || venue.about,
+              address: found.address?.trim() || venue.address,
+              city: found.city?.trim() || venue.city,
+              state: found.state?.trim() || venue.state,
+              zip: found.zip?.trim() || venue.zip,
+              websiteUrl: site || venue.websiteUrl,
+              facebookUrl: found.facebookUrl?.trim() || venue.facebookUrl,
+              instagramUrl: found.instagramUrl?.trim() || venue.instagramUrl,
+              linkedinUrl: found.linkedinUrl?.trim() || venue.linkedinUrl,
+              youtubeUrl: found.youtubeUrl?.trim() || venue.youtubeUrl,
+              tiktokUrl: found.tiktokUrl?.trim() || venue.tiktokUrl,
+              phone: found.phone?.trim() || venue.phone,
+              email: found.contactEmail?.trim() || venue.email,
+              eligibleWindow:
+                found.eligibleWindow?.trim() || venue.eligibleWindow,
+              hours: hasEligibleHours(normalizeVenueHours(found.discountHours))
+                ? normalizeVenueHours(found.discountHours)
+                : venue.hours,
+              photoUrls: nextPhotos.length > 0 ? nextPhotos : venue.photoUrls,
+              coverUrl:
+                nextPhotos[0] || venue.coverUrl || null,
+            };
+            setVenue(next);
+            saveVenueProfileSnapshot(next);
+            if (next.photoUrls.length > 0) {
+              saveCachedVenuePhotos(biz.id, next.photoUrls);
+            }
+            flushVenueLinks(next);
+            if (next.photoUrls.length > 0) {
+              void saveBusinessVenueGallery({
+                businessId: biz.id,
+                imageUrls: next.photoUrls,
+                coverUrl: next.coverUrl,
+              }).catch(() => {
+                /* already replaced via forceRefresh APIs */
+              });
+            }
+          } catch (err) {
+            setError(
+              err instanceof Error
+                ? err.message
+                : "Failed to re-scrape business profile",
+            );
+          } finally {
+            if (gen === venueHydrateGen.current) {
+              setRefreshingFromWeb(false);
+              setPhotosLoading(false);
+            }
+          }
+        }}
         onToggleEdit={() => {
           setEditingVenue((wasEditing) => {
             if (wasEditing) flushVenueLinks(venue);
@@ -662,6 +759,7 @@ export function BusinessDashboard() {
           if (editingVenue) flushVenueLinks(venue);
           setEditingVenue(false);
           setPhotosLoading(false);
+          setRefreshingFromWeb(false);
           setProfileOpen(false);
         }}
         backLabel="Back to dashboard"
