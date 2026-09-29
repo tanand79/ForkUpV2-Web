@@ -37,7 +37,11 @@ function isLoopbackApiUrl(url: string): boolean {
 const PRODUCTION_API_BY_HOST: Record<string, string> = {
   "powderblue-alligator-791855.hostingersite.com":
     "https://lightslategrey-alligator-326327.hostingersite.com",
+  // Amplify HTTPS app → EC2 API (same-origin /api is broken: trailingSlash 308 → 404).
+  "main.d1sg5z77oiwjqs.amplifyapp.com": "https://forkup2.duckdns.org",
 };
+
+const DEFAULT_AMPLIFY_API_URL = "https://forkup2.duckdns.org";
 
 /** True when the app is running on a local dev machine in the browser. */
 export function isLocalBrowser(): boolean {
@@ -50,6 +54,9 @@ export function isLocalBrowser(): boolean {
  * Browsers block HTTPS pages calling HTTP APIs (mixed content).
  * When that would happen, use same-origin `/api` and let Amplify
  * reverse-proxy to the EC2 HTTP backend (see amplify-rewrites.json).
+ *
+ * Exception: Amplify same-origin /api is unsafe for image proxy (trailingSlash
+ * 308 → Next 404). Prefer the known HTTPS API host instead of "".
  */
 function avoidMixedContent(base: string): string {
   if (
@@ -57,6 +64,13 @@ function avoidMixedContent(base: string): string {
     window.location.protocol === "https:" &&
     base.startsWith("http:")
   ) {
+    const host = window.location.hostname.toLowerCase();
+    if (
+      host.endsWith(".amplifyapp.com") ||
+      host in PRODUCTION_API_BY_HOST
+    ) {
+      return DEFAULT_AMPLIFY_API_URL;
+    }
     return "";
   }
   return base;
@@ -79,9 +93,14 @@ export function getApiBaseUrl(): string {
     const runtime = window.__FORKUP__?.apiUrl?.trim();
     if (runtime) return avoidMixedContent(normalizeBaseUrl(runtime));
 
-    const host = window.location.hostname;
+    const host = window.location.hostname.toLowerCase();
     const mapped = PRODUCTION_API_BY_HOST[host];
     if (mapped) return avoidMixedContent(normalizeBaseUrl(mapped));
+
+    // Any Amplify preview/prod host → EC2 API (images + /api must not stay same-origin).
+    if (host.endsWith(".amplifyapp.com")) {
+      return DEFAULT_AMPLIFY_API_URL;
+    }
   }
 
   return "";

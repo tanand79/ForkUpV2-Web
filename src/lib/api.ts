@@ -790,6 +790,11 @@ export interface BusinessDirectoryItem {
   tiktokUrl?: string | null;
   contactPhone?: string | null;
   venueEmail?: string | null;
+  /** About from businesses.description. */
+  about?: string | null;
+  /** Durable giveback hours from businesses.venue_discount_hours. */
+  discountHours?: Record<string, string> | null;
+  eligibleWindow?: string | null;
   /** Cached public gallery from businesses.venue_gallery_urls. */
   galleryImageUrls?: string[];
   capabilities: {
@@ -803,6 +808,8 @@ export interface BusinessDirectoryItem {
     locationName: string;
     city: string | null;
     state: string | null;
+    address?: string | null;
+    zip?: string | null;
     distanceMiles: number | null;
   }[];
 }

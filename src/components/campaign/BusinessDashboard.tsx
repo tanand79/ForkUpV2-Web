@@ -643,6 +643,13 @@ export function BusinessDashboard() {
       instagramUrl: snapshot.instagramUrl?.trim() || null,
       phone: snapshot.phone?.trim() || null,
       venueEmail: snapshot.email?.trim() || null,
+      description: snapshot.about?.trim() || null,
+      discountHours: snapshot.hours,
+      eligibleWindow: snapshot.eligibleWindow?.trim() || null,
+      address: snapshot.address?.trim() || null,
+      city: snapshot.city?.trim() || null,
+      state: snapshot.state?.trim() || null,
+      zip: snapshot.zip?.trim() || null,
     }).catch(() => {
       /* best-effort durable sync */
     });

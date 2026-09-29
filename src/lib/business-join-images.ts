@@ -6,14 +6,24 @@ import { apiUrl } from "@/lib/api-config";
 
 /**
  * Resy photos are returned as relative `/api/venue-photo-proxy?url=…`.
- * On Amplify that path hits the SPA host (broken); prefix the Nest API base.
+ * On Amplify that path hits the SPA host (trailingSlash 308 → 404); prefix the Nest API base.
  * Localhost leaves them relative so Next rewrites still work.
  */
 export function resolveVenueImageSrc(url: string): string {
   const raw = (url || "").trim();
   if (!raw) return raw;
+
+  const toApi = (pathWithQuery: string) => {
+    // Never leave a trailing slash before ? — Amplify/Next 308 breaks the proxy.
+    const normalized = pathWithQuery.replace(
+      /^(\/api\/venue-photo-proxy)\/+(\?|$)/i,
+      "$1$2",
+    );
+    return apiUrl(normalized);
+  };
+
   if (raw.startsWith("/api/")) {
-    return apiUrl(raw);
+    return toApi(raw);
   }
   // Durable disk re-hosts from Re-scrape / uploads.
   if (raw.startsWith("/uploads/")) {
@@ -23,11 +33,22 @@ export function resolveVenueImageSrc(url: string): string {
     const origin =
       typeof window !== "undefined" ? window.location.origin : "http://localhost";
     const parsed = new URL(raw, origin);
-    if (parsed.pathname.replace(/\/+$/, "") === "/api/venue-photo-proxy") {
-      return apiUrl(`${parsed.pathname}${parsed.search}`);
+    const pathNoSlash = parsed.pathname.replace(/\/+$/, "") || "/";
+    if (pathNoSlash === "/api/venue-photo-proxy") {
+      return toApi(`/api/venue-photo-proxy${parsed.search}`);
     }
-    if (parsed.pathname.startsWith("/uploads/")) {
-      return apiUrl(`${parsed.pathname}${parsed.search}`);
+    if (pathNoSlash.startsWith("/uploads/")) {
+      return apiUrl(`${pathNoSlash}${parsed.search}`);
+    }
+    // Amplify absolute URL that still points at the SPA host — rewrite to API.
+    if (
+      typeof window !== "undefined" &&
+      parsed.hostname === window.location.hostname &&
+      (pathNoSlash.startsWith("/api/") || pathNoSlash.startsWith("/uploads/"))
+    ) {
+      return pathNoSlash.startsWith("/api/")
+        ? toApi(`${pathNoSlash}${parsed.search}`)
+        : apiUrl(`${pathNoSlash}${parsed.search}`);
     }
   } catch {
     /* keep raw */

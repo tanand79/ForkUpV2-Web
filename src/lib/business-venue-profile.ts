@@ -1,6 +1,7 @@
 /**
  * Venue profile shown after "Yes, that's us" and from the business dashboard.
- * Saved in localStorage so the dashboard can reopen the same screen on this device.
+ * Durable fields live in Postgres (businesses + business_locations). Browser
+ * localStorage/sessionStorage is not used for venue profile content.
  */
 
 export const VENUE_DAYS = [
@@ -120,28 +121,23 @@ export function formatVenueAddress(parts: {
   return [street, region].filter(Boolean).join(", ");
 }
 
-function snapshotKey(id: number | null): string | null {
-  if (id == null || !Number.isFinite(id)) return null;
-  return storageKey(id);
+const photoCacheKey = (businessId: number) => `forkup-venue-photos:${businessId}`;
+
+/** @deprecated No-op — venue profile is persisted in the database only. */
+export function saveVenueProfileSnapshot(_snapshot: VenueProfileSnapshot) {
+  /* intentionally empty */
 }
 
-/** Persist the venue screen for the business dashboard on this device. */
-export function saveVenueProfileSnapshot(snapshot: VenueProfileSnapshot) {
-  if (typeof window === "undefined") return;
-  const key = snapshotKey(snapshot.businessId);
-  if (!key) return;
+/** @deprecated Always null — load venue fields from API/DB instead. */
+export function loadVenueProfileSnapshot(businessId: number): VenueProfileSnapshot | null {
+  if (typeof window === "undefined") return null;
+  // Best-effort cleanup of legacy local snapshots so devices stop diverging.
   try {
-    const next: VenueProfileSnapshot = {
-      ...snapshot,
-      hours: normalizeVenueHours(snapshot.hours),
-      givebackPercent: Number.isFinite(snapshot.givebackPercent)
-        ? snapshot.givebackPercent
-        : 15,
-    };
-    window.localStorage.setItem(key, JSON.stringify(next));
+    window.localStorage.removeItem(storageKey(businessId));
   } catch {
-    /* ignore quota */
+    /* ignore */
   }
+  return null;
 }
 
 /** Build the venue screen from the join draft (before or after claim). */
@@ -228,76 +224,20 @@ export function venueFromDashboardBusiness(biz: {
   };
 }
 
-/** Load a previously saved venue screen. Null when this device has none. */
-export function loadVenueProfileSnapshot(businessId: number): VenueProfileSnapshot | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(storageKey(businessId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<VenueProfileSnapshot>;
-    if (!parsed || typeof parsed !== "object") return null;
-    if (typeof parsed.businessName !== "string" || !parsed.businessName.trim()) return null;
-    return {
-      businessId,
-      businessName: parsed.businessName,
-      address: typeof parsed.address === "string" ? parsed.address : "",
-      city: typeof parsed.city === "string" ? parsed.city : "",
-      state: typeof parsed.state === "string" ? parsed.state : "",
-      zip: typeof parsed.zip === "string" ? parsed.zip : "",
-      about: typeof parsed.about === "string" ? parsed.about : "",
-      coverUrl: typeof parsed.coverUrl === "string" ? parsed.coverUrl : null,
-      photoUrls: Array.isArray(parsed.photoUrls)
-        ? parsed.photoUrls.filter((url): url is string => typeof url === "string")
-        : [],
-      hours: normalizeVenueHours(parsed.hours),
-      eligibleWindow: typeof parsed.eligibleWindow === "string" ? parsed.eligibleWindow : "",
-      givebackPercent: Number.isFinite(Number(parsed.givebackPercent))
-        ? Number(parsed.givebackPercent)
-        : 15,
-      causeName: typeof parsed.causeName === "string" ? parsed.causeName : null,
-      isRestaurant: parsed.isRestaurant !== false,
-      websiteUrl: typeof parsed.websiteUrl === "string" ? parsed.websiteUrl : null,
-      facebookUrl: typeof parsed.facebookUrl === "string" ? parsed.facebookUrl : null,
-      instagramUrl: typeof parsed.instagramUrl === "string" ? parsed.instagramUrl : null,
-      linkedinUrl: typeof parsed.linkedinUrl === "string" ? parsed.linkedinUrl : null,
-      youtubeUrl: typeof parsed.youtubeUrl === "string" ? parsed.youtubeUrl : null,
-      tiktokUrl: typeof parsed.tiktokUrl === "string" ? parsed.tiktokUrl : null,
-      phone: typeof parsed.phone === "string" ? parsed.phone : null,
-      email: typeof parsed.email === "string" ? parsed.email : null,
-    };
-  } catch {
-    return null;
-  }
-}
-
-const photoCacheKey = (businessId: number) => `forkup-venue-photos:${businessId}`;
-
-/** Session-cached gallery URLs so profile opens skip a full re-scrape. */
+/** @deprecated Always null — gallery comes from businesses.venue_gallery_urls. */
 export function loadCachedVenuePhotos(businessId: number): string[] | null {
   if (typeof window === "undefined") return null;
-  if (!Number.isFinite(businessId)) return null;
   try {
-    const raw = window.sessionStorage.getItem(photoCacheKey(businessId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    const urls = parsed.filter(
-      (u): u is string => typeof u === "string" && u.trim().length > 0,
-    );
-    return urls.length > 0 ? urls : null;
+    window.sessionStorage.removeItem(photoCacheKey(businessId));
   } catch {
-    return null;
+    /* ignore */
   }
+  return null;
 }
 
-export function saveCachedVenuePhotos(businessId: number, urls: string[]) {
-  if (typeof window === "undefined" || urls.length === 0) return;
-  if (!Number.isFinite(businessId)) return;
-  try {
-    window.sessionStorage.setItem(photoCacheKey(businessId), JSON.stringify(urls));
-  } catch {
-    /* ignore quota */
-  }
+/** @deprecated No-op — gallery is persisted in the database only. */
+export function saveCachedVenuePhotos(_businessId: number, _urls: string[]) {
+  /* intentionally empty */
 }
 
 const contactTriedKey = (businessId: number) =>

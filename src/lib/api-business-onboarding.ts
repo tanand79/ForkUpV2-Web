@@ -211,6 +211,13 @@ export function saveBusinessVenueLinks(body: {
   tiktokUrl?: string | null;
   phone?: string | null;
   venueEmail?: string | null;
+  description?: string | null;
+  discountHours?: Record<string, string> | null;
+  eligibleWindow?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
 }) {
   return fetchJson<{
     website?: string | null;
@@ -220,6 +227,13 @@ export function saveBusinessVenueLinks(body: {
     tiktokUrl?: string | null;
     phone?: string | null;
     venueEmail?: string | null;
+    description?: string | null;
+    discountHours?: Record<string, string> | null;
+    eligibleWindow?: string | null;
+    address?: string | null;
+    city?: string | null;
+    state?: string | null;
+    zip?: string | null;
   }>("/api/business-venue-links", {
     method: "POST",
     body: JSON.stringify(body),
