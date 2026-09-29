@@ -15,11 +15,18 @@ export function resolveVenueImageSrc(url: string): string {
   if (raw.startsWith("/api/")) {
     return apiUrl(raw);
   }
+  // Durable disk re-hosts from Re-scrape / uploads.
+  if (raw.startsWith("/uploads/")) {
+    return apiUrl(raw);
+  }
   try {
     const origin =
       typeof window !== "undefined" ? window.location.origin : "http://localhost";
     const parsed = new URL(raw, origin);
     if (parsed.pathname.replace(/\/+$/, "") === "/api/venue-photo-proxy") {
+      return apiUrl(`${parsed.pathname}${parsed.search}`);
+    }
+    if (parsed.pathname.startsWith("/uploads/")) {
       return apiUrl(`${parsed.pathname}${parsed.search}`);
     }
   } catch {
