@@ -94,6 +94,10 @@ export type AiAnalysisSession = {
     instagramUrl?: string | null;
     linkedinUrl?: string | null;
     website?: string | null;
+    /** Additive: hydrate-before-profile / resume fields from analysis_json. */
+    city?: string | null;
+    state?: string | null;
+    causeCategory?: string | null;
   } | null;
   errorMessage: string | null;
   expiresAt: string;
