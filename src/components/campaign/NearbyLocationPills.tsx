@@ -1,13 +1,16 @@
 "use client";
 
 /**
- * Location trigger next to Live Campaigns.
- * Purpose: Default "All locations"; click opens Change Location dialog.
+ * Location trigger next to Live Campaigns / Business.
+ * Purpose: Default "Near Me"; click opens Change Location dialog.
  * Inputs: return value from useCampaignNearby() in the parent.
  */
 import { useState } from "react";
 import { ChevronDown, MapPin } from "lucide-react";
-import { LocationSearchDialog } from "@/components/campaign/LocationSearchDialog";
+import {
+  LocationSearchDialog,
+  type LocationSearchVariant,
+} from "@/components/campaign/LocationSearchDialog";
 
 type NearbyPillsProps = {
   locationLabel: string;
@@ -17,7 +20,10 @@ type NearbyPillsProps = {
   radiusMiles: number;
   setRadiusMiles: (miles: number) => void;
   allLocations: boolean;
+  nearMe: boolean;
   setAllLocations: (value: boolean) => void;
+  setNearMe: () => void;
+  variant?: LocationSearchVariant;
 };
 
 export function NearbyLocationPills({
@@ -28,7 +34,10 @@ export function NearbyLocationPills({
   radiusMiles,
   setRadiusMiles,
   allLocations,
+  nearMe,
   setAllLocations,
+  setNearMe,
+  variant = "campaigns",
 }: NearbyPillsProps) {
   const [open, setOpen] = useState(false);
 
@@ -57,7 +66,10 @@ export function NearbyLocationPills({
         radiusMiles={radiusMiles}
         setRadiusMiles={setRadiusMiles}
         allLocations={allLocations}
+        nearMe={nearMe}
         setAllLocations={setAllLocations}
+        setNearMe={setNearMe}
+        variant={variant}
       />
     </div>
   );

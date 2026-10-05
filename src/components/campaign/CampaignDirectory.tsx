@@ -62,7 +62,10 @@ export function CampaignDirectory() {
               radiusMiles={nearby.radiusMiles}
               setRadiusMiles={nearby.setRadiusMiles}
               allLocations={nearby.allLocations}
+              nearMe={nearby.nearMe}
               setAllLocations={nearby.setAllLocations}
+              setNearMe={nearby.setNearMe}
+              variant="campaigns"
             />
           </div>
         </div>

@@ -127,7 +127,42 @@ export function AiCampaignIdeas() {
         let linkedinUrl = s.linkedinUrl || pending?.linkedinUrl || "";
         let youtubeUrl = s.analysis?.youtubeUrl || pending?.youtubeUrl || "";
 
-        // If LI/YT (or other social) missing, re-resolve from org identity via backend.
+        // Prefer photos already stored by the one-time analyze (hydrate-before-profile).
+        const cachedFromAnalyze = usableSuggestImages(
+          (s.analysis?.images || []).map((img) => {
+            const raw = (img.source || "").toLowerCase();
+            const source: SuggestedCampaignImage["source"] =
+              raw === "facebook" ||
+              raw === "instagram" ||
+              raw === "website" ||
+              raw === "social_suggest"
+                ? raw
+                : "social_suggest";
+            return {
+              url: img.url,
+              source,
+              sourceUrl: img.sourceUrl,
+              caption: img.caption,
+            };
+          }),
+        ).slice(0, 10);
+
+        if (cachedFromAnalyze.length > 0) {
+          const urls = cachedFromAnalyze.map((img) => img.url);
+          setSocialPhotos(cachedFromAnalyze);
+          setBrokenThumbs({});
+          setSession({
+            ...s,
+            ideas: ideas.map((idea, i) => ({
+              ...idea,
+              thumbnailUrl:
+                urls[i % urls.length] || urls[0] || idea.thumbnailUrl,
+            })),
+          });
+          return;
+        }
+
+        // Fallback only when analyze stored no photos (older sessions / failed scrape).
         if (!linkedinUrl || !youtubeUrl || !facebookUrl || !instagramUrl) {
           try {
             const resolved = await resolveAiCampaignSources({

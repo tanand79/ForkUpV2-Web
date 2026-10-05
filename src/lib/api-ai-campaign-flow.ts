@@ -138,6 +138,10 @@ export type AiResolvedSources = {
   instagramUrl: string | null;
   linkedinUrl: string | null;
   youtubeUrl: string | null;
+  /** Additive: website scrape / AI resolve extras for org profile. */
+  tiktokUrl?: string | null;
+  phone?: string | null;
+  email?: string | null;
   mission: string | null;
   causeCategory: string | null;
   city: string | null;

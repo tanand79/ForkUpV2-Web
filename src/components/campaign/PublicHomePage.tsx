@@ -397,7 +397,10 @@ export function PublicHomePage() {
                 radiusMiles={nearby.radiusMiles}
                 setRadiusMiles={nearby.setRadiusMiles}
                 allLocations={nearby.allLocations}
+                nearMe={nearby.nearMe}
                 setAllLocations={nearby.setAllLocations}
+                setNearMe={nearby.setNearMe}
+                variant={liveTab === "business" ? "business" : "campaigns"}
               />
               {liveTab === "campaigns" && (
                 <CampaignDatePicker

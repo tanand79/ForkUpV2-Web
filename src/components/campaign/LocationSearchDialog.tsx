@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * Resy-style Change Location dialog for Live Campaigns.
- * Purpose: Full search overlay (not a tiny dropdown) — ZIP + radius (default 20 mi).
+ * Resy-style Change Location dialog for Live Campaigns / Business.
+ * Purpose: Full search overlay — Near Me (GPS), all locations, ZIP + radius.
  * Inputs: open state, place label, zip/radius from useCampaignNearby().
- * Outputs: calls setZipInput / setRadiusMiles; closes on select.
+ * Outputs: calls setNearMe / setAllLocations / setZipInput / setRadiusMiles.
  */
 import { MapPin, Search, X } from "lucide-react";
 import {
@@ -36,6 +36,8 @@ const POPULAR_LOCATIONS: { label: string; zip: string }[] = [
   { label: "Washington D.C.", zip: "20001" },
 ];
 
+export type LocationSearchVariant = "campaigns" | "business";
+
 type LocationSearchDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -46,7 +48,11 @@ type LocationSearchDialogProps = {
   radiusMiles: number;
   setRadiusMiles: (miles: number) => void;
   allLocations: boolean;
+  nearMe: boolean;
   setAllLocations: (value: boolean) => void;
+  setNearMe: () => void;
+  /** Controls "All …" copy — campaigns vs businesses. */
+  variant?: LocationSearchVariant;
 };
 
 export function LocationSearchDialog({
@@ -59,14 +65,25 @@ export function LocationSearchDialog({
   radiusMiles,
   setRadiusMiles,
   allLocations,
+  nearMe,
   setAllLocations,
+  setNearMe,
+  variant = "campaigns",
 }: LocationSearchDialogProps) {
+  const allLabel =
+    variant === "business" ? "All businesses" : "All live campaigns";
+
   const selectZip = (zip: string) => {
     setZipInput(zip);
     onOpenChange(false);
   };
 
-  const selectAllLive = () => {
+  const selectNearMe = () => {
+    setNearMe();
+    onOpenChange(false);
+  };
+
+  const selectAll = () => {
     setAllLocations(true);
     onOpenChange(false);
   };
@@ -92,19 +109,34 @@ export function LocationSearchDialog({
         </div>
 
         <DialogDescription className="sr-only">
-          Search by ZIP code to find live campaigns within {radiusMiles} miles, or show all live campaigns.
+          Show {variant === "business" ? "businesses" : "campaigns"} near you,
+          search by ZIP within {radiusMiles} miles, or show {allLabel.toLowerCase()}.
         </DialogDescription>
 
         <div className="px-5 pb-3">
           <button
             type="button"
-            onClick={selectAllLive}
+            onClick={selectNearMe}
+            className={`mb-2 flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors hover:bg-accent ${
+              nearMe ? "border-primary bg-primary/5" : "border-border"
+            }`}
+          >
+            <MapPin className="size-4 shrink-0 text-primary" />
+            <span className="text-sm font-semibold text-foreground">Near Me</span>
+            <span className="ml-auto text-[10px] text-muted-foreground">
+              {radiusMiles} mi
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={selectAll}
             className={`mb-3 flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors hover:bg-accent ${
               allLocations ? "border-primary bg-primary/5" : "border-border"
             }`}
           >
             <MapPin className="size-4 shrink-0 text-primary" />
-            <span className="text-sm font-semibold text-foreground">All live campaigns</span>
+            <span className="text-sm font-semibold text-foreground">{allLabel}</span>
             <span className="ml-auto text-[10px] text-muted-foreground">No distance filter</span>
           </button>
 

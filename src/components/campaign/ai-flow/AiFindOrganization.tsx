@@ -5,17 +5,26 @@
  *
  * Phases (same screen, no new ?step=):
  * - find — search + nearby radius
- * - confirm — "We found you" card (Step 2 reference); Yes → existing confirm path
+ * - confirm — "We found you" card (Step 2 reference)
+ * - hydrating — full analyze once (social + photos + ideas) before profile
+ * - profile — org profile Edit/Continue; Continue → ai-campaign-ideas (no 2nd AI)
  *
  * On confirm (Yes, that's us):
- * - Claimed in ForkUp → claimed-npo-chooser (fundraiser vs request access)
- * - Otherwise → AI connect-social as nonprofit (or fundraiser if that intent was set)
+ * - Claimed in ForkUp → claimed-npo-chooser (unchanged; skips profile)
+ * - Otherwise → hydrating (analyze once) → profile → Continue → ai-campaign-ideas
  *
  * Nonprofit organizers with a membership never use this screen — they are
  * diverted into own-org AI create.
  */
-import { useEffect, useState } from "react";
-import { ArrowRight, CheckCircle2, Loader2, MapPin, Pencil } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Circle,
+  Loader2,
+  MapPin,
+  Pencil,
+} from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import {
   enrichUsNonprofit,
@@ -26,17 +35,37 @@ import {
   parseOrgNameAndZip,
 } from "@/components/campaign/OrganizationNameSuggest";
 import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
-import { saveAiFlowPendingOrg, clearAiFlowStore } from "@/lib/ai-campaign-flow-storage";
+import { NonprofitOrgProfile } from "@/components/campaign/NonprofitOrgProfile";
+import {
+  saveAiFlowPendingOrg,
+  saveAiFlowStore,
+  clearAiFlowStore,
+} from "@/lib/ai-campaign-flow-storage";
 import { stashAccountIntent } from "@/lib/campaign-auth";
 import {
   nearbyQueryParams,
   useBrowserLocation,
 } from "@/hooks/use-browser-location";
 import { SearchRadiusControl } from "@/components/campaign/SearchRadiusControl";
+import {
+  saveNonprofitOrgProfileSnapshot,
+  type NonprofitOrgProfileSnapshot,
+} from "@/lib/nonprofit-org-profile";
+import { analyzeAiCampaignFlow } from "@/lib/api-ai-campaign-flow";
 import { AiFlowShell } from "./AiFlowShell";
 
-/** Local UI phase for find → confirm (mirrors business join Step 2). */
-type FindOrgPhase = "find" | "confirm";
+/** Local UI phase for find → confirm → hydrating → profile (mirrors business join). */
+type FindOrgPhase = "find" | "confirm" | "hydrating" | "profile";
+
+/** Same checklist as AiAnalyzing — one full analyze run before profile. */
+const ORG_EXTRACT_CHECKLIST = [
+  "Organization logo",
+  "Photos & cover images",
+  "Mission & story",
+  "Recent posts & events",
+  "Past campaigns",
+  "Popular themes",
+];
 
 /**
  * Geocode a US ZIP via Zippopotam (no key) so nearby search can center on it.
@@ -65,11 +94,61 @@ async function geocodeUsZipClient(
   }
 }
 
+function snapshotFromCandidate(
+  candidate: OrganizationSearchCandidate,
+  promotion: {
+    facebookUrl?: string;
+    instagramHandle?: string;
+    websiteUrl?: string;
+  },
+): NonprofitOrgProfileSnapshot {
+  const gallery = Array.isArray(candidate.galleryImageUrls)
+    ? candidate.galleryImageUrls.filter(
+        (u): u is string => typeof u === "string" && u.trim().length > 0,
+      )
+    : [];
+  const cover =
+    candidate.coverUrl?.trim() ||
+    gallery[0] ||
+    candidate.logoUrl?.trim() ||
+    null;
+  return {
+    nonprofitId: candidate.id > 0 ? candidate.id : null,
+    organizationName: candidate.organizationName,
+    city: candidate.city?.trim() || "",
+    state: candidate.state?.trim() || "",
+    zip: candidate.zip?.trim() || "",
+    about:
+      candidate.description?.trim() ||
+      candidate.mission?.trim() ||
+      "",
+    coverUrl: cover,
+    photoUrls: gallery.length > 0 ? gallery : cover ? [cover] : [],
+    websiteUrl:
+      candidate.website?.trim() || promotion.websiteUrl?.trim() || null,
+    facebookUrl:
+      candidate.facebookUrl?.trim() || promotion.facebookUrl?.trim() || null,
+    instagramUrl:
+      candidate.instagramUrl?.trim() ||
+      promotion.instagramHandle?.trim() ||
+      null,
+    linkedinUrl: candidate.linkedinUrl?.trim() || null,
+    youtubeUrl: candidate.youtubeUrl?.trim() || null,
+    tiktokUrl: candidate.tiktokUrl?.trim() || null,
+    phone: candidate.contactPhone?.trim() || null,
+    email: candidate.contactEmail?.trim() || null,
+    causeCategory: candidate.causeCategory?.trim() || null,
+    logoUrl: candidate.logoUrl?.trim() || null,
+  };
+}
+
 export function AiFindOrganization() {
   const { update, goTo, state, startNewCampaign } = useCampaign();
   const [phase, setPhase] = useState<FindOrgPhase>("find");
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<OrganizationSearchCandidate | null>(null);
+  const [selected, setSelected] = useState<OrganizationSearchCandidate | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** On by default — nearby. Uncheck for normal national search. */
@@ -81,10 +160,22 @@ export function AiFindOrganization() {
     : undefined;
   const parsedZip = parseOrgNameAndZip(query).zip;
 
+  /** Additive: org profile after Yes (unclaimed path only). */
+  const [orgProfile, setOrgProfile] =
+    useState<NonprofitOrgProfileSnapshot | null>(null);
+  const [editingOrgProfile, setEditingOrgProfile] = useState(false);
+  /** Animated checklist index while hydrating (AI running screen). */
+  const [hydrateProgressIdx, setHydrateProgressIdx] = useState(0);
+  const profileHydrateGen = useRef(0);
+
   /** Return to search (Edit / Search again / Back from confirm). */
   const returnToSearch = () => {
+    profileHydrateGen.current += 1;
     setPhase("find");
     setSelected(null);
+    setOrgProfile(null);
+    setEditingOrgProfile(false);
+    setHydrateProgressIdx(0);
     setError(null);
   };
 
@@ -110,6 +201,152 @@ export function AiFindOrganization() {
     };
   }, [parsedZip, useNearbyFilter, browserLocation.setLocationOverride]);
 
+  /** Advance checklist ticks while the AI running screen is visible. */
+  useEffect(() => {
+    if (phase !== "hydrating") {
+      setHydrateProgressIdx(0);
+      return;
+    }
+    if (hydrateProgressIdx >= ORG_EXTRACT_CHECKLIST.length) return;
+    const tick = setTimeout(
+      () => setHydrateProgressIdx((i) => i + 1),
+      700,
+    );
+    return () => clearTimeout(tick);
+  }, [phase, hydrateProgressIdx]);
+
+  /**
+   * Yes → hydrating: run full analyze ONCE (social + photos + ideas), then profile.
+   * Continue skips ai-analyzing and opens campaign ideas from this session.
+   */
+  useEffect(() => {
+    if (phase !== "hydrating" || !selected || !orgProfile) return;
+
+    const gen = ++profileHydrateGen.current;
+    const seed = orgProfile;
+    const website = seed.websiteUrl?.trim() || selected.website?.trim() || "";
+
+    void (async () => {
+      try {
+        clearAiFlowStore();
+        const session = await analyzeAiCampaignFlow({
+          organizationName:
+            seed.organizationName || selected.organizationName,
+          ein: selected.ein,
+          nonprofitId: selected.id > 0 ? selected.id : null,
+          website: website || null,
+          facebookUrl: seed.facebookUrl || null,
+          instagramUrl: seed.instagramUrl || null,
+          linkedinUrl: seed.linkedinUrl || null,
+          youtubeUrl: seed.youtubeUrl || null,
+          mission: seed.about || selected.mission || null,
+          causeCategory: seed.causeCategory || selected.causeCategory || null,
+          city: seed.city || selected.city || null,
+          state: seed.state || selected.state || null,
+        });
+        if (gen !== profileHydrateGen.current) return;
+
+        const analysis = session.analysis;
+        const nextWebsite =
+          session.website?.trim() ||
+          analysis?.website?.trim() ||
+          website ||
+          null;
+        const nextFacebook =
+          session.facebookUrl?.trim() ||
+          analysis?.facebookUrl?.trim() ||
+          seed.facebookUrl ||
+          null;
+        const nextInstagram =
+          session.instagramUrl?.trim() ||
+          analysis?.instagramUrl?.trim() ||
+          seed.instagramUrl ||
+          null;
+        const nextLinkedin =
+          session.linkedinUrl?.trim() ||
+          analysis?.linkedinUrl?.trim() ||
+          seed.linkedinUrl ||
+          null;
+        const nextYoutube =
+          analysis?.youtubeUrl?.trim() || seed.youtubeUrl || null;
+        const nextAbout =
+          seed.about.trim() ||
+          analysis?.mission?.trim() ||
+          selected.mission?.trim() ||
+          "";
+
+        const photoUrls = (analysis?.images || [])
+          .map((img) => (typeof img.url === "string" ? img.url.trim() : ""))
+          .filter(Boolean);
+        const coverUrl = photoUrls[0] || seed.coverUrl;
+
+        saveAiFlowStore({
+          sessionToken: session.sessionToken,
+          organizationName:
+            session.organizationName || seed.organizationName,
+          nonprofitId:
+            selected.id > 0
+              ? selected.id
+              : session.nonprofitId && session.nonprofitId > 0
+                ? session.nonprofitId
+                : null,
+          selectedIdeaId: null,
+          guestContinued: false,
+        });
+
+        saveAiFlowPendingOrg({
+          organizationName:
+            session.organizationName || seed.organizationName,
+          ein: session.ein || selected.ein,
+          nonprofitId: selected.id > 0 ? selected.id : null,
+          website: nextWebsite,
+          facebookUrl: nextFacebook,
+          instagramUrl: nextInstagram,
+          linkedinUrl: nextLinkedin,
+          youtubeUrl: nextYoutube,
+          mission: nextAbout || null,
+          causeCategory: seed.causeCategory || selected.causeCategory,
+          city: seed.city || selected.city,
+          state: seed.state || selected.state,
+          contactName: selected.contactName,
+          contactEmail: seed.email || selected.contactEmail,
+          verificationStatus: selected.verificationStatus,
+          claimStatus: selected.claimStatus,
+          logoUrl: seed.logoUrl || selected.logoUrl,
+        });
+
+        setOrgProfile({
+          ...seed,
+          organizationName:
+            session.organizationName?.trim() || seed.organizationName,
+          websiteUrl: nextWebsite || seed.websiteUrl,
+          facebookUrl: nextFacebook,
+          instagramUrl: nextInstagram,
+          linkedinUrl: nextLinkedin,
+          youtubeUrl: nextYoutube,
+          about: nextAbout || seed.about,
+          city: seed.city || analysis?.city?.trim() || "",
+          state: seed.state || analysis?.state?.trim() || "",
+          causeCategory:
+            seed.causeCategory || analysis?.causeCategory?.trim() || null,
+          photoUrls: photoUrls.length > 0 ? photoUrls : seed.photoUrls,
+          coverUrl,
+        });
+        setHydrateProgressIdx(ORG_EXTRACT_CHECKLIST.length);
+        setPhase("profile");
+      } catch {
+        if (gen !== profileHydrateGen.current) return;
+        // Still open profile with IRS/logo seed so the flow never stalls.
+        setPhase("profile");
+      }
+    })();
+
+    return () => {
+      profileHydrateGen.current += 1;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per Yes → hydrating
+  }, [phase, selected?.id, selected?.organizationName, selected?.website]);
+
   const onSelect = async (candidate: OrganizationSearchCandidate) => {
     setSelected(candidate);
     setQuery(candidate.organizationName);
@@ -133,131 +370,287 @@ export function AiFindOrganization() {
     }
   };
 
+  /** Existing claimed-org path — unchanged (chooser, no profile screen). */
+  const continueAsClaimedOrg = (candidate: OrganizationSearchCandidate) => {
+    clearAiFlowStore();
+    saveAiFlowPendingOrg({
+      organizationName: candidate.organizationName,
+      ein: candidate.ein,
+      nonprofitId: candidate.id > 0 ? candidate.id : null,
+      website: candidate.website,
+      facebookUrl: state.promotion.facebookUrl || null,
+      instagramUrl: state.promotion.instagramHandle || null,
+      linkedinUrl: null,
+      mission: candidate.mission,
+      causeCategory: candidate.causeCategory,
+      city: candidate.city,
+      state: candidate.state,
+      contactName: candidate.contactName,
+      contactEmail: candidate.contactEmail,
+      verificationStatus: candidate.verificationStatus,
+      claimStatus: candidate.claimStatus,
+      logoUrl: candidate.logoUrl,
+    });
+    update({
+      nonprofitProfile: {
+        id: candidate.id,
+        organizationName: candidate.organizationName,
+        contactName: candidate.contactName || "",
+        contactEmail: candidate.contactEmail || "",
+        mission: candidate.mission || undefined,
+        causeCategory: candidate.causeCategory || undefined,
+        verificationStatus: candidate.verificationStatus,
+        claimStatus: candidate.claimStatus,
+      },
+      promotion: {
+        ...state.promotion,
+        websiteUrl: candidate.website || state.promotion.websiteUrl,
+      },
+    });
+    goTo("claimed-npo-chooser");
+  };
+
+  /**
+   * Unclaimed path after profile: keep the hydrate session (do not re-analyze).
+   * Continue → campaign ideas list.
+   */
+  const continueFromOrgProfile = (
+    candidate: OrganizationSearchCandidate,
+    profile: NonprofitOrgProfileSnapshot,
+  ) => {
+    // Refresh pending with any Edit/Done profile tweaks — keep sessionToken.
+    saveAiFlowPendingOrg({
+      organizationName: profile.organizationName || candidate.organizationName,
+      ein: candidate.ein,
+      nonprofitId: candidate.id > 0 ? candidate.id : null,
+      website: profile.websiteUrl || candidate.website,
+      facebookUrl: profile.facebookUrl || null,
+      instagramUrl: profile.instagramUrl || null,
+      linkedinUrl: profile.linkedinUrl || null,
+      youtubeUrl: profile.youtubeUrl || null,
+      mission: profile.about || candidate.mission,
+      causeCategory: profile.causeCategory || candidate.causeCategory,
+      city: profile.city || candidate.city,
+      state: profile.state || candidate.state,
+      contactName: candidate.contactName,
+      contactEmail: profile.email || candidate.contactEmail,
+      verificationStatus: candidate.verificationStatus,
+      claimStatus: candidate.claimStatus,
+      logoUrl: profile.logoUrl || candidate.logoUrl,
+    });
+
+    const intent =
+      state.accountIntent === "fundraiser" ? "fundraiser" : "nonprofit";
+    stashAccountIntent(intent);
+
+    update({
+      accountIntent: intent,
+      nonprofitProfile: {
+        id: candidate.id > 0 ? candidate.id : undefined,
+        organizationName:
+          profile.organizationName || candidate.organizationName,
+        contactName: candidate.contactName || "",
+        contactEmail: profile.email || candidate.contactEmail || "",
+        mission: profile.about || candidate.mission || undefined,
+        causeCategory:
+          profile.causeCategory || candidate.causeCategory || undefined,
+        verificationStatus: candidate.verificationStatus,
+        claimStatus: candidate.claimStatus,
+      },
+      promotion: {
+        ...state.promotion,
+        websiteUrl:
+          profile.websiteUrl ||
+          candidate.website ||
+          state.promotion.websiteUrl,
+        facebookUrl:
+          profile.facebookUrl || state.promotion.facebookUrl || "",
+        instagramHandle:
+          profile.instagramUrl || state.promotion.instagramHandle || "",
+      },
+      organizerMode: "guided",
+      methods: {
+        giveback: false,
+        donations: true,
+        guestBartending: false,
+        ambassador: true,
+      },
+    });
+
+    if (profile.nonprofitId != null && profile.nonprofitId > 0) {
+      saveNonprofitOrgProfileSnapshot(profile);
+    }
+
+    // Session already created in hydrating — skip second AI run.
+    goTo("ai-campaign-ideas");
+  };
+
   const confirmOrganization = () => {
     if (!selected) return;
     setBusy(true);
     setError(null);
 
     try {
-      // Drop prior AI session so a previous membership org cannot be reused.
-      clearAiFlowStore();
-      saveAiFlowPendingOrg({
-        organizationName: selected.organizationName,
-        ein: selected.ein,
-        nonprofitId: selected.id > 0 ? selected.id : null,
-        website: selected.website,
-        facebookUrl: state.promotion.facebookUrl || null,
-        instagramUrl: state.promotion.instagramHandle || null,
-        linkedinUrl: null,
-        mission: selected.mission,
-        causeCategory: selected.causeCategory,
-        city: selected.city,
-        state: selected.state,
-        contactName: selected.contactName,
-        contactEmail: selected.contactEmail,
-        verificationStatus: selected.verificationStatus,
-        claimStatus: selected.claimStatus,
-        logoUrl: selected.logoUrl,
-      });
-
       const claimedInForkUp =
         selected.id > 0 &&
         String(selected.claimStatus || "")
           .trim()
           .toLowerCase() === "claimed";
 
-      // Pass 1: claimed orgs never auto-own — chooser (fundraiser vs request access).
+      // Pass 1: claimed orgs never auto-own — chooser (unchanged).
       if (claimedInForkUp) {
-        update({
-          nonprofitProfile: {
-            id: selected.id,
-            organizationName: selected.organizationName,
-            contactName: selected.contactName || "",
-            contactEmail: selected.contactEmail || "",
-            mission: selected.mission || undefined,
-            causeCategory: selected.causeCategory || undefined,
-            verificationStatus: selected.verificationStatus,
-            claimStatus: selected.claimStatus,
-          },
-          promotion: {
-            ...state.promotion,
-            websiteUrl: selected.website || state.promotion.websiteUrl,
-          },
-        });
-        goTo("claimed-npo-chooser");
+        continueAsClaimedOrg(selected);
         return;
       }
 
-      // Unclaimed / IRS-only / preloaded: continue as nonprofit draft (propose, not steal).
-      // Keep fundraiser if user entered from fundraiser dashboard.
-      const intent =
-        state.accountIntent === "fundraiser" ? "fundraiser" : "nonprofit";
-      stashAccountIntent(intent);
-
-      update({
-        accountIntent: intent,
-        // Working target for AI draft only — not an ownership claim.
-        nonprofitProfile: {
-          id: selected.id > 0 ? selected.id : undefined,
-          organizationName: selected.organizationName,
-          contactName: selected.contactName || "",
-          contactEmail: selected.contactEmail || "",
-          mission: selected.mission || undefined,
-          causeCategory: selected.causeCategory || undefined,
-          verificationStatus: selected.verificationStatus,
-          claimStatus: selected.claimStatus,
-        },
-        promotion: {
-          ...state.promotion,
-          websiteUrl: selected.website || state.promotion.websiteUrl,
-        },
-        organizerMode: "guided",
-        methods: {
-          giveback: false,
-          donations: true,
-          guestBartending: false,
-          ambassador: true,
-        },
-      });
-
-      goTo("ai-connect-social");
+      // Additive: AI running screen, then org profile (business analyzing parity).
+      const snapshot = snapshotFromCandidate(selected, state.promotion);
+      setOrgProfile(snapshot);
+      setEditingOrgProfile(false);
+      setHydrateProgressIdx(0);
+      setPhase("hydrating");
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Could not continue with this organization.",
+        err instanceof Error
+          ? err.message
+          : "Could not continue with this organization.",
       );
     } finally {
       setBusy(false);
     }
   };
 
-  const locationLabel = [selected?.city, selected?.state].filter(Boolean).join(", ");
+  const locationLabel = [selected?.city, selected?.state]
+    .filter(Boolean)
+    .join(", ");
   const websiteFound = Boolean(selected?.website?.trim());
   const locationFound = Boolean(selected?.city || selected?.state);
   const logoFound = Boolean(selected?.logoUrl?.trim());
 
   // Nonprofit Create Campaign: Back returns to dashboard (not public landing).
   const backStep =
-    state.accountIntent !== "fundraiser" && state.nonprofitMemberships.length > 0
+    state.accountIntent !== "fundraiser" &&
+    state.nonprofitMemberships.length > 0
       ? "nonprofit-dashboard"
       : "website-landing";
 
   const isConfirm = phase === "confirm" && selected;
+  const isHydrating = phase === "hydrating";
+  const hydratePct = Math.min(
+    100,
+    Math.round(
+      ((hydrateProgressIdx + 0.5) / ORG_EXTRACT_CHECKLIST.length) * 100,
+    ),
+  );
+
+  if (phase === "profile" && orgProfile && selected) {
+    return (
+      <NonprofitOrgProfile
+        profile={orgProfile}
+        editing={editingOrgProfile}
+        onToggleEdit={() => setEditingOrgProfile((v) => !v)}
+        onChange={(patch) => {
+          setOrgProfile((prev) => (prev ? { ...prev, ...patch } : prev));
+        }}
+        onBack={() => {
+          setEditingOrgProfile(false);
+          setPhase("confirm");
+        }}
+        backLabel="Back"
+        onContinue={() => {
+          setEditingOrgProfile(false);
+          setBusy(true);
+          setError(null);
+          try {
+            continueFromOrgProfile(selected, orgProfile);
+          } catch (err) {
+            setError(
+              err instanceof Error
+                ? err.message
+                : "Could not continue with this organization.",
+            );
+            setBusy(false);
+          }
+        }}
+        continueLabel="Continue"
+      />
+    );
+  }
 
   return (
     <AiFlowShell
-      title={isConfirm ? "We found you!" : "Search and select a nonprofit"}
-      subtitle={
-        isConfirm
-          ? "Here's what we found. We'll use this to build your campaign."
-          : "Find the organization this campaign is for. If it’s already on ForkUp, you’ll choose how to continue."
+      title={
+        isHydrating
+          ? "Analyzing your content..."
+          : isConfirm
+            ? "We found you!"
+            : "Search and select a nonprofit"
       }
-      backStep={isConfirm ? undefined : backStep}
-      onBack={isConfirm ? returnToSearch : undefined}
+      subtitle={
+        isHydrating
+          ? "ForkUp is extracting signals from your public pages."
+          : isConfirm
+            ? "Here's what we found. We'll use this to build your campaign."
+            : "Find the organization this campaign is for. If it’s already on ForkUp, you’ll choose how to continue."
+      }
+      backStep={isConfirm || isHydrating ? undefined : backStep}
+      onBack={
+        isHydrating
+          ? () => {
+              profileHydrateGen.current += 1;
+              setPhase("confirm");
+            }
+          : isConfirm
+            ? returnToSearch
+            : undefined
+      }
     >
+      {isHydrating ? (
+        <div className="space-y-4">
+          <div className="h-2 overflow-hidden rounded-full bg-secondary">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-500"
+              style={{ width: `${Math.max(8, hydratePct)}%` }}
+            />
+          </div>
+          <p className="mt-2 text-sm font-semibold">AI is extracting:</p>
+          <div className="space-y-2.5">
+            {ORG_EXTRACT_CHECKLIST.map((label, i) => {
+              const done = i < hydrateProgressIdx;
+              const current =
+                i === hydrateProgressIdx &&
+                hydrateProgressIdx < ORG_EXTRACT_CHECKLIST.length;
+              return (
+                <div
+                  key={label}
+                  className={`flex items-center gap-2.5 rounded-xl border p-3 text-sm transition-colors ${
+                    done
+                      ? "border-emerald-300/60 bg-emerald-50/60"
+                      : current
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-border bg-secondary/30 opacity-60"
+                  }`}
+                >
+                  {done ? (
+                    <CheckCircle2 className="size-4 text-emerald-600" />
+                  ) : current ? (
+                    <Loader2 className="size-4 animate-spin text-primary" />
+                  ) : (
+                    <Circle className="size-4 text-muted-foreground" />
+                  )}
+                  <span>{label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       {phase === "find" && (
         <>
           <div className="relative">
-            <label className="mb-2 block text-sm font-semibold">Organization name</label>
+            <label className="mb-2 block text-sm font-semibold">
+              Organization name
+            </label>
             <input
               value={query}
               onChange={(e) => {
@@ -402,7 +795,9 @@ function ConfirmCheckRow({ ok, label }: { ok: boolean; label: string }) {
       <CheckCircle2
         className={`size-4 ${ok ? "text-emerald-600" : "text-muted-foreground/40"}`}
       />
-      <span className={ok ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+      <span className={ok ? "text-foreground" : "text-muted-foreground"}>
+        {label}
+      </span>
     </li>
   );
 }

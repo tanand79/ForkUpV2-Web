@@ -1,16 +1,17 @@
 "use client";
 
 /**
- * Browser location + ZIP override + radius for nearby campaign lists.
- * Default: all live campaigns (no distance filter). Location filter applies
- * only after a ZIP / popular city geocode succeeds — never via raw GPS alone.
+ * Browser location + ZIP override + radius for nearby campaign / business lists.
+ * Default: Near Me (browser GPS / IP fallback within radius). User may pick a
+ * ZIP / popular city or switch to all locations (no distance filter).
  */
 import { useCallback, useEffect, useState } from "react";
 import { geocodeUsZip } from "@/lib/geocode-us-zip";
 import { useBrowserLocation } from "@/hooks/use-browser-location";
 
 const ZIP_KEY = "forkup-homepage-zip";
-const ALL_LOCATIONS_KEY = "forkup-homepage-all-locations";
+/** v2: previous key forced "all" on every visit — bump so Near Me is the new default. */
+const ALL_LOCATIONS_KEY = "forkup-homepage-all-locations-v2";
 export const RADIUS_PRESETS = [8, 20, 35, 50] as const;
 export const DEFAULT_RADIUS_MILES = 20;
 
@@ -20,36 +21,56 @@ export function useCampaignNearby() {
   const [zipPlace, setZipPlace] = useState<{ city: string | null; state: string | null } | null>(null);
   const [zipCoords, setZipCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [zipError, setZipError] = useState<string | null>(null);
-  const [allLocations, setAllLocationsState] = useState(true);
+  /** Default Near Me — false until user explicitly chooses "all". */
+  const [allLocations, setAllLocationsState] = useState(false);
   const browserLocation = useBrowserLocation(true);
 
   useEffect(() => {
     const mode = sessionStorage.getItem(ALL_LOCATIONS_KEY);
     const savedZip = sessionStorage.getItem(ZIP_KEY);
-    // Restore ZIP draft; nearby activates only after geocode sets zipCoords.
-    if (mode === "0" && savedZip && savedZip.replace(/\D/g, "").length === 5) {
+    if (mode === "1") {
+      setAllLocationsState(true);
+      sessionStorage.removeItem(ZIP_KEY);
+      return;
+    }
+    if (savedZip && savedZip.replace(/\D/g, "").length === 5) {
+      setAllLocationsState(false);
+      sessionStorage.setItem(ALL_LOCATIONS_KEY, "0");
       setZipInputState(savedZip);
       return;
     }
-    setAllLocationsState(true);
-    sessionStorage.setItem(ALL_LOCATIONS_KEY, "1");
+    // Default: Near Me (GPS / IP), no ZIP override.
+    setAllLocationsState(false);
+    sessionStorage.setItem(ALL_LOCATIONS_KEY, "0");
     sessionStorage.removeItem(ZIP_KEY);
   }, []);
 
+  const clearZipState = useCallback(() => {
+    sessionStorage.removeItem(ZIP_KEY);
+    setZipInputState("");
+    setZipPlace(null);
+    setZipCoords(null);
+    setZipError(null);
+    browserLocation.setLocationOverride(null);
+  }, [browserLocation.setLocationOverride]);
+
+  const setNearMe = useCallback(() => {
+    setAllLocationsState(false);
+    sessionStorage.setItem(ALL_LOCATIONS_KEY, "0");
+    clearZipState();
+  }, [clearZipState]);
+
   const setAllLocations = useCallback(
     (value: boolean) => {
-      setAllLocationsState(value);
-      sessionStorage.setItem(ALL_LOCATIONS_KEY, value ? "1" : "0");
-      if (value) {
-        sessionStorage.removeItem(ZIP_KEY);
-        setZipInputState("");
-        setZipPlace(null);
-        setZipCoords(null);
-        setZipError(null);
-        browserLocation.setLocationOverride(null);
+      if (!value) {
+        setNearMe();
+        return;
       }
+      setAllLocationsState(true);
+      sessionStorage.setItem(ALL_LOCATIONS_KEY, "1");
+      clearZipState();
     },
-    [browserLocation.setLocationOverride],
+    [clearZipState, setNearMe],
   );
 
   const setZipInput = useCallback(
@@ -58,15 +79,18 @@ export function useCampaignNearby() {
       setZipInputState(zip);
       if (zip.length === 5) {
         sessionStorage.setItem(ZIP_KEY, zip);
-        // Stay on "all" until geocode succeeds — avoids filtering by GPS first.
+        // Nearby activates after geocode; stay off "all" while typing a ZIP.
+        setAllLocationsState(false);
+        sessionStorage.setItem(ALL_LOCATIONS_KEY, "0");
       } else {
+        // Incomplete / cleared ZIP → Near Me (keep typed digits; don't wipe input).
         sessionStorage.removeItem(ZIP_KEY);
         setZipPlace(null);
         setZipCoords(null);
         setZipError(null);
         browserLocation.setLocationOverride(null);
-        setAllLocationsState(true);
-        sessionStorage.setItem(ALL_LOCATIONS_KEY, "1");
+        setAllLocationsState(false);
+        sessionStorage.setItem(ALL_LOCATIONS_KEY, "0");
       }
     },
     [browserLocation.setLocationOverride],
@@ -86,8 +110,10 @@ export function useCampaignNearby() {
         setZipError("ZIP not found");
         setZipCoords(null);
         setZipPlace(null);
-        setAllLocationsState(true);
-        sessionStorage.setItem(ALL_LOCATIONS_KEY, "1");
+        // Fall back to Near Me rather than national "all".
+        setAllLocationsState(false);
+        sessionStorage.setItem(ALL_LOCATIONS_KEY, "0");
+        browserLocation.setLocationOverride(null);
         return;
       }
       setZipError(null);
@@ -105,23 +131,42 @@ export function useCampaignNearby() {
     };
   }, [zipInput, browserLocation.setLocationOverride]);
 
-  const nearby =
-    allLocations || zipCoords == null
-      ? undefined
-      : { lat: zipCoords.lat, lng: zipCoords.lng, radiusMiles };
+  const gpsReady =
+    browserLocation.status === "ready" &&
+    browserLocation.latitude != null &&
+    browserLocation.longitude != null;
+
+  const nearby = allLocations
+    ? undefined
+    : zipCoords != null
+      ? { lat: zipCoords.lat, lng: zipCoords.lng, radiusMiles }
+      : gpsReady
+        ? {
+            lat: browserLocation.latitude!,
+            lng: browserLocation.longitude!,
+            radiusMiles,
+          }
+        : undefined;
+
+  const usingZip = !allLocations && zipInput.replace(/\D/g, "").length === 5;
+  const nearMe = !allLocations && !usingZip;
 
   const locationLabel = allLocations
-    ? "Search location"
-    : zipInput.length === 5 && zipPlace?.city && zipPlace.state
+    ? "All locations"
+    : usingZip && zipPlace?.city && zipPlace.state
       ? `${zipPlace.city}, ${zipPlace.state}`
-      : zipInput.length === 5
+      : usingZip
         ? "Locating…"
-        : "Search location";
+        : nearMe && browserLocation.city && browserLocation.state
+          ? `${browserLocation.city}, ${browserLocation.state}`
+          : "Near Me";
 
   return {
     nearby,
     allLocations,
+    nearMe,
     setAllLocations,
+    setNearMe,
     radiusMiles,
     setRadiusMiles: setRadiusMilesOnly,
     zipInput,

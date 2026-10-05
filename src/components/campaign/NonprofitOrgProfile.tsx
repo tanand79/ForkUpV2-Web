@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ArrowRight,
   ChevronLeft,
   ChevronRight,
   Facebook,
@@ -51,6 +52,9 @@ type Props = {
   onChange: (patch: Partial<NonprofitOrgProfileSnapshot>) => void;
   onBack: () => void;
   backLabel?: string;
+  /** Additive: join / find-org funnel Continue (dashboard omits this). */
+  onContinue?: () => void;
+  continueLabel?: string;
   readOnly?: boolean;
   photosLoading?: boolean;
 };
@@ -524,6 +528,8 @@ export function NonprofitOrgProfile({
   onChange,
   onBack,
   backLabel = "Back",
+  onContinue,
+  continueLabel = "Continue",
   readOnly = false,
   photosLoading = false,
 }: Props) {
@@ -713,6 +719,16 @@ export function NonprofitOrgProfile({
           ) : (
             <div className="ml-auto flex flex-col items-end gap-3 pt-1 sm:pt-3">
               <OrgSocialLinks links={socialLinks} />
+              {onContinue ? (
+                <Button
+                  type="button"
+                  onClick={onContinue}
+                  className="h-12 rounded-sm bg-venue-accent px-5 text-sm font-semibold text-venue-paper shadow-none hover:bg-venue-accent-strong"
+                >
+                  {continueLabel}
+                  <ArrowRight className="size-4" />
+                </Button>
+              ) : null}
             </div>
           )}
         </header>
@@ -766,6 +782,17 @@ export function NonprofitOrgProfile({
           )}
         </section>
 
+        {canEdit && onContinue ? (
+          <Button
+            type="button"
+            onClick={onContinue}
+            className="mt-12 h-12 w-full rounded-sm bg-venue-accent text-sm font-semibold text-venue-paper shadow-none hover:bg-venue-accent-strong sm:max-w-md"
+          >
+            {continueLabel}
+            <ArrowRight className="size-4" />
+          </Button>
+        ) : null}
+
         {addressLine ? (
           <LocationMapEmbed
             address={addressLine}
@@ -774,6 +801,18 @@ export function NonprofitOrgProfile({
           />
         ) : null}
       </div>
+
+      {onContinue ? (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-venue-line bg-venue-paper/95 p-3 backdrop-blur-md sm:hidden">
+          <Button
+            type="button"
+            onClick={onContinue}
+            className="h-12 w-full rounded-sm bg-venue-accent text-venue-paper shadow-none hover:bg-venue-accent-strong"
+          >
+            {continueLabel} <ArrowRight />
+          </Button>
+        </div>
+      ) : null}
     </main>
   );
 }
