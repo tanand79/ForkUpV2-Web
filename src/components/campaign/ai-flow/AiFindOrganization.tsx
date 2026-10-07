@@ -3,15 +3,11 @@
 /**
  * AI flow — Find & select nonprofit (create-via-NPO / fundraisers / guests).
  *
- * Phases (same screen, no new ?step=):
- * - find — search + nearby radius
- * - confirm — "We found you" card (Step 2 reference)
- * - hydrating — full analyze once (social + photos + ideas) before profile
- * - profile — org profile Edit/Continue; Continue → ai-campaign-ideas (no 2nd AI)
- *
- * On confirm (Yes, that's us):
- * - Claimed in ForkUp → claimed-npo-chooser (unchanged; skips profile)
- * - Otherwise → hydrating (analyze once) → profile → Continue → ai-campaign-ideas
+ * Pass A — restaurant-parity quick profile (no campaign config in signup):
+ * - find → confirm → hydrating (website/social/photos only) → profile
+ * - nonprofit Continue → email → claim → done → nonprofit-dashboard
+ * - fundraiser Continue → ai-connect-social (campaign path unchanged)
+ * - Claimed in ForkUp → claimed-npo-chooser (unchanged)
  *
  * Nonprofit organizers with a membership never use this screen — they are
  * diverted into own-org AI create.
@@ -28,6 +24,9 @@ import {
 import { useCampaign } from "@/lib/campaign-context";
 import {
   enrichUsNonprofit,
+  linkUserOrganization,
+  submitNonprofitClaimRequest,
+  mergeUsNonprofitEnrichment,
   type OrganizationSearchCandidate,
 } from "@/lib/api";
 import {
@@ -38,10 +37,23 @@ import { OrganizationAvatar } from "@/components/campaign/OrganizationAvatar";
 import { NonprofitOrgProfile } from "@/components/campaign/NonprofitOrgProfile";
 import {
   saveAiFlowPendingOrg,
-  saveAiFlowStore,
+  loadAiFlowPendingOrg,
   clearAiFlowStore,
+  clearAiFlowPendingOrg,
 } from "@/lib/ai-campaign-flow-storage";
-import { stashAccountIntent } from "@/lib/campaign-auth";
+import {
+  readNpoQuickJoinPhase,
+  writeNpoQuickJoinPhase,
+  clearNpoQuickJoinPhase,
+} from "@/lib/npo-quick-join-session";
+import {
+  stashAccountIntent,
+  stashAuthReturnStep,
+  stashClaimLockEmail,
+  stashRoleHint,
+} from "@/lib/campaign-auth";
+import { getAuthToken } from "@/lib/auth-storage";
+import { syncAuthSession } from "@/lib/auth-session";
 import {
   nearbyQueryParams,
   useBrowserLocation,
@@ -51,20 +63,25 @@ import {
   saveNonprofitOrgProfileSnapshot,
   type NonprofitOrgProfileSnapshot,
 } from "@/lib/nonprofit-org-profile";
-import { analyzeAiCampaignFlow } from "@/lib/api-ai-campaign-flow";
+import { resolveAiCampaignSources } from "@/lib/api-ai-campaign-flow";
+import { resolveAiFlowImages } from "./resolve-ai-flow-images";
 import { AiFlowShell } from "./AiFlowShell";
 
-/** Local UI phase for find → confirm → hydrating → profile (mirrors business join). */
-type FindOrgPhase = "find" | "confirm" | "hydrating" | "profile";
+/** Local UI phases — restaurant join parity (no campaign steps in signup). */
+type FindOrgPhase =
+  | "find"
+  | "confirm"
+  | "hydrating"
+  | "profile"
+  | "email"
+  | "done";
 
-/** Same checklist as AiAnalyzing — one full analyze run before profile. */
+/** Profile hydrate checklist (not full campaign-idea analyze). */
 const ORG_EXTRACT_CHECKLIST = [
-  "Organization logo",
+  "Official website",
+  "Social links",
   "Photos & cover images",
-  "Mission & story",
-  "Recent posts & events",
-  "Past campaigns",
-  "Popular themes",
+  "Mission & contact",
 ];
 
 /**
@@ -143,13 +160,26 @@ function snapshotFromCandidate(
 }
 
 export function AiFindOrganization() {
-  const { update, goTo, state, startNewCampaign } = useCampaign();
+  const {
+    update,
+    goTo,
+    state,
+    startNewCampaign,
+    setNonprofitProfile,
+    switchActiveRole,
+  } = useCampaign();
+  /** Always start find; resume effect restores mid-join only when session phase is set. */
   const [phase, setPhase] = useState<FindOrgPhase>("find");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<OrganizationSearchCandidate | null>(
     null,
   );
   const [busy, setBusy] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [claimEmail, setClaimEmail] = useState("");
+  const [doneAccessRequested, setDoneAccessRequested] = useState(false);
+  /** Guest Join: claim manage link emailed (mirrors business Join). */
+  const [claimEmailSent, setClaimEmailSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** On by default — nearby. Uncheck for normal national search. */
   const [useNearbyFilter, setUseNearbyFilter] = useState(true);
@@ -171,6 +201,9 @@ export function AiFindOrganization() {
   /** Return to search (Edit / Search again / Back from confirm). */
   const returnToSearch = () => {
     profileHydrateGen.current += 1;
+    clearNpoQuickJoinPhase();
+    clearAiFlowStore();
+    clearAiFlowPendingOrg();
     setPhase("find");
     setSelected(null);
     setOrgProfile(null);
@@ -179,13 +212,95 @@ export function AiFindOrganization() {
     setError(null);
   };
 
+  // Persist join phase for reload (never bounce into campaign ideas).
   useEffect(() => {
-    // Nonprofit organizers (membership) only create for their own org.
+    writeNpoQuickJoinPhase(phase);
+  }, [phase]);
+
+  useEffect(() => {
+    // Own-org organizers on Find only — never during quick-profile join.
     if (state.accountIntent === "fundraiser") return;
+    if (phase !== "find") return;
+    if (readNpoQuickJoinPhase()) return;
     if (state.nonprofitMemberships.length > 0) {
       startNewCampaign();
     }
-  }, [state.accountIntent, state.nonprofitMemberships.length, startNewCampaign]);
+  }, [
+    phase,
+    state.accountIntent,
+    state.nonprofitMemberships.length,
+    startNewCampaign,
+  ]);
+
+  /**
+   * Resume mid-join after reload only when a phase was persisted.
+   * Fresh "I am nonprofit" clears session first — never lands on stale done.
+   */
+  useEffect(() => {
+    if (selected || orgProfile) return;
+    const savedPhase = readNpoQuickJoinPhase();
+    // Require saved phase — pending email alone must not revive a finished join.
+    if (!savedPhase) return;
+    const pending = loadAiFlowPendingOrg();
+    if (!pending?.organizationName?.trim()) {
+      clearNpoQuickJoinPhase();
+      return;
+    }
+    const hasClaimEmail = Boolean(pending.contactEmail?.includes("@"));
+
+    const restored: OrganizationSearchCandidate = {
+      id: pending.nonprofitId && pending.nonprofitId > 0 ? pending.nonprofitId : 0,
+      organizationName: pending.organizationName,
+      slug: "",
+      mission: pending.mission ?? null,
+      website: pending.website ?? null,
+      contactName: pending.contactName ?? null,
+      contactEmail: pending.contactEmail ?? null,
+      contactPhone: null,
+      causeCategory: pending.causeCategory ?? null,
+      ein: pending.ein ?? null,
+      city: pending.city ?? null,
+      state: pending.state ?? null,
+      zip: null,
+      verificationStatus: pending.verificationStatus || "unverified",
+      claimStatus: pending.claimStatus || "unclaimed",
+      profileStatus: "draft",
+      verified: false,
+      logoUrl: pending.logoUrl ?? null,
+      matchStrength: "strong",
+    };
+    const snap: NonprofitOrgProfileSnapshot = {
+      nonprofitId: restored.id > 0 ? restored.id : null,
+      organizationName: pending.organizationName,
+      city: pending.city?.trim() || "",
+      state: pending.state?.trim() || "",
+      zip: "",
+      about: pending.mission?.trim() || "",
+      coverUrl: pending.logoUrl ?? null,
+      photoUrls: pending.logoUrl ? [pending.logoUrl] : [],
+      websiteUrl: pending.website ?? null,
+      facebookUrl: pending.facebookUrl ?? null,
+      instagramUrl: pending.instagramUrl ?? null,
+      linkedinUrl: pending.linkedinUrl ?? null,
+      youtubeUrl: pending.youtubeUrl ?? null,
+      phone: null,
+      email: pending.contactEmail ?? null,
+      causeCategory: pending.causeCategory ?? null,
+      logoUrl: pending.logoUrl ?? null,
+    };
+    setSelected(restored);
+    setOrgProfile(snap);
+    if (hasClaimEmail && pending.contactEmail) {
+      setClaimEmail(pending.contactEmail);
+    }
+    if (savedPhase === "done") {
+      setPhase("done");
+    } else if (savedPhase === "email" || savedPhase === "profile") {
+      setPhase(savedPhase);
+    } else if (savedPhase === "confirm" || savedPhase === "hydrating") {
+      setPhase(savedPhase);
+    }
+  }, [selected, orgProfile]);
 
   // When query includes a ZIP (e.g. "YMCA - 23220"), center nearby on that ZIP.
   useEffect(() => {
@@ -216,8 +331,8 @@ export function AiFindOrganization() {
   }, [phase, hydrateProgressIdx]);
 
   /**
-   * Yes → hydrating: run full analyze ONCE (social + photos + ideas), then profile.
-   * Continue skips ai-analyzing and opens campaign ideas from this session.
+   * Yes → hydrating: resolve website/social (+ AI guess if needed) + gallery only.
+   * Does not run campaign-idea analyze (Pass A — quick profile like restaurant).
    */
   useEffect(() => {
     if (phase !== "hydrating" || !selected || !orgProfile) return;
@@ -229,7 +344,7 @@ export function AiFindOrganization() {
     void (async () => {
       try {
         clearAiFlowStore();
-        const session = await analyzeAiCampaignFlow({
+        const sources = await resolveAiCampaignSources({
           organizationName:
             seed.organizationName || selected.organizationName,
           ein: selected.ein,
@@ -246,97 +361,103 @@ export function AiFindOrganization() {
         });
         if (gen !== profileHydrateGen.current) return;
 
-        const analysis = session.analysis;
-        const nextWebsite =
-          session.website?.trim() ||
-          analysis?.website?.trim() ||
-          website ||
-          null;
+        const nextWebsite = sources.website?.trim() || website || null;
         const nextFacebook =
-          session.facebookUrl?.trim() ||
-          analysis?.facebookUrl?.trim() ||
-          seed.facebookUrl ||
-          null;
+          sources.facebookUrl?.trim() || seed.facebookUrl || null;
         const nextInstagram =
-          session.instagramUrl?.trim() ||
-          analysis?.instagramUrl?.trim() ||
-          seed.instagramUrl ||
-          null;
+          sources.instagramUrl?.trim() || seed.instagramUrl || null;
         const nextLinkedin =
-          session.linkedinUrl?.trim() ||
-          analysis?.linkedinUrl?.trim() ||
-          seed.linkedinUrl ||
-          null;
+          sources.linkedinUrl?.trim() || seed.linkedinUrl || null;
         const nextYoutube =
-          analysis?.youtubeUrl?.trim() || seed.youtubeUrl || null;
+          sources.youtubeUrl?.trim() || seed.youtubeUrl || null;
+        const nextTiktok =
+          sources.tiktokUrl?.trim() || seed.tiktokUrl || null;
+        const nextPhone = sources.phone?.trim() || seed.phone || null;
+        const nextEmail = sources.email?.trim() || seed.email || null;
         const nextAbout =
           seed.about.trim() ||
-          analysis?.mission?.trim() ||
+          sources.mission?.trim() ||
           selected.mission?.trim() ||
           "";
 
-        const photoUrls = (analysis?.images || [])
-          .map((img) => (typeof img.url === "string" ? img.url.trim() : ""))
-          .filter(Boolean);
-        const coverUrl = photoUrls[0] || seed.coverUrl;
+        let photoUrls = seed.photoUrls;
+        let coverUrl = seed.coverUrl;
+        try {
+          const media = await resolveAiFlowImages({
+            mode: "scratch",
+            limit: 10,
+            websiteUrl: nextWebsite || undefined,
+            facebookUrl: nextFacebook || undefined,
+            instagramHandle: nextInstagram || undefined,
+            linkedinUrl: nextLinkedin || undefined,
+            youtubeUrl: nextYoutube || undefined,
+          });
+          if (gen !== profileHydrateGen.current) return;
+          const urls = media.images
+            .map((g) => g.url || g.storedUrl || "")
+            .filter((u) => u.trim().length > 0);
+          if (urls.length > 0) {
+            photoUrls = urls;
+            coverUrl =
+              media.cover?.url?.trim() ||
+              media.cover?.storedUrl?.trim() ||
+              urls[0] ||
+              coverUrl;
+          }
+        } catch {
+          /* keep logo seed */
+        }
 
-        saveAiFlowStore({
-          sessionToken: session.sessionToken,
-          organizationName:
-            session.organizationName || seed.organizationName,
-          nonprofitId:
-            selected.id > 0
-              ? selected.id
-              : session.nonprofitId && session.nonprofitId > 0
-                ? session.nonprofitId
-                : null,
-          selectedIdeaId: null,
-          guestContinued: false,
-        });
+        if (gen !== profileHydrateGen.current) return;
 
-        saveAiFlowPendingOrg({
-          organizationName:
-            session.organizationName || seed.organizationName,
-          ein: session.ein || selected.ein,
-          nonprofitId: selected.id > 0 ? selected.id : null,
-          website: nextWebsite,
-          facebookUrl: nextFacebook,
-          instagramUrl: nextInstagram,
-          linkedinUrl: nextLinkedin,
-          youtubeUrl: nextYoutube,
-          mission: nextAbout || null,
-          causeCategory: seed.causeCategory || selected.causeCategory,
-          city: seed.city || selected.city,
-          state: seed.state || selected.state,
-          contactName: selected.contactName,
-          contactEmail: seed.email || selected.contactEmail,
-          verificationStatus: selected.verificationStatus,
-          claimStatus: selected.claimStatus,
-          logoUrl: seed.logoUrl || selected.logoUrl,
-        });
-
-        setOrgProfile({
+        const nextProfile: NonprofitOrgProfileSnapshot = {
           ...seed,
           organizationName:
-            session.organizationName?.trim() || seed.organizationName,
+            sources.organizationName?.trim() || seed.organizationName,
           websiteUrl: nextWebsite || seed.websiteUrl,
           facebookUrl: nextFacebook,
           instagramUrl: nextInstagram,
           linkedinUrl: nextLinkedin,
           youtubeUrl: nextYoutube,
+          tiktokUrl: nextTiktok,
+          phone: nextPhone,
+          email: nextEmail,
           about: nextAbout || seed.about,
-          city: seed.city || analysis?.city?.trim() || "",
-          state: seed.state || analysis?.state?.trim() || "",
+          city: seed.city || sources.city?.trim() || "",
+          state: seed.state || sources.state?.trim() || "",
           causeCategory:
-            seed.causeCategory || analysis?.causeCategory?.trim() || null,
-          photoUrls: photoUrls.length > 0 ? photoUrls : seed.photoUrls,
+            seed.causeCategory || sources.causeCategory?.trim() || null,
+          photoUrls,
           coverUrl,
+        };
+
+        saveAiFlowPendingOrg({
+          organizationName: nextProfile.organizationName,
+          ein: selected.ein,
+          nonprofitId: selected.id > 0 ? selected.id : null,
+          website: nextProfile.websiteUrl,
+          facebookUrl: nextProfile.facebookUrl,
+          instagramUrl: nextProfile.instagramUrl,
+          linkedinUrl: nextProfile.linkedinUrl,
+          youtubeUrl: nextProfile.youtubeUrl,
+          mission: nextProfile.about || null,
+          causeCategory: nextProfile.causeCategory,
+          city: nextProfile.city || selected.city,
+          state: nextProfile.state || selected.state,
+          contactName: selected.contactName,
+          contactEmail: nextProfile.email || selected.contactEmail,
+          verificationStatus: selected.verificationStatus,
+          claimStatus: selected.claimStatus,
+          logoUrl: nextProfile.logoUrl || selected.logoUrl,
         });
+
+        if (nextEmail?.includes("@")) setClaimEmail(nextEmail);
+
+        setOrgProfile(nextProfile);
         setHydrateProgressIdx(ORG_EXTRACT_CHECKLIST.length);
         setPhase("profile");
       } catch {
         if (gen !== profileHydrateGen.current) return;
-        // Still open profile with IRS/logo seed so the flow never stalls.
         setPhase("profile");
       }
     })();
@@ -353,7 +474,8 @@ export function AiFindOrganization() {
     setError(null);
     setPhase("confirm");
 
-    if (candidate.source === "irs_us" && candidate.ein && !candidate.website) {
+    // US IRS picks: verified website + social/contact (even when Every.org already has a URL).
+    if (candidate.source === "irs_us" && candidate.ein) {
       try {
         const enriched = await enrichUsNonprofit({
           ein: candidate.ein,
@@ -361,8 +483,8 @@ export function AiFindOrganization() {
           city: candidate.city ?? undefined,
           state: candidate.state ?? undefined,
         });
-        if (enriched?.website) {
-          setSelected({ ...candidate, website: enriched.website });
+        if (enriched) {
+          setSelected(mergeUsNonprofitEnrichment(candidate, enriched));
         }
       } catch {
         /* keep original candidate */
@@ -411,14 +533,14 @@ export function AiFindOrganization() {
   };
 
   /**
-   * Unclaimed path after profile: keep the hydrate session (do not re-analyze).
-   * Continue → campaign ideas list.
+   * After profile Continue:
+   * - fundraiser → existing AI campaign path (connect social)
+   * - nonprofit → email → claim → dashboard (restaurant parity; no campaign config)
    */
   const continueFromOrgProfile = (
     candidate: OrganizationSearchCandidate,
     profile: NonprofitOrgProfileSnapshot,
   ) => {
-    // Refresh pending with any Edit/Done profile tweaks — keep sessionToken.
     saveAiFlowPendingOrg({
       organizationName: profile.organizationName || candidate.organizationName,
       ein: candidate.ein,
@@ -481,8 +603,177 @@ export function AiFindOrganization() {
       saveNonprofitOrgProfileSnapshot(profile);
     }
 
-    // Session already created in hydrating — skip second AI run.
-    goTo("ai-campaign-ideas");
+    if (intent === "fundraiser") {
+      goTo("ai-connect-social");
+      return;
+    }
+
+    const seedEmail =
+      profile.email?.trim() ||
+      candidate.contactEmail?.trim() ||
+      claimEmail.trim() ||
+      "";
+    if (seedEmail.includes("@")) setClaimEmail(seedEmail);
+    setError(null);
+    setPhase("email");
+  };
+
+  /**
+   * Restaurant-parity: claim-request does NOT require login (same as business join).
+   * Auth is optional after — link org if already signed in; else done → signup.
+   */
+  const finishNonprofitJoin = async () => {
+    if (!selected || !orgProfile) {
+      setError("Find your organization first.");
+      setPhase("find");
+      return;
+    }
+    const email = claimEmail.trim();
+    if (!email.includes("@")) {
+      setError("Enter a valid email for your dashboard.");
+      setPhase("email");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      saveAiFlowPendingOrg({
+        organizationName: orgProfile.organizationName,
+        ein: selected.ein,
+        nonprofitId: selected.id > 0 ? selected.id : null,
+        website: orgProfile.websiteUrl,
+        facebookUrl: orgProfile.facebookUrl,
+        instagramUrl: orgProfile.instagramUrl,
+        linkedinUrl: orgProfile.linkedinUrl,
+        youtubeUrl: orgProfile.youtubeUrl,
+        mission: orgProfile.about,
+        causeCategory: orgProfile.causeCategory,
+        city: orgProfile.city,
+        state: orgProfile.state,
+        contactName: selected.contactName || orgProfile.organizationName,
+        contactEmail: email,
+        verificationStatus: selected.verificationStatus,
+        claimStatus: selected.claimStatus,
+        logoUrl: orgProfile.logoUrl,
+      });
+
+      const result = await submitNonprofitClaimRequest({
+        organizationName: orgProfile.organizationName.trim(),
+        contactName:
+          selected.contactName?.trim() || orgProfile.organizationName.trim(),
+        contactEmail: email,
+        mission: orgProfile.about.trim() || undefined,
+        causeCategory: orgProfile.causeCategory || undefined,
+        website: orgProfile.websiteUrl?.trim() || undefined,
+        ein: selected.ein?.trim() || undefined,
+        city: orgProfile.city.trim() || undefined,
+        state: orgProfile.state.trim() || undefined,
+        zip: orgProfile.zip.trim() || undefined,
+        existingSlug: selected.slug?.trim() || undefined,
+      });
+
+      if (result.action === "access_requested") {
+        setDoneAccessRequested(true);
+        setClaimEmailSent(false);
+        writeNpoQuickJoinPhase("done");
+        setPhase("done");
+        return;
+      }
+
+      setDoneAccessRequested(false);
+      setClaimEmailSent(Boolean(result.claimEmailSent));
+      const np = result.nonprofit;
+      const profilePatch = {
+        id: np.id,
+        organizationName: np.organizationName,
+        contactName: np.contactName ?? orgProfile.organizationName,
+        contactEmail: np.contactEmail ?? email,
+        mission: np.mission ?? orgProfile.about ?? undefined,
+        causeCategory: np.causeCategory ?? orgProfile.causeCategory ?? undefined,
+        verificationStatus: np.verificationStatus,
+        claimStatus: np.claimStatus,
+      };
+
+      // Guest claim: set profile only — do NOT add nonprofitMemberships
+      // (setNonprofitProfile would trigger startNewCampaign → campaign ideas).
+      if (getAuthToken()) {
+        setNonprofitProfile(profilePatch);
+        update({ accountIntent: "nonprofit" });
+        switchActiveRole("nonprofit", np.id);
+      } else {
+        update({
+          accountIntent: "nonprofit",
+          nonprofitProfile: profilePatch,
+        });
+        switchActiveRole("nonprofit", np.id);
+      }
+      stashRoleHint("nonprofit");
+
+      saveNonprofitOrgProfileSnapshot({
+        ...orgProfile,
+        nonprofitId: np.id,
+        email,
+      });
+
+      // Keep pending with claimed id so post-signup link can attach ownership.
+      saveAiFlowPendingOrg({
+        organizationName: np.organizationName,
+        ein: selected.ein,
+        nonprofitId: np.id,
+        website: orgProfile.websiteUrl,
+        facebookUrl: orgProfile.facebookUrl,
+        instagramUrl: orgProfile.instagramUrl,
+        linkedinUrl: orgProfile.linkedinUrl,
+        youtubeUrl: orgProfile.youtubeUrl,
+        mission: orgProfile.about,
+        causeCategory: orgProfile.causeCategory,
+        city: orgProfile.city,
+        state: orgProfile.state,
+        contactName: selected.contactName || orgProfile.organizationName,
+        contactEmail: email,
+        verificationStatus: np.verificationStatus,
+        claimStatus: np.claimStatus,
+        logoUrl: orgProfile.logoUrl,
+      });
+
+      if (getAuthToken()) {
+        try {
+          await linkUserOrganization({
+            organizationType: "nonprofit",
+            organizationId: np.id,
+            role: "admin",
+          });
+          await syncAuthSession("nonprofit");
+        } catch {
+          /* optional until they finish signup */
+        }
+      }
+
+      writeNpoQuickJoinPhase("done");
+      setPhase("done");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to save organization profile",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /** From done screen when guest: optional signup (claim mail is primary). */
+  const goAuthToClaimAccount = () => {
+    const email = claimEmail.trim();
+    if (email.includes("@")) stashClaimLockEmail(email);
+    stashRoleHint("nonprofit");
+    stashAuthReturnStep("nonprofit-dashboard");
+    writeNpoQuickJoinPhase("done");
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("forkup-auth-initial-mode", "register");
+    }
+    goTo("auth-login", {
+      query: { email: email || undefined, token: undefined },
+    });
   };
 
   const confirmOrganization = () => {
@@ -526,6 +817,15 @@ export function AiFindOrganization() {
   const websiteFound = Boolean(selected?.website?.trim());
   const locationFound = Boolean(selected?.city || selected?.state);
   const logoFound = Boolean(selected?.logoUrl?.trim());
+  const socialFound = Boolean(
+    selected?.facebookUrl?.trim() ||
+      selected?.instagramUrl?.trim() ||
+      selected?.linkedinUrl?.trim() ||
+      selected?.youtubeUrl?.trim(),
+  );
+  const contactFound = Boolean(
+    selected?.contactEmail?.trim() || selected?.contactPhone?.trim(),
+  );
 
   // Nonprofit Create Campaign: Back returns to dashboard (not public landing).
   const backStep =
@@ -559,7 +859,6 @@ export function AiFindOrganization() {
         backLabel="Back"
         onContinue={() => {
           setEditingOrgProfile(false);
-          setBusy(true);
           setError(null);
           try {
             continueFromOrgProfile(selected, orgProfile);
@@ -569,7 +868,6 @@ export function AiFindOrganization() {
                 ? err.message
                 : "Could not continue with this organization.",
             );
-            setBusy(false);
           }
         }}
         continueLabel="Continue"
@@ -577,32 +875,52 @@ export function AiFindOrganization() {
     );
   }
 
-  return (
-    <AiFlowShell
-      title={
-        isHydrating
+  const shellTitle =
+    phase === "done"
+      ? doneAccessRequested
+        ? "Access requested"
+        : "You're in"
+      : phase === "email"
+        ? "You're ready to ForkUp!"
+        : isHydrating
           ? "Analyzing your content..."
           : isConfirm
             ? "We found you!"
-            : "Search and select a nonprofit"
-      }
-      subtitle={
-        isHydrating
+            : "Search and select a nonprofit";
+
+  const shellSubtitle =
+    phase === "done"
+      ? doneAccessRequested
+        ? "ForkUp will review your access request."
+        : "Your organization profile is saved. Add campaigns anytime from your dashboard."
+      : phase === "email"
+        ? "Where should we send your organization dashboard?"
+        : isHydrating
           ? "ForkUp is extracting signals from your public pages."
           : isConfirm
-            ? "Here's what we found. We'll use this to build your campaign."
-            : "Find the organization this campaign is for. If it’s already on ForkUp, you’ll choose how to continue."
+            ? "Here's what we found. Confirm to build your profile."
+            : "Find the organization this campaign is for. If it’s already on ForkUp, you’ll choose how to continue.";
+
+  return (
+    <AiFlowShell
+      title={shellTitle}
+      subtitle={shellSubtitle}
+      backStep={
+        isConfirm || isHydrating || phase === "email" || phase === "done"
+          ? undefined
+          : backStep
       }
-      backStep={isConfirm || isHydrating ? undefined : backStep}
       onBack={
         isHydrating
           ? () => {
               profileHydrateGen.current += 1;
               setPhase("confirm");
             }
-          : isConfirm
-            ? returnToSearch
-            : undefined
+          : phase === "email"
+            ? () => setPhase("profile")
+            : isConfirm
+              ? returnToSearch
+              : undefined
       }
     >
       {isHydrating ? (
@@ -742,6 +1060,8 @@ export function AiFindOrganization() {
                 <ConfirmCheckRow ok={websiteFound} label="Website found" />
                 <ConfirmCheckRow ok={locationFound} label="Location found" />
                 <ConfirmCheckRow ok={logoFound} label="Logo found" />
+                <ConfirmCheckRow ok={socialFound} label="Social profiles found" />
+                <ConfirmCheckRow ok={contactFound} label="Contact found" />
               </ul>
             </div>
           </div>
@@ -771,6 +1091,103 @@ export function AiFindOrganization() {
             className="w-full text-center text-sm font-semibold text-muted-foreground hover:text-foreground disabled:opacity-60"
           >
             Not correct? Search again
+          </button>
+        </div>
+      )}
+
+      {phase === "email" && (
+        <div className="space-y-4">
+          <label className="block text-sm font-medium">
+            Email
+            <input
+              type="email"
+              className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm"
+              value={claimEmail}
+              onChange={(e) => setClaimEmail(e.target.value)}
+              placeholder="you@nonprofit.org"
+              disabled={submitting}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => void finishNonprofitJoin()}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+          >
+            {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
+            Join ForkUp
+            {!submitting && <ArrowRight className="size-4" />}
+          </button>
+          <p className="text-center text-xs text-muted-foreground">
+            No campaign setup now — add fundraising details anytime from your
+            dashboard.
+          </p>
+        </div>
+      )}
+
+      {phase === "done" && (
+        <div className="space-y-4 rounded-2xl border border-border bg-card p-6 text-center">
+          <CheckCircle2 className="mx-auto size-10 text-primary" />
+          <p className="text-sm text-muted-foreground">
+            {doneAccessRequested
+              ? "This organization is already claimed. ForkUp will review your access request."
+              : getAuthToken()
+                ? "Your organization profile is ready. Create campaigns anytime from your dashboard."
+                : (
+                  <>
+                    Your organization profile draft is saved
+                    {claimEmail.trim() ? (
+                      <>
+                        {" "}
+                        for{" "}
+                        <span className="font-medium text-foreground">
+                          {claimEmail.trim()}
+                        </span>
+                      </>
+                    ) : null}
+                    .
+                    {claimEmailSent || !getAuthToken() ? (
+                      <>
+                        {" "}
+                        Check your inbox for a claim link so you can manage it on
+                        any device.
+                      </>
+                    ) : null}
+                  </>
+                )}
+          </p>
+          {getAuthToken() ? (
+            <button
+              type="button"
+              onClick={() => {
+                clearNpoQuickJoinPhase();
+                goTo("nonprofit-dashboard");
+              }}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground"
+            >
+              Go to dashboard
+              <ArrowRight className="size-4" />
+            </button>
+          ) : !doneAccessRequested ? (
+            <button
+              type="button"
+              onClick={goAuthToClaimAccount}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground"
+            >
+              Create account (optional)
+              <ArrowRight className="size-4" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              clearNpoQuickJoinPhase();
+              clearAiFlowPendingOrg();
+              goTo("website-landing");
+            }}
+            className="w-full text-center text-sm font-semibold text-muted-foreground hover:text-foreground"
+          >
+            Back to home
           </button>
         </div>
       )}

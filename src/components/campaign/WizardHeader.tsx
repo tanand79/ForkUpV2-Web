@@ -137,6 +137,7 @@ export function WizardHeader() {
     step === "guest-launch-sent" ||
     step === "guest-campaign-claim" ||
     step === "guest-business-claim" ||
+    step === "guest-nonprofit-claim" ||
     step === "fundraiser-invite-sent"
   ) {
     return null;

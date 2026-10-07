@@ -27,6 +27,7 @@ import { useClientMounted } from "@/lib/use-client-mounted";
 import type { CampaignListItem } from "@/lib/campaign-types";
 import { CampaignDirectoryCard } from "@/components/campaign/CampaignDirectoryCard";
 import { campaignHasEnded } from "@/components/campaign/CampaignDatePicker";
+import { beginFreshNpoQuickJoin } from "@/lib/npo-quick-join-session";
 
 /**
  * Public Landing Page — the broad public ForkUp marketplace front door.
@@ -91,7 +92,7 @@ const WHY_LOVE = [
 ];
 
 export function PublicLandingPage() {
-  const { goTo, state } = useCampaign();
+  const { goTo, state, update } = useCampaign();
   const mounted = useClientMounted();
   const isLoggedIn = mounted && Boolean(getAuthToken());
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -144,15 +145,16 @@ export function PublicLandingPage() {
     );
   };
 
-  // Nonprofit members → own-org create. Everyone else → search NPO (nonprofit path).
+  // Nonprofit members → own-org create. Everyone else → fresh search (nonprofit path).
   const startCampaign = () => {
-    if (state.nonprofitMemberships.length > 0 || state.nonprofitProfile) {
+    if (state.nonprofitMemberships.length > 0) {
       stashAccountIntent("nonprofit");
       goTo("start");
       return;
     }
-    // Pass 1: create via NPO search — not fundraiser-by-default.
-    stashAccountIntent("nonprofit");
+    // Fresh Find — clear prior join done/email session (restaurant draft parity).
+    beginFreshNpoQuickJoin();
+    update({ accountIntent: "nonprofit", nonprofitProfile: null });
     goTo("ai-find-org");
   };
 

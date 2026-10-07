@@ -15,6 +15,7 @@ import { ArrowLeft, HeartHandshake, Megaphone, Users } from "lucide-react";
 import { useCampaign } from "@/lib/campaign-context";
 import { stashAccountIntent } from "@/lib/campaign-auth";
 import { loadAiFlowPendingOrg } from "@/lib/ai-campaign-flow-storage";
+import { beginFreshNpoQuickJoin } from "@/lib/npo-quick-join-session";
 
 /** Same key as EntryFlows NonprofitClaim draft — consumed on nonprofit-claim mount. */
 const NONPROFIT_CLAIM_DRAFT_KEY = "forkup-nonprofit-claim-draft";
@@ -71,7 +72,10 @@ export function ClaimedNpoChooser() {
     <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-lg flex-col justify-center px-5 py-10 sm:px-6">
       <button
         type="button"
-        onClick={() => goTo("ai-find-org")}
+        onClick={() => {
+          beginFreshNpoQuickJoin();
+          goTo("ai-find-org");
+        }}
         className="mb-6 inline-flex items-center gap-1.5 self-start text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="size-4" />

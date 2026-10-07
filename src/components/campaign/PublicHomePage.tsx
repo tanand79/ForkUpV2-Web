@@ -25,9 +25,10 @@ import { stashBusinessDoor } from "@/lib/business-door";
 import { clearBusinessJoinDraft } from "@/lib/business-join-four-step-draft";
 import { clearPartnerJoinIntent } from "@/lib/partner-join-intent";
 import { peekDirectoryInviteIntent } from "@/lib/directory-invite-intent";
+import { beginFreshNpoQuickJoin } from "@/lib/npo-quick-join-session";
 
 export function PublicHomePage() {
-  const { goTo, state } = useCampaign();
+  const { goTo, state, update } = useCampaign();
   const mounted = useClientMounted();
   const isLoggedIn = mounted && Boolean(getAuthToken());
   const nearby = useCampaignNearby();
@@ -119,13 +120,15 @@ export function PublicHomePage() {
   }, [liveCampaigns, selectedDate]);
 
   const startCampaign = () => {
-    if (state.nonprofitMemberships.length > 0 || state.nonprofitProfile) {
+    // Claimed organizers (membership) → own-org create.
+    if (state.nonprofitMemberships.length > 0) {
       stashAccountIntent("nonprofit");
       goTo("start");
       return;
     }
-    // Pass 1: primary path is create via NPO (search org), not fundraiser-by-default.
-    stashAccountIntent("nonprofit");
+    // Fresh Find — clear prior join done/email session (restaurant draft parity).
+    beginFreshNpoQuickJoin();
+    update({ accountIntent: "nonprofit", nonprofitProfile: null });
     goTo("ai-find-org");
   };
 

@@ -48,6 +48,7 @@ export const ALL_STEP_IDS: StepId[] = [
   "guest-launch-sent",
   "guest-campaign-claim",
   "guest-business-claim",
+  "guest-nonprofit-claim",
   "fundraiser-invite-sent",
   "campaign-review",
   "methods",

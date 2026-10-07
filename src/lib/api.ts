@@ -226,6 +226,36 @@ export function postGuestBusinessClaim(token: string) {
   });
 }
 
+/**
+ * Guest nonprofit claim: load claim link metadata.
+ * GET /api/guest-nonprofit-claim/:token
+ */
+export function fetchGuestNonprofitClaim(token: string) {
+  return fetchJson<{
+    slug: string;
+    organizationName: string;
+    guestEmail: string;
+    nonprofitId: number;
+    expired: boolean;
+    alreadyClaimed: boolean;
+  }>(`/api/guest-nonprofit-claim/${encodeURIComponent(token)}`);
+}
+
+/**
+ * Guest nonprofit claim: attach signed-in user (auth required).
+ * POST /api/guest-nonprofit-claim/:token
+ */
+export function postGuestNonprofitClaim(token: string) {
+  return fetchJson<{
+    ok: boolean;
+    slug: string;
+    nonprofitId: number;
+    organizationName: string;
+  }>(`/api/guest-nonprofit-claim/${encodeURIComponent(token)}`, {
+    method: "POST",
+  });
+}
+
 export interface BuilderCampaignPartner {
   businessId: number;
   locationId: number;
@@ -435,6 +465,8 @@ export interface OrganizationSearchCandidate extends NonprofitProfile {
   source?: OrganizationDirectorySource;
   /** Miles from browser GPS when nearby filter applied; null when unknown. */
   distanceMiles?: number | null;
+  /** Additive: exact-org identity vs the user query (IRS suggest). */
+  identityMatch?: "exact" | "near" | "partial" | "weak" | "reject";
 }
 
 export interface OrganizationBusinessWarning {
@@ -548,11 +580,51 @@ export interface UsNonprofitEnrichment {
   state: string | null;
   zip: string | null;
   providers: string[];
+  /** Additive: verified social / contact from website scrape or AI social. */
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  linkedinUrl?: string | null;
+  youtubeUrl?: string | null;
+  tiktokUrl?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  confidence?: "high" | "medium" | "low";
+  identityMatch?: "exact" | "near" | "partial" | "weak" | "reject";
+  verifiedWebsite?: boolean;
 }
 
 /**
- * Enrich a US IRS pick with website/logo/ZIP/mission (Every.org + ProPublica detail).
- * When website is still missing, AI-guesses from organization name (optional name/city/state).
+ * Merge verified US enrich fields onto a search candidate (null-safe, additive).
+ * Prefer enrich values when present; never wipe existing candidate data with null.
+ */
+export function mergeUsNonprofitEnrichment(
+  candidate: OrganizationSearchCandidate,
+  enriched: UsNonprofitEnrichment,
+): OrganizationSearchCandidate {
+  return {
+    ...candidate,
+    organizationName:
+      enriched.organizationName?.trim() || candidate.organizationName,
+    website: enriched.website?.trim() || candidate.website,
+    logoUrl: enriched.logoUrl?.trim() || candidate.logoUrl,
+    mission: enriched.mission?.trim() || candidate.mission,
+    city: enriched.city?.trim() || candidate.city,
+    state: enriched.state?.trim() || candidate.state,
+    zip: enriched.zip?.trim() || candidate.zip,
+    facebookUrl: enriched.facebookUrl?.trim() || candidate.facebookUrl,
+    instagramUrl: enriched.instagramUrl?.trim() || candidate.instagramUrl,
+    linkedinUrl: enriched.linkedinUrl?.trim() || candidate.linkedinUrl,
+    youtubeUrl: enriched.youtubeUrl?.trim() || candidate.youtubeUrl,
+    tiktokUrl: enriched.tiktokUrl?.trim() || candidate.tiktokUrl,
+    contactEmail: enriched.contactEmail?.trim() || candidate.contactEmail,
+    contactPhone: enriched.contactPhone?.trim() || candidate.contactPhone,
+  };
+}
+
+/**
+ * Enrich a US IRS pick with website/logo/ZIP/mission + verified social/contact.
+ * When website is still missing, AI-guesses from organization name (optional name/city/state),
+ * then verifies the page belongs to this exact org before returning URLs.
  * method: GET /api/profiles/nonprofits/us-enrich
  */
 export function enrichUsNonprofit(params: {
@@ -585,6 +657,8 @@ export interface NonprofitClaimRequestResult {
   nonprofit: NonprofitProfile;
   businessWarning: OrganizationBusinessWarning | null;
   message?: string;
+  /** Guest Join: claim manage link emailed when true. */
+  claimEmailSent?: boolean;
 }
 
 /**

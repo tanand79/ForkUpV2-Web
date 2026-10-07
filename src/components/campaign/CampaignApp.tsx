@@ -78,6 +78,7 @@ import { FundraiserDashboard } from "@/components/campaign/FundraiserDashboard";
 import { GuestLaunchSent } from "@/components/campaign/GuestLaunchSent";
 import { GuestCampaignClaim } from "@/components/campaign/GuestCampaignClaim";
 import { GuestBusinessClaim } from "@/components/campaign/GuestBusinessClaim";
+import { GuestNonprofitClaim } from "@/components/campaign/GuestNonprofitClaim";
 import { FundraiserInviteSent } from "@/components/campaign/FundraiserInviteSent";
 import { PublicLandingPage } from "@/components/campaign/PublicLandingPage";
 import { PublicHomePage } from "@/components/campaign/PublicHomePage";
@@ -226,7 +227,8 @@ function AuthLoginScreen() {
       // Keep lock until Guest*Claim succeeds; clear for other return paths (manual Create account).
       if (
         returnStep !== "guest-campaign-claim" &&
-        returnStep !== "guest-business-claim"
+        returnStep !== "guest-business-claim" &&
+        returnStep !== "guest-nonprofit-claim"
       ) {
         clearClaimLockEmail();
       }
@@ -833,6 +835,12 @@ function WizardBody() {
       return (
         <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-primary" /></div>}>
           <GuestBusinessClaim />
+        </Suspense>
+      );
+    case "guest-nonprofit-claim":
+      return (
+        <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-primary" /></div>}>
+          <GuestNonprofitClaim />
         </Suspense>
       );
     case "fundraiser-invite-sent":

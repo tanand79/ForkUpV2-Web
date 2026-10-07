@@ -50,6 +50,7 @@ const ALL_STEP_IDS = [
   "guest-launch-sent",
   "guest-campaign-claim",
   "guest-business-claim",
+  "guest-nonprofit-claim",
   "fundraiser-invite-sent",
   "campaign-review",
   "methods",

@@ -37,6 +37,7 @@ import {
   linkUserOrganization,
   searchNonprofits,
   enrichUsNonprofit,
+  mergeUsNonprofitEnrichment,
   sendNonprofitCampaignInvite,
   type NonprofitCampaignInvite,
   type NonprofitClaimRequestResult,
@@ -272,7 +273,7 @@ export function NonprofitClaim() {
     setError(null);
     setPhase("form");
 
-    // US IRS picks often lack website/logo/ZIP in ProPublica search — enrich via Every.org + detail.
+    // US IRS picks often lack website/logo/ZIP — enrich + verify social/contact.
     const einValue = candidate.ein?.trim();
     if (
       einValue &&
@@ -285,14 +286,18 @@ export function NonprofitClaim() {
         state: candidate.state ?? undefined,
       })
         .then((enriched) => {
-          if (enriched.website) setWebsite(enriched.website);
-          if (enriched.logoUrl) setLogoUrl(enriched.logoUrl);
-          if (enriched.zip) setZip(normalizeUsZip(enriched.zip));
-          if (enriched.mission) setMission((prev) => prev || enriched.mission || "");
-          if (enriched.city) setCity((prev) => prev || enriched.city || "");
-          if (enriched.state) setStateVal((prev) => prev || enriched.state || "");
-          if (enriched.organizationName) {
-            setOrganizationName((prev) => prev || enriched.organizationName || "");
+          const merged = mergeUsNonprofitEnrichment(candidate, enriched);
+          if (merged.website) setWebsite(merged.website);
+          if (merged.logoUrl) setLogoUrl(merged.logoUrl ?? null);
+          if (merged.zip) setZip(normalizeUsZip(merged.zip));
+          if (merged.mission) setMission((prev) => prev || merged.mission || "");
+          if (merged.city) setCity((prev) => prev || merged.city || "");
+          if (merged.state) setStateVal((prev) => prev || merged.state || "");
+          if (merged.organizationName) {
+            setOrganizationName((prev) => prev || merged.organizationName || "");
+          }
+          if (merged.contactEmail) {
+            setContactEmail((prev) => prev || merged.contactEmail || "");
           }
         })
         .catch(() => {

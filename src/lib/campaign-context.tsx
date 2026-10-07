@@ -326,6 +326,7 @@ export type StepId =
   | "guest-launch-sent"
   | "guest-campaign-claim"
   | "guest-business-claim"
+  | "guest-nonprofit-claim"
   | "fundraiser-invite-sent"
   // Lovable Review Your Campaign (after Prepare My Draft) — not the old details/media tabs.
   | "campaign-review"

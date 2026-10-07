@@ -101,6 +101,7 @@ export function roleHintFromStep(step: StepId): UserRole | null {
     step === "guest-launch-sent" ||
     step === "guest-campaign-claim" ||
     step === "guest-business-claim" ||
+    step === "guest-nonprofit-claim" ||
     step === "fundraiser-invite-sent" ||
     step === "methods" ||
     // Dine & Donate / Guest Bartending invite path (auth-gated).
@@ -228,10 +229,13 @@ export function shouldLockClaimEmailForReturn(returnStep: StepId | null): boolea
   return (
     returnStep === "guest-campaign-claim" ||
     returnStep === "guest-business-claim" ||
+    returnStep === "guest-nonprofit-claim" ||
     returnStep === "nonprofit-claim" ||
     // Business “Create account (optional)” via prepareBusinessJoinAuth()
     returnStep === "business-dashboard" ||
-    returnStep === "partner-campaign-join"
+    returnStep === "partner-campaign-join" ||
+    // Pass A: NPO quick-profile claim → Create account → dashboard
+    returnStep === "nonprofit-dashboard"
   );
 }
 
