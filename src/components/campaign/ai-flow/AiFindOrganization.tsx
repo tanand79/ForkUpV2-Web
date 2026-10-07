@@ -182,6 +182,8 @@ export function AiFindOrganization() {
   /** Guest Join: claim manage link emailed (mirrors business Join). */
   const [claimEmailSent, setClaimEmailSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Additive: IRS pick enrich (website/social) in progress on confirm. */
+  const [enriching, setEnriching] = useState(false);
   /** On by default — nearby. Uncheck for normal national search. */
   const [useNearbyFilter, setUseNearbyFilter] = useState(true);
   const [radiusMiles, setRadiusMiles] = useState(50);
@@ -211,6 +213,7 @@ export function AiFindOrganization() {
     setEditingOrgProfile(false);
     setHydrateProgressIdx(0);
     setError(null);
+    setEnriching(false);
   };
 
   // Persist join phase for reload (never bounce into campaign ideas).
@@ -477,6 +480,7 @@ export function AiFindOrganization() {
 
     // US IRS picks: verified website + social/contact (even when Every.org already has a URL).
     if (candidate.source === "irs_us" && candidate.ein) {
+      setEnriching(true);
       try {
         const enriched = await enrichUsNonprofit({
           ein: candidate.ein,
@@ -489,6 +493,8 @@ export function AiFindOrganization() {
         }
       } catch {
         /* keep original candidate */
+      } finally {
+        setEnriching(false);
       }
     }
   };
@@ -998,6 +1004,11 @@ export function AiFindOrganization() {
               nearby={nearby ?? null}
             />
           </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Tip: for common names, add a city, ZIP, or EIN (for example:{" "}
+            <span className="font-medium">YMCA - 23220</span>) so we match the exact
+            organization.
+          </p>
 
           <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-foreground">
             <input
@@ -1033,6 +1044,19 @@ export function AiFindOrganization() {
 
       {isConfirm && selected && (
         <div className="space-y-4">
+          {enriching ? (
+            <div className="flex items-start gap-3 rounded-2xl border border-border bg-card px-4 py-4 text-sm text-muted-foreground">
+              <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-primary" />
+              <div>
+                <p className="font-medium text-foreground">
+                  Verifying website and public details…
+                </p>
+                <p className="mt-1 text-xs">
+                  This may take a minute when we research the official site from the web.
+                </p>
+              </div>
+            </div>
+          ) : null}
           <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
             <div className="relative flex h-40 items-center justify-center bg-muted/40">
               {selected.logoUrl ? (
@@ -1080,7 +1104,7 @@ export function AiFindOrganization() {
 
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || enriching}
             onClick={() => confirmOrganization()}
             className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-dark disabled:opacity-60"
           >
@@ -1088,6 +1112,11 @@ export function AiFindOrganization() {
               <>
                 <Loader2 className="size-4 animate-spin" />
                 Continuing…
+              </>
+            ) : enriching ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Verifying…
               </>
             ) : (
               <>
@@ -1098,7 +1127,7 @@ export function AiFindOrganization() {
           </button>
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || enriching}
             onClick={returnToSearch}
             className="w-full text-center text-sm font-semibold text-muted-foreground hover:text-foreground disabled:opacity-60"
           >

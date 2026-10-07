@@ -99,6 +99,37 @@ function normalizeWebsiteInput(raw: string): string {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
+/** True when draft social list mentions a channel (label or URL). */
+function socialMentionsChannel(
+  social: string[] | undefined,
+  channel: "facebook" | "instagram" | "linkedin" | "youtube",
+): boolean {
+  if (!social?.length) return false;
+  const hosts: Record<typeof channel, string[]> = {
+    facebook: ["facebook.com", "fb.com"],
+    instagram: ["instagram.com"],
+    linkedin: ["linkedin.com"],
+    youtube: ["youtube.com", "youtu.be"],
+  };
+  const label = channel === "youtube" ? "youtube" : channel;
+  return social.some((s) => {
+    const t = s.trim().toLowerCase();
+    if (t === label || t.includes(label)) return true;
+    return hosts[channel].some((h) => t.includes(h));
+  });
+}
+
+function draftSourceLabel(draft: OrganizationDraftResult, fallbackWebsite: string): string {
+  if (draft.provider === "known_profile") {
+    return (draft.generatedFields.website || fallbackWebsite)
+      .replace(/^https?:\/\//, "");
+  }
+  if (draft.provider === "tavily_bedrock") {
+    return "Web research — please verify";
+  }
+  return "AI Draft — please verify";
+}
+
 function prefillFromSearch(value: string): ManualEntryPrefill {
   const trimmed = value.trim();
   if (!trimmed) return {};
@@ -237,8 +268,15 @@ export function OrganizationLookupConfirm({
     } catch (err) {
       if (reqId !== requestIdRef.current) return;
       // Do not invent an empty local draft — that produced blank "AI Draft" screens.
+      const apiErr = err as Error & { status?: number; apiStatus?: string };
+      const ambiguous =
+        apiErr?.apiStatus === "ambiguous" || apiErr?.status === 422;
+      const base =
+        err instanceof Error ? err.message : "Could not look up that organization.";
       setAiError(
-        err instanceof Error ? err.message : "Could not look up that organization.",
+        ambiguous
+          ? `${base} Try adding a city and state, or an EIN (for example: “Head To Head, Philadelphia PA”).`
+          : base,
       );
     } finally {
       if (reqId === requestIdRef.current) setAiBusy(false);
@@ -422,7 +460,8 @@ export function OrganizationLookupConfirm({
           )}
           <p className="mt-2 text-xs text-muted-foreground">
             Website works best for creating a profile. Organization name works best for finding an
-            existing profile.
+            existing profile. For common names, add a city, ZIP, or EIN (for example:{" "}
+            <span className="font-medium">YMCA - 23220</span>).
           </p>
           <div className="mt-8 border-t border-border/60 pt-4">
             <p className="text-sm text-muted-foreground">
@@ -462,14 +501,31 @@ export function OrganizationLookupConfirm({
       {candidates.length === 0 ? (
         <div className="space-y-4">
           {aiBusy && (
-            <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-5 text-sm text-muted-foreground">
-              <Loader2 className="size-5 animate-spin text-primary" />
-              Looking up your organization…
+            <div className="flex items-start gap-3 rounded-2xl border border-border bg-card px-4 py-5 text-sm text-muted-foreground">
+              <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-primary" />
+              <div>
+                <p className="font-medium text-foreground">
+                  {looksLikeWebsite(value)
+                    ? "Looking up your organization…"
+                    : "Researching the official website and public details…"}
+                </p>
+                {!looksLikeWebsite(value) && (
+                  <p className="mt-1 text-xs">
+                    Name research can take up to two minutes. Keep this tab open.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
           {!aiBusy && aiError && (
-            <p className="text-sm font-medium text-destructive">{aiError}</p>
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-destructive">{aiError}</p>
+              <p className="text-xs text-muted-foreground">
+                Tip: refine with <span className="font-medium">Name, City ST</span> or a 9-digit EIN,
+                then search again — or enter details manually below.
+              </p>
+            </div>
           )}
 
           {/* Lovable: Review what ForkUp found */}
@@ -487,8 +543,9 @@ export function OrganizationLookupConfirm({
                   Review what ForkUp found
                 </h2>
                 <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-                  ForkUp found information from your website. Review and complete anything missing
-                  before continuing.
+                  {aiDraft.provider === "tavily_bedrock"
+                    ? "ForkUp researched public web sources for this organization. Review and complete anything missing before continuing."
+                    : "ForkUp found information from your website. Review and complete anything missing before continuing."}
                 </p>
               </div>
 
@@ -533,12 +590,12 @@ export function OrganizationLookupConfirm({
                     )}
                     {(aiDraft.social?.length ?? 0) > 0 && (
                       <p className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                        {aiDraft.social!.includes("Facebook") && (
+                        {socialMentionsChannel(aiDraft.social, "facebook") && (
                           <span className="inline-flex items-center gap-1">
                             <Facebook className="size-3" /> Facebook
                           </span>
                         )}
-                        {aiDraft.social!.includes("Instagram") && (
+                        {socialMentionsChannel(aiDraft.social, "instagram") && (
                           <span className="inline-flex items-center gap-1">
                             <Instagram className="size-3" /> Instagram
                           </span>
@@ -546,11 +603,13 @@ export function OrganizationLookupConfirm({
                       </p>
                     )}
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Source:{" "}
-                      {aiDraft.provider === "known_profile"
-                        ? (aiDraft.generatedFields.website || value).replace(/^https?:\/\//, "")
-                        : "AI Draft — please verify"}
+                      Source: {draftSourceLabel(aiDraft, value)}
                     </p>
+                    {(aiDraft.researchWarnings?.length ?? 0) > 0 && (
+                      <p className="mt-1 text-xs text-amber-700">
+                        {aiDraft.researchWarnings!.join(" ")}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

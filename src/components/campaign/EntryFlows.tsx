@@ -215,6 +215,8 @@ export function NonprofitClaim() {
   /** Keep last ForkUp draft so Back to Review restores the populated card. */
   const [savedAiDraft, setSavedAiDraft] = useState<OrganizationDraftResult | null>(null);
   const [reviewActive, setReviewActive] = useState(false);
+  /** Additive: IRS enrich (website/social) filling form fields in background. */
+  const [enriching, setEnriching] = useState(false);
 
   const returnToLookup = () => {
     clearNonprofitClaimDraft();
@@ -279,6 +281,7 @@ export function NonprofitClaim() {
       einValue &&
       (candidate.source === "irs_us" || !candidate.website || !candidate.logoUrl || !candidate.zip)
     ) {
+      setEnriching(true);
       void enrichUsNonprofit({
         ein: einValue,
         organizationName: candidate.organizationName,
@@ -302,7 +305,8 @@ export function NonprofitClaim() {
         })
         .catch(() => {
           /* keep ProPublica fields — enrichment is best-effort */
-        });
+        })
+        .finally(() => setEnriching(false));
     }
   };
 
@@ -707,6 +711,12 @@ export function NonprofitClaim() {
               ? "Update your organization details. Changes apply to future campaigns."
               : "Review and complete your profile. Nothing is saved until you confirm below."}
           </p>
+
+          {enriching ? (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Verifying website and public details… fields may update when research finishes.
+            </p>
+          ) : null}
 
           <form onSubmit={submit} className="mt-8 space-y-4">
             <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3">

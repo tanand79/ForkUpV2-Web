@@ -44,8 +44,15 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
           ? body.message
           : `API error: ${res.status}`;
     /** Additive: status helps clients clear stale tokens after db:reset. */
-    const err = new Error(message) as Error & { status?: number };
+    const err = new Error(message) as Error & {
+      status?: number;
+      /** Additive: server `status` field (e.g. generate-organization-draft "ambiguous"). */
+      apiStatus?: string;
+    };
     err.status = res.status;
+    if (typeof body.status === "string" && body.status.trim()) {
+      err.apiStatus = body.status.trim();
+    }
     throw err;
   }
   if (!contentType.includes("application/json")) {
@@ -786,6 +793,8 @@ export interface OrganizationDraftResult {
   missingFields?: string[];
   confirmationStatus: "AI Draft" | "Found Profile" | string;
   provider?: string;
+  /** Additive: soft warnings from Tavily+Bedrock name research. */
+  researchWarnings?: string[];
 }
 
 export function generateOrganizationDraft(body: {
