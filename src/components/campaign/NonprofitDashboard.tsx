@@ -32,7 +32,6 @@ import {
   fetchNonprofitPartnerUpdates,
   fetchNonprofitPendingInvites,
   publishCampaignNow,
-  suggestCampaignImages,
   type ManageCampaignSummary,
   type NonprofitPartnerUpdate,
   type NonprofitPendingInvite,
@@ -948,9 +947,10 @@ export function NonprofitDashboard() {
     const gen = ++orgHydrateGen.current;
     const saved = loadNonprofitOrgProfileSnapshot(nonprofitId);
     const np = state.nonprofitProfile;
-    const savedPhotos = (saved?.photoUrls ?? []).filter(
-      (u) => !/fbcdn\.net|cdninstagram\.com|scontent/i.test(u),
-    );
+    const isEphemeralPhoto = (u: string) =>
+      /fbcdn\.net|cdninstagram\.com|scontent/i.test(u);
+    // Keep join photos for display (incl. CDN) — do not strip before paint.
+    const savedPhotos = (saved?.photoUrls ?? []).filter((u) => u.trim().length > 0);
     const base: NonprofitOrgProfileSnapshot = {
       nonprofitId,
       organizationName:
@@ -963,12 +963,10 @@ export function NonprofitDashboard() {
       zip: saved?.zip || "",
       about: saved?.about || np?.mission || "",
       coverUrl:
-        savedPhotos.length > 0
-          ? saved?.coverUrl &&
-            !/fbcdn\.net|cdninstagram\.com|scontent/i.test(saved.coverUrl)
-            ? saved.coverUrl
-            : savedPhotos[0] || null
-          : null,
+        saved?.coverUrl?.trim() ||
+        savedPhotos[0] ||
+        saved?.logoUrl ||
+        null,
       photoUrls: savedPhotos,
       websiteUrl: saved?.websiteUrl ?? null,
       facebookUrl: saved?.facebookUrl ?? null,
@@ -987,14 +985,79 @@ export function NonprofitDashboard() {
     pushProfileView(true);
     setOrgPhotosLoading(true);
 
+    /** Same scrape path as Join hydrate (social first, website fallback). */
+    const refreshOrgPhotos = async (
+      seed: NonprofitOrgProfileSnapshot,
+    ): Promise<NonprofitOrgProfileSnapshot | null> => {
+      const hasLinks = Boolean(
+        seed.websiteUrl?.trim() ||
+          seed.instagramUrl?.trim() ||
+          seed.facebookUrl?.trim() ||
+          seed.linkedinUrl?.trim() ||
+          seed.youtubeUrl?.trim(),
+      );
+      if (!hasLinks) return null;
+      try {
+        const { resolveAiFlowImages } = await import(
+          "@/components/campaign/ai-flow/resolve-ai-flow-images"
+        );
+        const media = await resolveAiFlowImages({
+          mode: "scratch",
+          limit: 10,
+          websiteUrl: seed.websiteUrl?.trim() || undefined,
+          facebookUrl: seed.facebookUrl?.trim() || undefined,
+          instagramHandle: seed.instagramUrl?.trim() || undefined,
+          linkedinUrl: seed.linkedinUrl?.trim() || undefined,
+          youtubeUrl: seed.youtubeUrl?.trim() || undefined,
+        });
+        if (orgHydrateGen.current !== gen) return null;
+        const urls = media.images
+          .map((img) => (img.url || img.storedUrl || "").trim())
+          .filter(Boolean);
+        if (urls.length === 0) return null;
+        const cover =
+          media.cover?.url?.trim() ||
+          media.cover?.storedUrl?.trim() ||
+          urls[0] ||
+          seed.coverUrl;
+        const next: NonprofitOrgProfileSnapshot = {
+          ...seed,
+          photoUrls: urls,
+          coverUrl: cover,
+        };
+        saveNonprofitOrgProfileSnapshot(next);
+        setOrgProfile(next);
+        if (getAuthToken() && next.nonprofitId) {
+          void saveNonprofitGallery({
+            nonprofitId: next.nonprofitId,
+            imageUrls: urls,
+            coverUrl: cover || null,
+          }).catch(() => {
+            /* best-effort */
+          });
+        }
+        return next;
+      } catch {
+        return null;
+      }
+    };
+
+    const needsPhotoRefresh = (p: NonprofitOrgProfileSnapshot) =>
+      p.photoUrls.length === 0 || p.photoUrls.some(isEphemeralPhoto);
+
     if (!getAuthToken()) {
-      setOrgPhotosLoading(false);
+      void refreshOrgPhotos(base).finally(() => {
+        if (orgHydrateGen.current === gen) setOrgPhotosLoading(false);
+      });
       return;
     }
 
     void fetchNonprofitOrgProfile(nonprofitId)
       .then(async (remote) => {
         if (orgHydrateGen.current !== gen) return;
+        const remoteGallery = (remote.galleryImageUrls || []).filter((u) =>
+          u.trim(),
+        );
         let next: NonprofitOrgProfileSnapshot = {
           nonprofitId: remote.nonprofitId,
           organizationName: remote.organizationName || base.organizationName,
@@ -1002,25 +1065,15 @@ export function NonprofitDashboard() {
           state: remote.state || base.state,
           zip: remote.zip || base.zip,
           about: remote.about || base.about,
-          photoUrls: remote.galleryImageUrls.filter(
-            (u) => !/fbcdn\.net|cdninstagram\.com|scontent/i.test(u),
-          ).length
-            ? remote.galleryImageUrls.filter(
-                (u) => !/fbcdn\.net|cdninstagram\.com|scontent/i.test(u),
-              )
-            : base.photoUrls,
-          coverUrl: (() => {
-            const durableRemote = remote.galleryImageUrls.filter(
-              (u) => !/fbcdn\.net|cdninstagram\.com|scontent/i.test(u),
-            );
-            if (
-              remote.coverUrl &&
-              !/fbcdn\.net|cdninstagram\.com|scontent/i.test(remote.coverUrl)
-            ) {
-              return remote.coverUrl;
-            }
-            return durableRemote[0] || base.coverUrl;
-          })(),
+          // Prefer DB gallery (from claim-request) over stripped local cache.
+          photoUrls:
+            remoteGallery.length > 0 ? remoteGallery : base.photoUrls,
+          coverUrl:
+            remote.coverUrl?.trim() ||
+            remoteGallery[0] ||
+            base.coverUrl ||
+            remote.logoUrl ||
+            null,
           websiteUrl: remote.website || base.websiteUrl,
           facebookUrl: remote.facebookUrl || base.facebookUrl,
           instagramUrl: remote.instagramUrl || base.instagramUrl,
@@ -1035,57 +1088,15 @@ export function NonprofitDashboard() {
         saveNonprofitOrgProfileSnapshot(next);
         setOrgProfile(next);
 
-        // Instagram/FB CDN hotlinks expire (403). Always live-refresh like AI cover picker.
-        const ephemeral =
-          next.photoUrls.length === 0 ||
-          next.photoUrls.some((u) =>
-            /fbcdn\.net|cdninstagram\.com|scontent/i.test(u),
-          );
-        const hasLinks = Boolean(
-          next.websiteUrl?.trim() ||
-            next.instagramUrl?.trim() ||
-            next.facebookUrl?.trim() ||
-            next.linkedinUrl?.trim() ||
-            next.youtubeUrl?.trim(),
-        );
-        if (!ephemeral || !hasLinks) return;
-
-        try {
-          const { images } = await suggestCampaignImages({
-            websiteUrl: next.websiteUrl?.trim() || undefined,
-            instagramHandle: next.instagramUrl?.trim() || undefined,
-            facebookUrl: next.facebookUrl?.trim() || undefined,
-            linkedinUrl: next.linkedinUrl?.trim() || undefined,
-            youtubeUrl: next.youtubeUrl?.trim() || undefined,
-            limit: 10,
-          });
-          if (orgHydrateGen.current !== gen) return;
-          const urls = images
-            .map((img) => (img.url || "").trim())
-            .filter(Boolean);
-          if (urls.length === 0) return;
-          next = {
-            ...next,
-            photoUrls: urls,
-            coverUrl: urls[0] || next.coverUrl,
-          };
-          saveNonprofitOrgProfileSnapshot(next);
-          setOrgProfile(next);
-          if (getAuthToken() && next.nonprofitId) {
-            void saveNonprofitGallery({
-              nonprofitId: next.nonprofitId,
-              imageUrls: urls,
-              coverUrl: urls[0] || null,
-            }).catch(() => {
-              /* best-effort */
-            });
-          }
-        } catch {
-          /* keep whatever the profile API returned */
+        // Always refresh when empty or CDN-only so View profile matches Join.
+        if (needsPhotoRefresh(next)) {
+          await refreshOrgPhotos(next);
         }
       })
-      .catch(() => {
-        /* keep local snapshot */
+      .catch(async () => {
+        if (needsPhotoRefresh(base)) {
+          await refreshOrgPhotos(base);
+        }
       })
       .finally(() => {
         if (orgHydrateGen.current === gen) setOrgPhotosLoading(false);

@@ -26,6 +26,10 @@ import {
   loadUserSession,
   clearAuthAndSession,
 } from "@/lib/auth-session";
+import {
+  loadNonprofitOrgProfileSnapshot,
+  persistNonprofitOrgProfileFromSnapshot,
+} from "@/lib/nonprofit-org-profile";
 
 type ClaimInfo = {
   slug: string;
@@ -116,6 +120,15 @@ export function GuestNonprofitClaim() {
         claimStatus: "claimed",
       });
       switchActiveRole("nonprofit", result.nonprofitId);
+      // Push join-hydrate gallery/links now that membership exists.
+      const snap = loadNonprofitOrgProfileSnapshot(result.nonprofitId);
+      if (snap) {
+        void persistNonprofitOrgProfileFromSnapshot({
+          ...snap,
+          nonprofitId: result.nonprofitId,
+          email: info?.guestEmail || snap.email,
+        });
+      }
       sessionStorage.removeItem("forkup-guest-nonprofit-claim-token");
       clearClaimLockEmail();
       goTo("nonprofit-dashboard");

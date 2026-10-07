@@ -299,6 +299,20 @@ function AuthLoginScreen() {
           });
           if (linkedId) {
             session = await syncAuthSession(role, { force: true });
+            // Persist join-hydrate gallery after guest signup links the org.
+            try {
+              const { loadNonprofitOrgProfileSnapshot, persistNonprofitOrgProfileFromSnapshot } =
+                await import("@/lib/nonprofit-org-profile");
+              const snap = loadNonprofitOrgProfileSnapshot(linkedId);
+              if (snap) {
+                await persistNonprofitOrgProfileFromSnapshot({
+                  ...snap,
+                  nonprofitId: linkedId,
+                });
+              }
+            } catch {
+              /* best-effort */
+            }
           }
         } catch {
           /* best-effort — user can still claim org manually */

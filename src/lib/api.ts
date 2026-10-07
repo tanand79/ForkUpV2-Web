@@ -679,6 +679,14 @@ export function submitNonprofitClaimRequest(body: {
   city?: string;
   state?: string;
   zip?: string;
+  /** Additive: Join-hydrate media persisted on claim (guest-safe). */
+  facebookUrl?: string;
+  instagramUrl?: string;
+  linkedinUrl?: string;
+  youtubeUrl?: string;
+  logoUrl?: string;
+  galleryImageUrls?: string[];
+  coverUrl?: string;
 }) {
   return fetchJson<NonprofitClaimRequestResult>("/api/profiles/nonprofits/claim-request", {
     method: "POST",

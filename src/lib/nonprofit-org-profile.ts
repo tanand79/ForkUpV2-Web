@@ -2,6 +2,11 @@
  * NPO org profile snapshot — local cache for dashboard "View profile".
  * Mirrors business-venue-profile.ts (without hours / giveback).
  */
+import { getAuthToken } from "@/lib/auth-storage";
+import {
+  saveNonprofitGallery,
+  saveNonprofitLinks,
+} from "@/lib/api-nonprofit-org-profile";
 
 export type NonprofitOrgProfileSnapshot = {
   nonprofitId: number | null;
@@ -106,4 +111,59 @@ export function mergeNonprofitOrgProfilePatch(
     nonprofitId: patch.nonprofitId ?? prev.nonprofitId,
     photoUrls: patch.photoUrls ?? prev.photoUrls,
   };
+}
+
+/**
+ * Persist hydrated join profile (links + gallery) to the server after claim/auth.
+ * Best-effort — local snapshot is always written when id is valid.
+ */
+export async function persistNonprofitOrgProfileFromSnapshot(
+  snapshot: NonprofitOrgProfileSnapshot,
+): Promise<void> {
+  const id = snapshot.nonprofitId;
+  if (id == null || id <= 0) return;
+
+  saveNonprofitOrgProfileSnapshot(snapshot);
+  if (!getAuthToken()) return;
+
+  try {
+    await saveNonprofitLinks({
+      nonprofitId: id,
+      website: snapshot.websiteUrl ?? null,
+      facebookUrl: snapshot.facebookUrl ?? null,
+      instagramUrl: snapshot.instagramUrl ?? null,
+      linkedinUrl: snapshot.linkedinUrl ?? null,
+      tiktokUrl: snapshot.tiktokUrl ?? null,
+      youtubeUrl: snapshot.youtubeUrl ?? null,
+      phone: snapshot.phone ?? null,
+      contactEmail: snapshot.email ?? null,
+      about: snapshot.about || null,
+      city: snapshot.city || null,
+      state: snapshot.state || null,
+      zip: snapshot.zip || null,
+      organizationName: snapshot.organizationName || null,
+    });
+  } catch {
+    /* best-effort */
+  }
+
+  const photos = (snapshot.photoUrls ?? [])
+    .map((u) => u.trim())
+    .filter(Boolean);
+  const cover =
+    snapshot.coverUrl?.trim() ||
+    photos[0] ||
+    snapshot.logoUrl?.trim() ||
+    null;
+  if (photos.length === 0 && !cover) return;
+
+  try {
+    await saveNonprofitGallery({
+      nonprofitId: id,
+      imageUrls: photos.length > 0 ? photos : cover ? [cover] : [],
+      coverUrl: cover,
+    });
+  } catch {
+    /* best-effort — View profile can live-refresh */
+  }
 }

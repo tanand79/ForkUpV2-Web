@@ -61,6 +61,7 @@ import {
 import { SearchRadiusControl } from "@/components/campaign/SearchRadiusControl";
 import {
   saveNonprofitOrgProfileSnapshot,
+  persistNonprofitOrgProfileFromSnapshot,
   type NonprofitOrgProfileSnapshot,
 } from "@/lib/nonprofit-org-profile";
 import { resolveAiCampaignSources } from "@/lib/api-ai-campaign-flow";
@@ -671,6 +672,14 @@ export function AiFindOrganization() {
         state: orgProfile.state.trim() || undefined,
         zip: orgProfile.zip.trim() || undefined,
         existingSlug: selected.slug?.trim() || undefined,
+        facebookUrl: orgProfile.facebookUrl?.trim() || undefined,
+        instagramUrl: orgProfile.instagramUrl?.trim() || undefined,
+        linkedinUrl: orgProfile.linkedinUrl?.trim() || undefined,
+        youtubeUrl: orgProfile.youtubeUrl?.trim() || undefined,
+        logoUrl: orgProfile.logoUrl?.trim() || undefined,
+        galleryImageUrls:
+          orgProfile.photoUrls.length > 0 ? orgProfile.photoUrls : undefined,
+        coverUrl: orgProfile.coverUrl?.trim() || undefined,
       });
 
       if (result.action === "access_requested") {
@@ -710,11 +719,12 @@ export function AiFindOrganization() {
       }
       stashRoleHint("nonprofit");
 
-      saveNonprofitOrgProfileSnapshot({
+      const claimedSnapshot: NonprofitOrgProfileSnapshot = {
         ...orgProfile,
         nonprofitId: np.id,
         email,
-      });
+      };
+      saveNonprofitOrgProfileSnapshot(claimedSnapshot);
 
       // Keep pending with claimed id so post-signup link can attach ownership.
       saveAiFlowPendingOrg({
@@ -745,6 +755,8 @@ export function AiFindOrganization() {
             role: "admin",
           });
           await syncAuthSession("nonprofit");
+          // Persist hydrate photos/links so View profile is not logo-only.
+          await persistNonprofitOrgProfileFromSnapshot(claimedSnapshot);
         } catch {
           /* optional until they finish signup */
         }
