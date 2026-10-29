@@ -24,6 +24,8 @@ const nextConfig: NextConfig = {
   experimental: {
     // Avoid lucide barrel import issues in dev (missing icon modules).
     optimizePackageImports: [],
+    // NPO web research (Tavily + Bedrock) can run ~90s; default proxy is 30s.
+    proxyTimeout: 120_000,
   },
   async rewrites() {
     // Static export ignores rewrites; Amplify SSR and local `next dev` can use them.

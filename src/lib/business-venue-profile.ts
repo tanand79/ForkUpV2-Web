@@ -25,6 +25,8 @@ export type VenueProfileSnapshot = {
   state: string;
   zip: string;
   about: string;
+  /** Evidence-only; empty when the public site has no Mission. */
+  mission?: string;
   coverUrl: string | null;
   photoUrls: string[];
   hours: VenueDiscountHours;
@@ -149,6 +151,8 @@ export function venueSnapshotFromJoin(input: {
     state: string;
     zip: string;
     about: string;
+  /** Evidence-only; empty when the public site has no Mission. */
+  mission?: string;
     website?: string;
     facebookUrl?: string | null;
     instagramUrl?: string | null;
@@ -175,6 +179,7 @@ export function venueSnapshotFromJoin(input: {
     state: input.found.state || "",
     zip: input.found.zip || "",
     about: input.found.about || "",
+    mission: input.found.mission?.trim() || "",
     coverUrl: input.coverUrl,
     photoUrls: input.photoUrls,
     hours: normalizeVenueHours(input.hours),
@@ -302,6 +307,7 @@ export function mergeVenueSnapshotKeepExisting(
     state: keepFilled(prev.state, patch.state),
     zip: keepFilled(prev.zip, patch.zip),
     about: keepFilled(prev.about, patch.about),
+    mission: keepFilled(prev.mission ?? "", patch.mission),
     coverUrl:
       (typeof patch.coverUrl === "string" && patch.coverUrl.trim()
         ? patch.coverUrl.trim()

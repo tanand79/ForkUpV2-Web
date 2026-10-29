@@ -150,6 +150,11 @@ export type AiResolvedSources = {
   causeCategory: string | null;
   city: string | null;
   state: string | null;
+  /** Additive: Tavily research narrative, published address, and site photos. */
+  aboutNarrative?: string | null;
+  vision?: string | null;
+  streetAddress?: string | null;
+  imageUrls?: string[];
 };
 
 /**
@@ -162,6 +167,7 @@ export function resolveAiCampaignSources(input: AnalyzeAiCampaignInput) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+    signal: AbortSignal.timeout(120_000),
   });
 }
 

@@ -677,7 +677,10 @@ export function submitNonprofitClaimRequest(body: {
   organizationName: string;
   contactName?: string;
   contactEmail: string;
+  /** About / description (preferred). */
+  about?: string;
   mission?: string;
+  phone?: string;
   causeCategory?: string;
   website?: string;
   existingSlug?: string;

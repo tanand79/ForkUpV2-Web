@@ -1147,6 +1147,29 @@ export function BusinessVenueProfile({
               )}
             </section>
 
+            {(canEdit || Boolean(profile.mission?.trim())) && (
+              <section aria-labelledby="mission-venue-heading">
+                <h2
+                  id="mission-venue-heading"
+                  className="font-venue-serif text-2xl text-venue-ink sm:text-3xl"
+                >
+                  Mission
+                </h2>
+                {canEdit ? (
+                  <textarea
+                    className="mt-4 min-h-28 w-full max-w-3xl rounded-sm border border-venue-line bg-venue-paper px-3 py-2.5 text-base leading-8 text-venue-body"
+                    value={profile.mission ?? ""}
+                    placeholder="Only if published on your website — leave blank otherwise."
+                    onChange={(e) => onChange({ mission: e.target.value })}
+                  />
+                ) : (
+                  <p className="mt-4 max-w-3xl text-base leading-8 text-venue-body sm:text-lg">
+                    {profile.mission?.trim()}
+                  </p>
+                )}
+              </section>
+            )}
+
             {/* Hours under About when reserve card is on the right (public + dashboard). */}
             {showReserveCard ? (
               <EligibilitySchedule

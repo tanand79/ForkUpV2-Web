@@ -536,7 +536,8 @@ export function NonprofitOrgProfile({
   const canEdit = !readOnly && editing;
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const addressLine = formatNonprofitAddress(profile);
+  const addressLine =
+    profile.addressLine?.trim() || formatNonprofitAddress(profile);
   const aboutParagraphs = profile.about
     .split(/\n+/)
     .map((p) => p.trim())
@@ -752,7 +753,7 @@ export function NonprofitOrgProfile({
 
         <section className="mt-12 max-w-3xl" aria-labelledby="about-org-heading">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-venue-accent">
-            Our mission
+            The organization
           </p>
           <h2
             id="about-org-heading"
@@ -781,6 +782,40 @@ export function NonprofitOrgProfile({
             </p>
           )}
         </section>
+
+        {profile.missionStatement?.trim() ? (
+          <section className="mt-12 max-w-3xl" aria-labelledby="mission-org-heading">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-venue-accent">
+              Our mission
+            </p>
+            <h2
+              id="mission-org-heading"
+              className="mt-2 font-venue-serif text-3xl text-venue-ink sm:text-4xl"
+            >
+              Mission
+            </h2>
+            <p className="mt-5 text-base leading-8 text-venue-body sm:text-lg">
+              {profile.missionStatement.trim()}
+            </p>
+          </section>
+        ) : null}
+
+        {profile.vision?.trim() ? (
+          <section className="mt-12 max-w-3xl" aria-labelledby="vision-org-heading">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-venue-accent">
+              Our vision
+            </p>
+            <h2
+              id="vision-org-heading"
+              className="mt-2 font-venue-serif text-3xl text-venue-ink sm:text-4xl"
+            >
+              Vision
+            </h2>
+            <p className="mt-5 text-base leading-8 text-venue-body sm:text-lg">
+              {profile.vision.trim()}
+            </p>
+          </section>
+        ) : null}
 
         {canEdit && onContinue ? (
           <Button

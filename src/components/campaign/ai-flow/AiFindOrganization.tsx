@@ -379,13 +379,26 @@ export function AiFindOrganization() {
         const nextPhone = sources.phone?.trim() || seed.phone || null;
         const nextEmail = sources.email?.trim() || seed.email || null;
         const nextAbout =
+          sources.aboutNarrative?.trim() ||
           seed.about.trim() ||
           sources.mission?.trim() ||
           selected.mission?.trim() ||
           "";
+        const nextMission =
+          sources.mission?.trim() &&
+          sources.mission.trim() !== nextAbout
+            ? sources.mission.trim()
+            : seed.missionStatement?.trim() || null;
+        const nextVision =
+          sources.vision?.trim() || seed.vision?.trim() || null;
 
-        let photoUrls = seed.photoUrls;
-        let coverUrl = seed.coverUrl;
+        const researchedPhotos = (sources.imageUrls ?? [])
+          .map((u) => u.trim())
+          .filter((u) => u.length > 0);
+
+        let photoUrls = researchedPhotos.length > 0 ? researchedPhotos : seed.photoUrls;
+        let coverUrl =
+          researchedPhotos[0] || seed.coverUrl;
         try {
           const media = await resolveAiFlowImages({
             mode: "scratch",
@@ -400,12 +413,16 @@ export function AiFindOrganization() {
           const urls = media.images
             .map((g) => g.url || g.storedUrl || "")
             .filter((u) => u.trim().length > 0);
-          if (urls.length > 0) {
-            photoUrls = urls;
+          const merged = [
+            ...urls,
+            ...researchedPhotos.filter((u) => !urls.includes(u)),
+          ].slice(0, 10);
+          if (merged.length > 0) {
+            photoUrls = merged;
             coverUrl =
               media.cover?.url?.trim() ||
               media.cover?.storedUrl?.trim() ||
-              urls[0] ||
+              merged[0] ||
               coverUrl;
           }
         } catch {
@@ -427,6 +444,10 @@ export function AiFindOrganization() {
           phone: nextPhone,
           email: nextEmail,
           about: nextAbout || seed.about,
+          missionStatement: nextMission,
+          vision: nextVision,
+          addressLine:
+            sources.streetAddress?.trim() || seed.addressLine || null,
           city: seed.city || sources.city?.trim() || "",
           state: seed.state || sources.state?.trim() || "",
           causeCategory:
@@ -670,7 +691,9 @@ export function AiFindOrganization() {
         contactName:
           selected.contactName?.trim() || orgProfile.organizationName.trim(),
         contactEmail: email,
-        mission: orgProfile.about.trim() || undefined,
+        about: orgProfile.about.trim() || undefined,
+        mission: orgProfile.missionStatement?.trim() || undefined,
+        phone: orgProfile.phone?.trim() || undefined,
         causeCategory: orgProfile.causeCategory || undefined,
         website: orgProfile.websiteUrl?.trim() || undefined,
         ein: selected.ein?.trim() || undefined,

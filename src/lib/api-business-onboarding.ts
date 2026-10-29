@@ -97,6 +97,8 @@ export type FindBusinessProfileResult = {
   website: string;
   businessType: string;
   about: string;
+  /** Evidence-only Mission from public site; empty when not published. */
+  mission?: string;
   contactEmail: string;
   phone: string;
   city: string;

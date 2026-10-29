@@ -15,6 +15,9 @@ export type NonprofitOrgProfileSnapshot = {
   state: string;
   zip: string;
   about: string;
+  /** Additive: evidence-based mission and vision, shown separately from about. */
+  missionStatement?: string | null;
+  vision?: string | null;
   coverUrl: string | null;
   photoUrls: string[];
   websiteUrl?: string | null;
@@ -27,6 +30,8 @@ export type NonprofitOrgProfileSnapshot = {
   email?: string | null;
   causeCategory?: string | null;
   logoUrl?: string | null;
+  /** Additive: published street address from web research (map pin). */
+  addressLine?: string | null;
 };
 
 const storageKey = (nonprofitId: number) =>
@@ -78,6 +83,11 @@ export function loadNonprofitOrgProfileSnapshot(
       state: typeof parsed.state === "string" ? parsed.state : "",
       zip: typeof parsed.zip === "string" ? parsed.zip : "",
       about: typeof parsed.about === "string" ? parsed.about : "",
+      missionStatement:
+        typeof parsed.missionStatement === "string"
+          ? parsed.missionStatement
+          : null,
+      vision: typeof parsed.vision === "string" ? parsed.vision : null,
       coverUrl:
         typeof parsed.coverUrl === "string" ? parsed.coverUrl : null,
       photoUrls: Array.isArray(parsed.photoUrls)
@@ -95,6 +105,8 @@ export function loadNonprofitOrgProfileSnapshot(
       email: parsed.email ?? null,
       causeCategory: parsed.causeCategory ?? null,
       logoUrl: parsed.logoUrl ?? null,
+      addressLine:
+        typeof parsed.addressLine === "string" ? parsed.addressLine : null,
     };
   } catch {
     return null;
